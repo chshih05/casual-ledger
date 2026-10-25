@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>日常記帳</title>
+  <meta name="theme-color" content="#14161B" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+
+  
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: #14161B;
+      color: #F3F4F6;
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      overflow-x: hidden;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .num-tabular { font-variant-numeric: tabular-nums; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade { animation: fadeIn 0.16s ease-out forwards; }
+  </style>
+<!-- @inline-css styles/tailwind.css -->
+<!-- @inline-css styles/app.css -->
+</head>
+<body class="min-h-screen flex flex-col items-center justify-start selection:bg-accent/30 selection:text-white">
+
+  <!-- 頂部原型狀態提示列 -->
+  <div class="w-full bg-[#1E2028] border-b border-borderSubtle px-3 py-2 text-xs text-textMuted flex flex-wrap items-center justify-between gap-2 max-w-md mx-auto sticky top-0 z-30">
+    <div class="flex items-center gap-1.5">
+      <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse"></span>
+      <span class="font-medium text-textMain">日常記帳</span>
+      <span id="dataModeLabel" class="text-xs text-textMuted">示例帳本</span>
+    </div>
+    <button id="btnStartPersonal" class="text-xs text-accent">建立個人帳本</button><button id="btnSwitchBook" class="hidden text-xs text-accent">查看示例</button>
+  </div>
+
+<div id="storageError" class="hidden storage-error" role="alert"></div>
+  <!-- 主容器 -->
+  <div class="app-shell w-full max-w-md flex-1 flex flex-col pb-24 relative">
+
+    <!-- 頂部導覽與月份選擇 (首頁 & 統計頁顯示月份；設定頁與獨立記帳頁顯示返回/標題) -->
+    <header id="mainTopHeader" class="px-4 pt-3 pb-2 flex items-center justify-between">
+      <div id="monthSelectorWrap" class="flex items-center gap-1 bg-bgCard border border-borderSubtle rounded-xl px-2 py-1">
+        <button id="btnPrevMonth" type="button" class="p-1 text-textMuted hover:text-textMain rounded-lg active:scale-95 transition" title="上個月">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+        </button>
+        <span id="currentMonthLabel" class="text-sm font-semibold px-2 num-tabular">2026 年 10 月</span>
+        <button id="btnNextMonth" type="button" class="p-1 text-textMuted hover:text-textMain rounded-lg active:scale-95 transition" title="下個月">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <div id="headerTitleOnly" class="hidden text-base font-semibold text-textMain py-1">管理與設定</div>
+
+      <!-- 獨立全頁記帳頂部列 (取代原本奇怪的彈窗) -->
+      <div id="recordPageHeader" class="hidden flex-1 flex items-center justify-between pr-2">
+        <button id="btnCloseRecordModal" type="button" class="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-bgCard border border-borderSubtle text-xs text-textMuted hover:text-textMain transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          <span>返回</span>
+        </button>
+        <div class="flex items-center gap-2">
+          <span id="modalTitleText" class="text-sm font-bold text-textMain">記一筆</span>
+          <div class="inline-flex rounded-xl bg-bgCard p-0.5 border border-borderSubtle text-xs">
+            <button id="modalTypeExpense" type="button" class="px-3 py-1 rounded-lg font-semibold bg-accent text-bgMain transition">支出</button>
+            <button id="modalTypeIncome" type="button" class="px-3 py-1 rounded-lg font-semibold text-textMuted hover:text-textMain transition">收入</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 資料保存／同步狀態徽章（點擊前往設定查看詳情） -->
+      <button id="btnSyncBadge" aria-label="查看資料保存狀態" type="button" class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-xl bg-bgCard border border-borderSubtle text-textMuted hover:border-accent/50 transition shrink-0">
+        <span id="syncDot" class="w-1.5 h-1.5 rounded-full bg-incomeGreen"></span>
+        <span id="syncText">僅存本機</span>
+      </button>
+    </header>
+
+    <!-- ==================== 視圖 1：首頁 ==================== -->
+    <main id="viewHome" class="px-4 space-y-4 animate-fade">
+      <!-- 1. 本月支出總額卡片 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-textMuted font-medium">本月支出總額</span>
+          <button id="btnCycleHeaderMode" hidden type="button" class="text-[11px] text-accent hover:underline flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+            <span id="headerModeLabel">僅顯示支出</span>
+          </button>
+        </div>
+        <div class="flex items-baseline gap-1.5">
+          <span class="text-lg font-medium text-textMuted">NT$</span>
+          <span id="homeTotalExpense" class="text-3xl font-bold tracking-tight text-textMain num-tabular">0</span>
+        </div>
+
+        <!-- 自訂顯示：收入與本月淨額 -->
+        <div id="homeExtraSummary" class="hidden mt-3 pt-3 border-t border-borderSubtle/80 grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <span class="text-textMuted block">本月收入</span>
+            <span id="homeTotalIncome" class="font-semibold text-incomeGreen num-tabular text-sm mt-0.5 block">+NT$ 0</span>
+          </div>
+          <div id="homeNetWrap">
+            <span class="text-textMuted block">本月結餘 (收-支)</span>
+            <span id="homeNetAmount" class="font-semibold text-textMain num-tabular text-sm mt-0.5 block">NT$ 0</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 最近消費紀錄 (依日期分組；同一天內依新增先後由上往下排，新記的排在當天最後一筆) -->
+      <section class="space-y-3">
+        <div class="flex items-center justify-between px-0.5">
+          <div class="flex items-center gap-2">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-textMuted">最近收支紀錄</h2>
+            <span class="text-[11px] text-textDim"></span>
+          </div>
+          <span id="homeRecordCount" class="text-xs text-textDim">共 0 筆</span>
+        </div>
+        <div class="flex gap-2 flex-wrap">
+<input id="recordSearch" type="search" aria-label="搜尋紀錄" placeholder="搜尋店家、備註或分類" class="search-input" />
+<label class="text-xs flex items-center gap-2"><input id="searchAllMonths" type="checkbox" />跨月搜尋</label></div>
+<div id="homeRecordList" class="space-y-3"></div>
+      </section>
+    </main>
+
+    <!-- ==================== 視圖 4：獨立全頁「記一筆 / 編輯紀錄」（大分類與金額小算盤、店家、備註全部同一頁） ==================== -->
+    <main id="modalRecord" class="hidden px-4 pt-1 space-y-3.5 animate-fade">
+      <!-- ===== 大分類選擇區（固定順序，與下方金額、店家在同一頁直接點選，並支援直接「＋新增分類」與選圖示） ===== -->
+      <div id="step1CategorySection" class="bg-bgCard border border-borderSubtle rounded-2xl p-3.5 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-semibold text-textMuted">分類</span>
+            <span id="step2CatIcon" class="text-accent shrink-0"></span>
+            <span id="step2CatName" class="text-xs font-bold text-accent">晚餐</span>
+          </div>
+          <button id="btnChangeCategoryInStep2" type="button" class="text-[11px] px-2.5 py-1 rounded-lg bg-bgElevated hover:bg-borderSubtle text-accent font-medium transition">
+            ＋ 新增分類
+          </button>
+        </div>
+
+        <!-- 固定順序大分類網格 -->
+        <p id="categoryPrompt" class="text-sm text-textMuted">選擇分類，填入金額</p><div id="step1CategoryGrid" class="grid grid-cols-5 gap-2"></div>
+
+        <!-- 記帳頁內直接展開「新增大分類 ＋ 24 款圖示選擇器」 -->
+        <div id="inlineAddCatPanel" class="hidden pt-3 mt-2 border-t border-borderSubtle space-y-2.5 animate-fade">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-accent">新增自訂分類</span>
+            <button id="btnCloseInlineAddCat" type="button" class="text-[11px] text-textMuted hover:text-textMain">收起 ✕</button>
+          </div>
+          <div id="inlineIconPickerGrid" class="icon-picker"></div>
+          <div class="flex gap-2">
+            <input id="inputInlineCatName" type="text" placeholder="輸入新大分類名稱（例如：宵夜、加油）..." class="flex-1 bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-xs text-textMain focus:outline-none focus:border-accent" />
+            <button id="btnConfirmInlineAddCat" type="button" class="px-3.5 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover shrink-0 transition">
+              新增並選取
+            </button>
+          </div>
+        </div>
+        <div id="singleAmountBox" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <label for="inputAmountExpr" class="text-xs font-medium text-textMuted">金額</label>
+            <span id="calcPreviewBadge" class="text-xs font-mono font-semibold text-accent hidden">= NT$ 0</span>
+          </div>
+          <div class="flex items-center gap-2 bg-bgInput border border-accent/40 rounded-xl px-3.5 py-2.5 focus-within:border-accent transition">
+            <span class="text-lg font-semibold text-textMuted">NT$</span>
+            <input id="inputAmountExpr" type="text" inputmode="none" autocomplete="off" maxlength="100" aria-describedby="amountHint" placeholder="0" class="w-full bg-transparent text-2xl font-bold text-textMain focus:outline-none num-tabular placeholder:text-textDim/50" />
+            <button id="btnKeypadBackspaceTop" type="button" class="p-1.5 rounded-lg text-textMuted hover:text-textMain hover:bg-bgElevated active:scale-95 transition" title="倒退刪除">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"/></svg>
+            </button>
+          </div>
+
+          <p id="amountHint" class="text-xs text-textMuted">可輸入加減算式，例如 85＋35</p><button id="btnToggleKeypad" class="text-sm text-accent" aria-expanded="true">收起數字鍵盤</button><!-- 內建 4x4 小算盤網格 -->
+          <div id="builtInKeypad" class="grid grid-cols-4 gap-2 pt-0.5 select-none">
+            <button type="button" data-key="7" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">7</button>
+            <button type="button" data-key="8" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">8</button>
+            <button type="button" data-key="9" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">9</button>
+            <button type="button" data-key="BACK" class="keypad-btn py-2.5 rounded-xl bg-bgElevated hover:bg-borderSubtle active:scale-95 border border-borderSubtle text-xs font-semibold text-textMuted transition">⌫ 退格</button>
+
+            <button type="button" data-key="4" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">4</button>
+            <button type="button" data-key="5" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">5</button>
+            <button type="button" data-key="6" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">6</button>
+            <button type="button" data-op="+" data-key="+" class="op-btn keypad-btn py-2.5 rounded-xl bg-bgElevated hover:bg-borderSubtle active:scale-95 border border-accent/30 text-base font-mono font-bold text-accent transition">＋</button>
+
+            <button type="button" data-key="1" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">1</button>
+            <button type="button" data-key="2" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">2</button>
+            <button type="button" data-key="3" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">3</button>
+            <button type="button" data-op="-" data-key="-" class="op-btn keypad-btn py-2.5 rounded-xl bg-bgElevated hover:bg-borderSubtle active:scale-95 border border-borderSubtle text-base font-mono font-bold text-textMain transition">－</button>
+
+            <button type="button" data-key="CLEAR" class="keypad-btn py-2.5 rounded-xl bg-bgElevated hover:bg-borderSubtle active:scale-95 border border-borderSubtle text-xs font-semibold text-dangerRed transition">C 清空</button>
+            <button type="button" data-key="0" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">0</button>
+            <button type="button" data-key="00" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-sm font-bold text-textMuted num-tabular transition">00</button>
+            <button type="button" id="btnApplyCalcNow" class="py-2.5 rounded-xl bg-accentSoft hover:bg-accent/25 active:scale-95 border border-accent/40 text-accent text-xs font-bold transition">＝ 算出</button>
+          </div>
+        </div>
+
+
+      </div>
+
+      <!-- ===== 同頁下方：金額小算盤、店家、備註、日期 ===== -->
+      <div id="step2DetailSection" class="space-y-3.5">
+
+        <!-- 整筆總額模式：金額顯示 ＋ 內建直覺小算盤 (免彈出系統鍵盤即可直接點按數字與加減) -->
+        <!-- 已依使用者決定定案為「整筆總額」，移除拆多品項切換 -->
+
+        <!-- 店家選擇與智慧推薦（純文字、可留白套用分類名稱） -->
+        <div class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <label for="inputMerchantSearch" class="text-sm text-textMuted"><span id="merchantFieldLabel">店家</span> <span class="text-xs">（選填）</span></label>
+            <button id="btnClearMerchant" type="button" class="hidden text-[11px] text-textMuted hover:text-dangerRed">清除已選</button>
+          </div>
+
+          <!-- 店家輸入/搜尋框 -->
+          <div class="relative flex items-center gap-2">
+            <input id="inputMerchantSearch" type="text" maxlength="100" placeholder="搜尋或輸入店家名稱" class="w-full bg-bgInput border border-borderSubtle rounded-xl px-3.5 py-2.5 text-sm text-textMain focus:outline-none focus:border-accent" />
+          </div>
+
+          <!-- 智慧推薦依據說明列 -->
+          <div class="flex items-center justify-between text-[11px]">
+            <span id="merchantRecHint" class="text-accent font-medium">尚未輸入金額：顯示此分類常用店家</span>
+            
+          </div>
+
+          <!-- 推薦店家純文字標籤列表 -->
+          <div id="merchantChipsContainer" class="flex flex-wrap gap-1.5 pt-0.5"></div>
+        </div>
+
+        <!-- 備註與消費日期（同卡片並列，省去跳頁空間） -->
+        <div id="singleNoteBox" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div class="sm:col-span-2">
+              <label for="inputRecordNote" class="block text-xs font-medium text-textMuted mb-1">備註（選填）</label>
+              <input id="inputRecordNote" type="text" maxlength="1000" placeholder="例如：大麥克套餐、買衛生紙..." class="w-full bg-bgInput border border-borderSubtle rounded-xl px-3.5 py-2 text-sm text-textMain focus:outline-none focus:border-accent" />
+            </div>
+            <div>
+              <label for="inputRecordDate" class="block text-xs font-medium text-textMuted mb-1">日期</label>
+              <button id="btnDateToggle" type="button" class="date-toggle">今天 ▾</button><input id="inputRecordDate" hidden type="date" class="w-full px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-sm text-textMain focus:outline-none focus:border-accent num-tabular" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 錯誤提示 -->
+        <div id="recordFormError" class="hidden text-xs text-dangerRed bg-dangerRed/10 border border-dangerRed/30 rounded-xl px-3 py-2"></div>
+
+        <!-- 底部儲存按鈕區（含刪除按鈕 & 預留「再記一筆」按鈕） -->
+        <div id="recordSaveBar" class="save-bar flex items-center gap-2">
+          <button id="btnDeleteRecordInModal" type="button" class="hidden px-4 py-3.5 rounded-2xl bg-dangerRed/15 hover:bg-dangerRed/25 text-dangerRed text-xs font-semibold transition">
+            刪除
+          </button>
+          <button id="btnSaveAndNextRecord" type="button" class="hidden px-4 py-3.5 rounded-2xl bg-bgElevated hover:bg-borderSubtle border border-borderSubtle text-textMain text-xs font-semibold transition shrink-0">
+            儲存並再記一筆
+          </button>
+          <button id="btnSaveRecord" type="button" class="flex-1 py-3.5 rounded-2xl bg-accent hover:bg-accentHover text-[#14161B] font-bold text-sm shadow-md transition">
+            儲存紀錄
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==================== 視圖 2：統計頁 ==================== -->
+    <main id="viewStats" class="hidden px-4 space-y-4 animate-fade">
+      <!-- 支出 / 收入 切換與總額 -->
+      <div class="bg-bgCard border border-borderSubtle rounded-2xl p-3.5 flex items-center justify-between">
+        <div class="inline-flex rounded-xl bg-bgInput p-1 border border-borderSubtle">
+          <button id="statsTabExpense" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition">支出統計</button>
+          <button id="statsTabIncome" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition">收入統計</button>
+        </div>
+        <div class="text-right">
+          <span id="statsTotalTitle" class="text-[11px] text-textMuted block">當月總支出</span>
+          <span id="statsTotalValue" class="text-lg font-bold num-tabular text-textMain">NT$ 0</span>
+        </div>
+      </div>
+
+      <!-- 各大分類占比與金額 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-textMain">分類金額與占比</h3>
+          <span class="text-[11px] text-textMuted">點擊項目查看明細</span>
+        </div>
+        <div id="statsCategoryList" class="space-y-2.5"></div>
+      </section>
+
+      <!-- 各店家金額排行 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-textMain">店家累積金額</h3>
+          <span class="text-[11px] text-textMuted">共用店家庫統計・點擊查看明細</span>
+        </div>
+        <div id="statsMerchantList" class="space-y-2"></div>
+      </section>
+    </main>
+
+    <!-- ==================== 視圖 3：管理與設定 ==================== -->
+    <main id="viewSettings" class="hidden px-4 space-y-4 animate-fade">
+      <!-- 1. 首頁頂部摘要顯示方式設定 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div>
+          <h3 class="text-sm font-semibold text-textMain">首頁摘要顯示設定</h3>
+          <p class="text-xs text-textMuted mt-0.5">可依習慣自訂首頁頂部是否顯示本月收入與結餘淨額</p>
+        </div>
+        <div class="grid grid-cols-1 gap-2" id="settingHeaderModeGroup">
+          <button type="button" data-mode="expense_only" class="setting-header-btn flex items-center justify-between p-3 rounded-xl border text-left text-xs transition">
+            <div>
+              <div class="font-semibold text-textMain">僅顯示「本月支出總額」（預設極簡）</div>
+              <div class="text-textMuted mt-0.5">首頁最乾淨，收入與淨額於統計頁查看</div>
+            </div>
+            <span class="mode-check w-4 h-4 rounded-full border flex items-center justify-center"></span>
+          </button>
+          <button type="button" data-mode="expense_and_income" class="setting-header-btn flex items-center justify-between p-3 rounded-xl border text-left text-xs transition">
+            <div>
+              <div class="font-semibold text-textMain">顯示「本月支出 ＋ 本月收入」</div>
+              <div class="text-textMuted mt-0.5">下方並列顯示當月總收入</div>
+            </div>
+            <span class="mode-check w-4 h-4 rounded-full border flex items-center justify-center"></span>
+          </button>
+          <button type="button" data-mode="full_net" class="setting-header-btn flex items-center justify-between p-3 rounded-xl border text-left text-xs transition">
+            <div>
+              <div class="font-semibold text-textMain">顯示「本月支出 ＋ 收入 ＋ 本月結餘淨額」</div>
+              <div class="text-textMuted mt-0.5">同時掌握當月收支差額</div>
+            </div>
+            <span class="mode-check w-4 h-4 rounded-full border flex items-center justify-center"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. 記帳偏好 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div>
+          <h3 class="text-sm font-semibold text-textMain">記帳偏好</h3>
+          <p class="text-xs text-textMuted mt-0.5">每筆紀錄記錄一個總額；備註可寫商品明細。</p>
+        </div>
+
+        <!-- 預留：儲存並再記一筆 -->
+        <div class="flex items-center justify-between py-2">
+          <div class="pr-3">
+            <div class="text-xs font-medium text-textMain">顯示「儲存並再記一筆」按鈕</div>
+            <div class="text-[11px] text-textMuted mt-0.5">預設關閉；開啟即可在記帳頁底部看到次要按鈕</div>
+          </div>
+          <button id="toggleSaveAndNext" role="switch" aria-label="儲存並再記一筆" type="button" class="w-11 h-6 rounded-full transition relative bg-bgElevated border border-borderSubtle shrink-0">
+            <span id="toggleSaveAndNextDot" class="w-4 h-4 rounded-full bg-textMuted absolute top-0.5 left-1 transition-all"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 3. 管理固定分類順序 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-textMain">分類管理（固定順序）</h3>
+            <p class="text-xs text-textMuted mt-0.5">順序固定不隨頻率跳動；改名會同步更新紀錄，有帳目時禁止誤刪</p>
+          </div>
+          <div class="inline-flex rounded-lg bg-bgInput p-0.5 border border-borderSubtle text-xs">
+            <button id="catMgrTabExpense" type="button" class="px-2.5 py-1 rounded-md bg-accent text-bgMain font-medium">支出</button>
+            <button id="catMgrTabIncome" type="button" class="px-2.5 py-1 rounded-md text-textMuted">收入</button>
+          </div>
+        </div>
+        <div id="settingsCategoryList" class="space-y-1.5"></div>
+        <div class="pt-2 border-t border-borderSubtle/60 space-y-2">
+          <div class="text-xs font-medium text-textMuted">新增分類：選擇圖示與名稱</div>
+          <div id="settingsIconPickerGrid" class="icon-picker"></div>
+          <div class="flex gap-2 pt-1">
+            <input id="inputNewCategoryName" type="text" placeholder="輸入新分類名稱..." class="flex-1 bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-xs text-textMain focus:outline-none focus:border-accent" />
+            <button id="btnAddNewCategory" type="button" class="px-3.5 py-2 rounded-xl bg-accent text-bgMain text-xs font-semibold hover:bg-accentHover transition">新增分類</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. 店家與收入來源 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div>
+          <h3 class="text-sm font-semibold text-textMain">店家與收入來源</h3>
+          <p class="text-xs text-textMuted mt-0.5">停用後不再推薦，歷史紀錄仍保留。可改名或合併重複名稱。</p>
+        </div>
+        <div id="settingsMerchantList" class="space-y-1.5 max-h-60 overflow-y-auto pr-1"></div>
+        <div class="flex gap-2 pt-1">
+          <input id="inputManageNewMerchant" type="text" placeholder="新增常用店家名稱..." class="flex-1 bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-xs text-textMain focus:outline-none focus:border-accent" />
+          <button id="btnManageAddMerchant" type="button" class="px-3.5 py-2 rounded-xl bg-bgElevated border border-borderSubtle hover:border-accent text-textMain text-xs font-medium transition">新增店家</button>
+        </div>
+      </section>
+
+<section id="syncSection" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+<div class="flex items-center justify-between gap-2"><h3 class="text-sm font-semibold">雲端同步（Google 帳號）</h3><span id="syncChip" class="sync-chip">僅存本機</span></div>
+<p id="syncSummary" class="text-sm text-textMuted"></p>
+<p id="syncAccount" class="hidden text-xs text-textMuted"></p>
+<p id="syncError" class="hidden sync-error" role="alert"></p>
+<div class="flex gap-2 flex-wrap"><button id="btnSyncSignIn" type="button" class="action hidden">使用 Google 登入並同步</button><button id="btnSyncNow" type="button" class="action hidden">立即同步</button><button id="btnSyncConfirmDeletes" type="button" class="action hidden">確認刪除並同步</button><button id="btnSyncConflicts" type="button" class="action hidden">衝突紀錄</button><button id="btnSyncSignOut" type="button" class="action hidden">登出</button><button id="btnSyncUnlink" type="button" class="action hidden">解除此裝置連結</button></div>
+<div id="syncConflictList" class="hidden space-y-2"></div>
+<p class="text-xs text-textMuted">只有「個人帳本」會同步；示例帳本永遠只存在此瀏覽器。</p>
+</section>
+
+<section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+<h3 class="text-sm font-semibold">資料保存與備份</h3>
+<p id="backupIntro" class="text-sm text-textMuted">資料存放於此瀏覽器，目前沒有雲端同步。</p>
+<p id="backupHint" class="text-xs text-textMuted">更換裝置前，請下載備份並在新裝置匯入。清除瀏覽器資料可能移除本機帳本。</p>
+<div class="flex gap-2 flex-wrap"><button id="btnExportJsonDemo" class="action">下載完整備份</button><button id="btnImportBackup" class="action">匯入備份</button><button id="btnUndoImport" class="action hidden">還原匯入前帳本</button></div>
+<input id="backupFile" type="file" accept=".json,application/json" hidden />
+<p id="backupStatus" class="text-xs text-textMuted">備份包含已儲存紀錄、分類、店家與偏好。</p>
+<p id="backupAge" class="text-xs text-textMuted"></p>
+</section>
+
+<section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
+<h3 class="text-sm font-semibold">關於此網頁</h3>
+<div id="appUpdateBox" class="hidden flex gap-2 flex-wrap items-center"><span class="text-sm">有新版本可以使用。</span><button id="btnApplyUpdate" type="button" class="action">更新並重新開啟</button></div>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">__BUILD_VERSION__</span></p>
+<p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
+</section>
+    </main>
+
+  </div>
+
+  <!-- 底部固定導覽列 + 中央明顯「＋記一筆」按鈕 -->
+  <nav id="bottomNavBar" class="fixed bottom-0 left-0 right-0 z-20 bg-[#191B22]/95 backdrop-blur border-t border-borderSubtle">
+    <div class="max-w-md mx-auto px-6 h-16 flex items-center justify-between relative">
+      <!-- 首頁 Tab -->
+      <button id="navBtnHome" type="button" class="flex flex-col items-center justify-center gap-1 text-accent w-16 py-1 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5.5v-6h-5v6H4a1 1 0 01-1-1v-9.5z"/>
+        </svg>
+        <span class="text-[11px] font-medium">首頁</span>
+      </button>
+
+      <!-- 中央明顯「＋記一筆」按鈕 -->
+      <button id="btnOpenAddModal" type="button" class="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-accent hover:bg-accentHover text-[#14161B] font-bold text-sm shadow-lg shadow-accent/20 active:scale-95 transition -mt-4 border-2 border-[#14161B]">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        <span>記一筆</span>
+      </button>
+
+      <!-- 右側：統計與設定切換 -->
+      <div class="flex items-center gap-3">
+        <button id="navBtnStats" type="button" class="flex flex-col items-center justify-center gap-1 text-textMuted hover:text-textMain w-12 py-1 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/>
+          </svg>
+          <span class="text-[11px] font-medium">統計</span>
+        </button>
+        <button id="navBtnSettings" type="button" class="flex flex-col items-center justify-center gap-1 text-textMuted hover:text-textMain w-12 py-1 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span class="text-[11px] font-medium">設定</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ==================== MODAL 2：統計明細檢視 (Drill-down) ==================== -->
+  <div id="modalDrilldown" role="dialog" aria-modal="true" aria-labelledby="drilldownTitle" class="fixed inset-0 z-40 hidden bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="w-full max-w-md bg-bgCard border-t sm:border border-borderSubtle rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col overflow-hidden animate-fade">
+      <div class="px-4 py-3.5 border-b border-borderSubtle flex items-center justify-between">
+        <div>
+          <h3 id="drilldownTitle" class="text-sm font-bold text-textMain">分類明細</h3>
+          <p id="drilldownSubtitle" class="text-xs text-textMuted mt-0.5">共 0 筆・合計 NT$ 0</p>
+        </div>
+        <button id="btnCloseDrilldown" aria-label="關閉明細" type="button" class="p-1.5 rounded-xl text-textMuted hover:text-textMain hover:bg-bgElevated">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="drilldownList" class="p-4 overflow-y-auto space-y-2.5 flex-1"></div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL 3：通用對話框 (改名 / 刪除確認 / JSON 預覽) ==================== -->
+  <div id="modalDialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3 animate-fade">
+      <h4 id="dialogTitle" class="text-sm font-bold text-textMain">提示</h4>
+      <p id="dialogMessage" class="text-xs text-textMuted leading-relaxed"></p>
+      <div id="dialogIconPicker" class="icon-picker hidden"></div><input id="dialogInput" type="text" class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-sm text-textMain focus:outline-none focus:border-accent" />
+      <textarea id="dialogTextarea" rows="7" readonly class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl p-2.5 text-[11px] font-mono text-textMuted focus:outline-none"></textarea>
+      <label id="dialogCheckWrap" class="hidden dialog-check"><input id="dialogCheck" type="checkbox" /><span id="dialogCheckLabel"></span></label>
+      <div class="flex justify-end gap-2 pt-1">
+        <button id="dialogBtnCancel" type="button" class="px-3.5 py-2 rounded-xl bg-bgElevated text-xs font-medium text-textMuted hover:text-textMain">取消</button>
+        <button id="dialogBtnConfirm" type="button" class="px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">確認</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 刪除復原 (Undo) 浮動提示條 & 一般 Toast -->
+  <div id="toastBox" role="status" aria-live="polite" class="fixed top-14 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2 rounded-xl bg-bgElevated border border-accent/50 text-xs font-medium text-textMain shadow-xl"></div>
+  <div id="undoBar" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 hidden w-[90%] max-w-sm px-4 py-2.5 rounded-2xl bg-[#262934] border border-accent/60 text-xs text-textMain shadow-2xl flex items-center justify-between gap-3">
+    <span id="undoBarText" class="truncate">已刪除 1 筆紀錄</span>
+    <button id="btnUndoDelete" type="button" class="px-3 py-1 rounded-lg bg-accent text-[#14161B] font-bold shrink-0 hover:bg-accentHover transition">
+      復原 (Undo)
+    </button>
+  </div>
+
+
+<!-- @inline-js -->
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "日常記帳",
+  "short_name": "記帳",
+  "description": "個人記帳：以支出為主、可記收入，個人帳本可用 Google 帳號跨裝置同步。",
+  "lang": "zh-Hant-TW",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14161B",
+  "theme_color": "#14161B",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

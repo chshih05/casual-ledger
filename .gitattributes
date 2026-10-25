@@ -1,0 +1,3 @@
+# 所有文字檔一律使用 LF 換行，讓 Windows 與 GitHub 上的內容一致，建置結果也不會因換行而改變。
+* text=auto eol=lf
+*.png binary

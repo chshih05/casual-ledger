@@ -1,0 +1,14 @@
+# 帳目備份與個人資料：絕對不要上傳到 GitHub
+*.json
+記帳-*
+backups/
+
+# 只留在本機的參考資料（含原始成品與交接說明）
+reference/
+
+# 本機開發設定與系統檔案
+.claude/
+__pycache__/
+*.pyc
+Thumbs.db
+.DS_Store

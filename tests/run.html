@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>記帳網頁自動測試</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #14161B; color: #F3F4F6; margin: 16px; }
+    li { white-space: pre-wrap; margin: 4px 0; }
+    .pass { color: #34D399; }
+    .fail { color: #F87171; }
+    #stage iframe { width: 400px; height: 760px; border: 1px solid #3D4251; background: #14161B; }
+  </style>
+</head>
+<body>
+  <h1>記帳網頁自動測試</h1>
+  <p>先執行 <code>python tools/build.py</code>，再用本機網址開啟此頁。網址加上 <code>?only=關鍵字</code> 可只跑部分測試。</p>
+  <p id="summary">準備中…</p>
+  <ol id="results"></ol>
+  <div id="stage"></div>
+  <script>
+    (async () => {
+      // 測試會清除本機測試網址的帳本資料，所以只允許在 localhost 執行。
+      if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+        document.getElementById('summary').textContent = '只能在本機測試網址（localhost）執行，避免影響正式帳本。';
+        return;
+      }
+      if (navigator.serviceWorker) {
+        for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister();
+      }
+      // 每次都讀取最新的檔案，避免瀏覽器快取舊版程式。
+      const stamp = Date.now();
+      for (const src of ['harness.js', '../src/js/55-sync-core.js', 'fake-cloud.js', 'core.test.js', 'app.test.js']) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = `${src}?v=${stamp}`;
+          script.onload = resolve;
+          script.onerror = () => reject(new Error(`無法載入 ${src}`));
+          document.body.appendChild(script);
+        });
+      }
+      await T.run(new URLSearchParams(location.search).get('only') || '');
+      // 測試結束後清掉測試網址上留下的帳本與同步資料。
+      for (const key of Object.keys(localStorage)) if (key.startsWith('minimal_expense_v3_')) localStorage.removeItem(key);
+    })().catch(e => { document.getElementById('summary').textContent = '測試無法執行：' + e.message; });
+  </script>
+</body>
+</html>

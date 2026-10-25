@@ -1,1 +1,102 @@
-# -
+# 日常記帳
+
+個人記帳網頁：以支出為主，也可以記收入。帳目存在瀏覽器裡；「個人帳本」可以用 Google 帳號在手機和電腦之間同步（需要先完成 Firebase 設定）。
+
+## 目前狀態（2026-10-25）
+
+| 項目 | 狀態 |
+| --- | --- |
+| 既有記帳功能（記一筆、統計、搜尋、分類與店家管理、備份匯出匯入） | 保留原功能；主要操作已用自動測試驗證 |
+| 資料層調整（每筆修改時間、合併匯入、排除示例資料） | 已實作、已用自動測試驗證 |
+| 同步核心（離線補傳、重試不重複、跨裝置衝突、刪除、大量刪除保護） | 已實作，用「模擬雲端」與兩台模擬裝置測試；尚未連上真實雲端 |
+| 同步畫面（狀態徽章、登入、首次連結確認、衝突紀錄） | 已實作，用模擬雲端測試 |
+| Firebase 連線（Google 登入、Firestore 資料庫） | 程式已寫好；只確認過官方元件能載入、用到的功能都存在。**登入與讀寫尚未實測**（需要先建立 Firebase 專案） |
+| 安全規則（`firestore.rules`） | 已寫好，**尚未在 Firebase 發布與實測** |
+| 離線開啟網站（Service Worker） | 已實作；在本機測試網址驗證過「關掉伺服器後仍能開啟」，手機上尚未驗證 |
+| GitHub Pages 部署 | **尚未部署** |
+| Android 實機與跨裝置交叉測試 | **尚未進行** |
+| 獨立的自動雲端備份 | **尚未實作**（目前請用「下載完整備份」） |
+
+自動測試：51 項全部通過（2026-10-25，Chromium 核心瀏覽器）。包含同步核心 22 項、畫面與資料 29 項。
+原本的 `test.cjs`（45 項檢查）讀不到，以上是重新撰寫的測試，項目不完全相同。
+
+## 資料夾說明
+
+| 位置 | 用途 |
+| --- | --- |
+| `src/` | 原始碼。要修改功能時改這裡。 |
+| `src/firebase-config.js` | Firebase 網頁設定（公開值，不是密碼）。未設定時為 `null`，網頁只存在本機。 |
+| `docs/` | 建置後的網站，GitHub Pages 發布這個資料夾。**不要直接修改**，每次建置都會覆蓋。 |
+| `tools/build.py` | 建置：把 `src/` 組成單一 HTML 並輸出到 `docs/`。 |
+| `tools/check_classes.py` | 檢查畫面用到的樣式名稱是否存在。 |
+| `tools/make_icons.py` | 產生主畫面圖示（已產生，通常不需要再執行）。 |
+| `tools/one-time/` | 一次性工具，已執行過，**不要重跑**。 |
+| `tests/` | 自動測試。 |
+| `firestore.rules` | Firebase 安全規則（貼到 Firebase 主控台使用）。 |
+| `reference/` | 原始成品與交接說明。**只留在本機，不要上傳。** |
+
+原開發資料夾（舊的 `build.py`、`improvements.js`、`test.cjs` 等）在這台電腦上讀不到，所以 `src/` 是從
+`prototype-revised.html` 拆出來的：重新建置後與原成品逐字相同（只把換行從 CRLF 改為 LF），之後的修改都在這份原始碼上進行。
+
+## 建置（每次修改後）
+
+需要 Python 3（只用標準函式庫，不需要 Node.js）。在專案資料夾執行：
+
+```bash
+python tools/build.py
+```
+
+完成後 `docs/index.html` 就是最新網頁，可以直接用瀏覽器開啟（直接開檔案時不能登入同步，但記帳功能正常）。
+
+## 自動測試
+
+```bash
+python -m http.server 8765 --bind 127.0.0.1
+```
+
+再用瀏覽器開啟 <http://localhost:8765/tests/run.html>，頁面會自動跑完並顯示通過與失敗的項目。
+測試只會清除「本機測試網址」的資料，不會碰到網站或直接開檔案時的帳本；測試頁也拒絕在正式網址執行。
+
+## 之後的設定步驟（決定採用 Firebase 後再做）
+
+不需要信用卡；過程中不要把密碼貼給任何人。Firebase 網頁設定值是公開資訊，可以提供給維護者。
+
+**A. GitHub（放程式、提供網址）**
+1. 登入或建立 GitHub 帳號，建立一個「公開」儲存庫（免費方案的 GitHub Pages 只支援公開儲存庫）。
+2. 上傳下方「要上傳的檔案」。
+3. 儲存庫的 Settings → Pages → Build and deployment 選「Deploy from a branch」，分支選 `main`、資料夾選 `/docs`，按 Save。
+4. 幾分鐘後網址會是 `https://你的帳號.github.io/儲存庫名稱/`。
+
+**B. Firebase（Google 登入與同步）**
+1. 到 <https://console.firebase.google.com/> 用你的 Google 帳號建立專案（不需要 Google Analytics）。
+2. 在專案中新增「網頁應用程式」（`</>` 圖示），不用勾選 Firebase Hosting，複製畫面上的 `firebaseConfig`。
+3. Authentication → 開始使用 →「登入方式」→ 啟用 Google → 儲存。
+4. Authentication →「設定」→「授權網域」→ 新增 `你的帳號.github.io`（`localhost` 預設已在清單中）。
+5. Firestore Database → 建立資料庫 → 選「標準版」→ 位置選 `asia-east1`（台灣，建立後不能改）→ 正式版模式。
+6. Firestore Database →「規則」→ 貼上 `firestore.rules` 的內容，把 `your_gmail@gmail.com` 換成你的 Gmail → 發布。
+
+**C. 接上網頁**
+1. 把 `firebaseConfig` 的 `apiKey`、`authDomain`、`projectId`、`appId` 填進 `src/firebase-config.js`。
+2. 執行 `python tools/build.py`，再上傳新的 `docs/`。
+3. 用手機與電腦開啟網址，到「設定 → 雲端同步」登入，依序測試：記帳、離線記帳後恢復連線、另一台裝置看到同一本帳本。
+
+## 資料與隱私
+
+- **不要上傳到 GitHub：** `reference/`、任何 `.json` 檔（帳目備份）、`.claude/`。`.gitignore` 已排除它們；
+  但用 GitHub 網頁上傳時不會套用 `.gitignore`，請只上傳下面「要上傳的檔案」。
+- **要上傳的檔案：** `src/`、`docs/`、`tools/`、`tests/`、`README.md`、`THIRD_PARTY_NOTICES.md`、`firestore.rules`、`.gitignore`。
+- Firebase 網頁設定（apiKey 等）是公開值，官方說明可以放在網頁程式中；保護資料的是 `firestore.rules`。
+- `firestore.rules` 裡的 Gmail 是範例；你自己的 Gmail 只填在 Firebase 主控台，不要提交到公開的 GitHub。
+
+## 同步怎麼運作（給維護者）
+
+- 帳本拆成「紀錄、分類、店家／收入來源、偏好設定」等項目，每個項目在雲端是一份文件：
+  `users/{登入帳號}/entities/{項目}`。
+- 每台裝置記住「上次同步時雲端的版本」。按下儲存後，與上次同步內容不同的項目就是「待同步」；
+  離線時保留在本機，恢復連線後自動上傳。重新整理或關閉網頁也不會遺失。
+- 上傳用交易一次檢查並寫入：雲端仍是上次看到的版本才覆寫；內容已相同就不重寫（重試不會重複）。
+- 兩台裝置都改了同一項目：保留「最後修改時間」較新的版本，另一個版本存入設定頁的「衝突紀錄」，可以一鍵改用。
+- 刪除只做標記並保留最後內容；一次刪除超過 20 筆且超過已同步紀錄的 30% 時，會先暫停並請你確認。
+- 示例帳本永遠不會上傳；匯入備份時也會排除示例資料。
+- 已知限制：判斷新舊使用各裝置的時鐘；手機與電腦的時間若差很多，可能選錯版本（被取代的版本仍會留在衝突紀錄）。
+  帳本存在 localStorage，約可存放數千到一萬筆以上紀錄；超過時需要改用 IndexedDB。
