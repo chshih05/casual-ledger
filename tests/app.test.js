@@ -59,7 +59,6 @@
 
   async function personalApp() {
     const a = await openApp();
-    a.click('btnStartPersonal');
     eq(a.ev('book'), 'personal');
     return a;
   }
@@ -100,14 +99,28 @@
   }
 
   // ---------- 既有功能 ----------
-  test('畫面｜開啟時是示例帳本，標示不同步；未設定同步時清楚說明只存本機', async () => {
+  test('畫面｜開啟時直接是自己的帳本、沒有示例資料；未設定同步時清楚說明只存本機', async () => {
     const a = await openApp();
-    eq(a.badge(), '示例・不同步');
-    a.click('btnStartPersonal');
+    eq(a.ev('state.records.length'), 0, '不應有示例紀錄');
+    eq(a.ev('state.merchants.length'), 0, '不應有示例店家');
+    assert(!a.$('btnStartPersonal') && !a.$('btnSwitchBook'), '不應再有切換示例帳本的按鈕');
     eq(a.badge(), '僅存本機');
     a.click('navBtnSettings');
     assert(a.text('syncSummary').includes('同步服務尚未設定'), a.text('syncSummary'));
     assert(!a.visible('btnSyncSignIn'), '未設定時不應出現登入按鈕');
+  });
+
+  test('畫面｜舊的示例帳本資料會被清除，自己的帳本保留', async () => {
+    clearStorage();
+    const personal = { records: [{ id: 'rec_keep_me', seq: 1, type: 'expense', date: '2026-10-01', categoryId: 'cat_lunch', amount: 90, merchant: '', note: '保留' }],
+      categories: (await openApp()).ev('getInitialState().categories'), merchants: [] };
+    localStorage.setItem(PREFIX + 'demo', JSON.stringify({ records: [], categories: personal.categories, merchants: ['麥當勞'] }));
+    localStorage.setItem(PREFIX + 'demo_before_import', '{}');
+    localStorage.setItem(PREFIX + 'active', 'demo');
+    localStorage.setItem(PREFIX + 'personal', JSON.stringify(personal));
+    const a = await openApp({ clear: false });
+    for (const key of ['demo', 'demo_before_import', 'active']) eq(localStorage.getItem(PREFIX + key), null, `${key} 應已清除`);
+    eq(a.ev('state.records.map(r => r.id)'), ['rec_keep_me']);
   });
 
   test('畫面｜沒有 Firebase 設定時，即使留有舊的連結資料也只顯示「僅存本機」', async () => {
@@ -122,10 +135,13 @@
 
   test('畫面｜首頁只顯示本月支出總額，最近紀錄依日期分組', async () => {
     const a = await openApp();
+    const month = a.ev('today()').slice(0, 7);
+    const day = d => ({ id: `rec_day_${d}`, seq: d, type: 'expense', date: `${month}-0${d}`, categoryId: 'cat_lunch', amount: 100 * d, merchant: '', note: '' });
+    await importBackup(a, { records: [day(1), day(2)], categories: defaultCategories(a), merchants: [] });
     assert(a.visible('homeTotalExpense'), '應顯示本月支出總額');
+    eq(a.text('homeTotalExpense'), '300');
     assert(!a.visible('homeExtraSummary'), '預設不顯示收入與結餘');
-    const groups = a.$('homeRecordList').children.length;
-    assert(groups >= 2, '示例紀錄應依日期分成多組');
+    eq(a.$('homeRecordList').children.length, 2, '兩天的紀錄應分成兩組');
   });
 
   test('畫面｜記一筆：分類與金額在同一張卡片，且不預先選分類', async () => {
@@ -291,10 +307,9 @@
     eq(a.ev('state.records.length'), 1);
   });
 
-  test('匯入｜示例帳本的備份不會把示例店家帶進個人帳本', async () => {
+  test('匯入｜舊的示例帳本備份不會把示例紀錄與店家帶進帳本', async () => {
     const a = await openApp();
-    const demoBackup = a.ev('backupEnvelope()');
-    a.click('btnStartPersonal');
+    const demoBackup = { format: 'daily-ledger', version: 3, book: 'demo', exportedAt: new Date().toISOString(), data: a.ev('getInitialState()') };
     const message = await importBackup(a, demoBackup);
     assert(message.includes('來自示例帳本'), message);
     eq(a.ev('state.records.length'), 0);
@@ -415,21 +430,6 @@
     a.click('navBtnSettings');
     assert(a.text('syncSummary').includes('不同'), a.text('syncSummary'));
     eq(cloud.pushCalls, pushes, '不應上傳到另一個帳號');
-  });
-
-  test('同步畫面｜示例帳本即使已登入也不會上傳', async () => {
-    const a = await personalApp();
-    const cloud = createFakeCloud();
-    await linkWithFakeCloud(a, cloud);
-    await waitFor(() => a.badge() === '已同步');
-    a.click('btnSwitchBook');
-    eq(a.ev('book'), 'demo');
-    const pushes = cloud.pushCalls;
-    addRecord(a, { amount: '999' });
-    await sleep(1600);
-    eq(cloud.pushCalls, pushes, '示例帳本不應觸發上傳');
-    eq(a.badge(), '示例・不同步');
-    assert(!cloud.live('rec').some(d => d.d.amount === 999));
   });
 
   test('同步畫面｜雲端拒絕存取時顯示同步失敗與原因，資料仍留在本機', async () => {

@@ -1,5 +1,5 @@
 // 雲端同步的流程與畫面：Google 登入、首次連結確認、自動同步、狀態顯示、衝突紀錄。
-// 只有個人帳本會同步；示例帳本、直接開啟的 HTML 檔、尚未填入 Firebase 設定時都只存在本機。
+// 直接開啟的 HTML 檔、或尚未填入 Firebase 設定時，帳本只存在本機。
 const LedgerSync = (() => {
   'use strict';
   const Core = LedgerSyncCore;
@@ -194,7 +194,7 @@ const LedgerSync = (() => {
     if (!count) return link();
     openDialog({
       title: '連結此裝置的帳本？',
-      message: `此裝置的個人帳本有 ${count} 筆紀錄。\n連結後會與 ${account.email || '這個 Google 帳號'} 的雲端帳本合併成同一本，相同的紀錄不會重複。之後在任何一台裝置新增、修改或刪除，都會同步到其他裝置。\n示例帳本不會上傳。`,
+      message: `此裝置的帳本有 ${count} 筆紀錄。\n連結後會與 ${account.email || '這個 Google 帳號'} 的雲端帳本合併成同一本，相同的紀錄不會重複。之後在任何一台裝置新增、修改或刪除，都會同步到其他裝置。`,
       checkbox: { label: '連結前先下載此裝置的完整備份（建議）', checked: true },
       confirmText: '連結並同步',
       onConfirm: (_, backupFirst) => {
@@ -374,7 +374,6 @@ const LedgerSync = (() => {
 
   // ---------- 狀態顯示 ----------
   function badge() {
-    if (book !== 'personal') return { text: '示例・不同步', tone: 'muted' };
     if (!isLinked()) return { text: '僅存本機', tone: 'ok' };
     const n = pendingSet.size;
     if (mismatch()) return { text: '同步暫停', tone: 'danger' };
@@ -405,14 +404,12 @@ const LedgerSync = (() => {
     const buttons = { signIn: false, now: false, deletes: false, conflicts: false, signOut: false, unlink: false };
     let signInText = '使用 Google 登入並同步', nowText = '立即同步';
 
-    if (book !== 'personal') {
-      summary = '示例帳本不會同步，也不會上傳。切換到個人帳本後，才能使用雲端同步。';
-    } else if (fileMode) {
+    if (fileMode) {
       summary = '目前是直接開啟的 HTML 檔案，無法使用 Google 登入。請改用網站網址開啟才能同步；帳本仍存在此瀏覽器。';
     } else if (!configured) {
       summary = '同步服務尚未設定。完成 Firebase 專案設定並填入設定值後，這裡會出現「使用 Google 登入」。目前帳本只存在此瀏覽器。';
     } else if (mismatch()) {
-      summary = `此裝置的個人帳本已連結 ${m.email || '另一個帳號'}，與目前登入的 ${account.email || '帳號'} 不同。為避免兩本帳本混在一起，已停止同步。`;
+      summary = `此裝置的帳本已連結 ${m.email || '另一個帳號'}，與目前登入的 ${account.email || '帳號'} 不同。為避免兩本帳本混在一起，已停止同步。`;
       buttons.signOut = buttons.unlink = true;
     } else if (!linked) {
       if (account) {
@@ -420,7 +417,7 @@ const LedgerSync = (() => {
         buttons.now = buttons.signOut = true;
         nowText = '連結並同步';
       } else {
-        summary = '登入後，個人帳本會同步到你 Google 帳號專屬的雲端空間；其他裝置用同一個帳號登入，就會看到同一本帳本。示例帳本不會上傳。';
+        summary = '登入後，帳本會同步到你 Google 帳號專屬的雲端空間；其他裝置用同一個帳號登入，就會看到同一本帳本。';
         buttons.signIn = true;
       }
     } else if (authKnown && !account) {
@@ -491,16 +488,6 @@ const LedgerSync = (() => {
     if (opts.source !== 'sync') schedule(DEBOUNCE_MS);
   }
 
-  function onBookChanged() {
-    metaCache = null;
-    lastError = null; lastResult = null; heldDeletes = 0; showConflicts = false; bulkAck = null;
-    refreshPending();
-    if (book === 'personal' && configured && !fileMode && info().uid) {
-      startBackend().then(() => schedule(0)).catch(() => {});
-    }
-    render();
-  }
-
   function init() {
     el('btnSyncSignIn').onclick = signIn;
     el('btnSyncNow').onclick = () => {
@@ -539,7 +526,7 @@ const LedgerSync = (() => {
   } : undefined;
 
   return {
-    badge, renderPanel, afterCommit, savedMessage, onBookChanged, acknowledgeBulkChange,
+    badge, renderPanel, afterCommit, savedMessage, acknowledgeBulkChange,
     isLinked, isPending: key => pendingSet.has(key), __test: testApi,
   };
 })();

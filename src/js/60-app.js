@@ -3,7 +3,8 @@ const $ = id => document.getElementById(id);
 const clone = x => JSON.parse(JSON.stringify(x));
 const MAX_AMOUNT = 999999999;
 const BOOK_PREFIX = 'minimal_expense_v3_';
-let book = 'demo', storageBlocked = false, persistedRaw = null, loadIssue = '';
+// Only the personal book remains; `book` keeps the existing storage key (minimal_expense_v3_personal).
+let book = 'personal', storageBlocked = false, persistedRaw = null, loadIssue = '';
 let state, modalState = null, searchQuery = '', searchAcrossMonths = false;
 let keypadOpen = true, lastDeletedRecord = null;
 window.__selectedIconKey = 'dinner';
@@ -37,16 +38,15 @@ function evaluateSimpleMath(expr) {
 function uid(prefix='rec') {
   return prefix+'_'+(globalThis.crypto?.randomUUID?.() || Date.now().toString(36)+'_'+Math.random().toString(36).slice(2));
 }
-function freshBook(mode=book) {
+function freshBook() {
   const s=getInitialState();
-  s.archivedMerchants=[]; s.merchantTypes={}; 
-  if (mode==='personal') { s.records=[]; s.merchants=[]; }
-  else {
-    s.records=s.records.map(r=>({...r,date:today().slice(0,7)+r.date.slice(7)}));
-  }
-  s.records.forEach(r=> { s.merchantTypes[r.merchant]=r.type; });
+  s.records=[]; s.merchants=[]; s.archivedMerchants=[]; s.merchantTypes={};
   s.schemaVersion=3;
   return s;
+}
+// The sample (demo) book was removed; clear its leftover data from this browser.
+function removeSampleBook() {
+  try { for (const key of ['demo','demo_before_import','demo_last_backup','active']) localStorage.removeItem(BOOK_PREFIX+key); } catch {}
 }
 function validateBackup(input) {
   if (input?.format && input.format!=='daily-ledger') throw new Error('這不是支援的記帳備份格式。');
@@ -139,9 +139,6 @@ function filteredHomeRecords() {
 }
 function renderAll() {
   renderHeader();renderHome();renderStats();renderSettings();updateBottomNav();updateSyncStatusUI();
-  $('dataModeLabel').textContent=book==='demo'?'示例帳本':'個人帳本';
-  $('btnStartPersonal').classList.toggle('hidden',book==='personal');
-  $('btnSwitchBook').classList.toggle('hidden',book==='demo');
   $('btnSyncBadge').classList.toggle('hidden',state.activeView==='record');
   $('statsMerchantList').parentElement.querySelector('h3').textContent=state.statsType==='income'?'收入來源累積金額':'店家累積金額';
   $('statsMerchantList').parentElement.querySelector('span').textContent='點擊查看明細';
@@ -338,7 +335,7 @@ function downloadText(text,name) {
 function exportBackup() {
   try {
     const text=storageBlocked&&persistedRaw?persistedRaw:JSON.stringify(backupEnvelope(),null,2);
-    downloadText(text,`記帳-${book==='demo'?'示例':'個人'}-${today()}.json`);
+    downloadText(text,`記帳-備份-${today()}.json`);
     $('backupStatus').textContent='已送出備份下載，請確認檔案已存入下載資料夾。';
     try{localStorage.setItem(storageKey()+'_last_backup',String(Date.now()));}catch{}
   }catch(e){showToast('無法下載，請重試或更換瀏覽器。');}
@@ -411,8 +408,8 @@ function planImportReplace(current,imported,origin) {
   return next;
 }
 function importSummary(imported,plan,origin) {
-  const target=book==='demo'?'示例':'個人',lines=[`備份內容：${imported.records.length} 筆紀錄、${imported.categories.length} 個分類${origin.book==='demo'?'（來自示例帳本）':''}。`];
-  lines.push(`合併到目前${target}帳本：新增 ${plan.added} 筆紀錄${plan.newCategories?`、${plan.newCategories} 個分類`:''}${plan.newMerchants?`、${plan.newMerchants} 個店家／來源`:''}。`);
+  const lines=[`備份內容：${imported.records.length} 筆紀錄、${imported.categories.length} 個分類${origin.book==='demo'?'（來自示例帳本）':''}。`];
+  lines.push(`合併到目前帳本：新增 ${plan.added} 筆紀錄${plan.newCategories?`、${plan.newCategories} 個分類`:''}${plan.newMerchants?`、${plan.newMerchants} 個店家／來源`:''}。`);
   if(plan.same)lines.push(`${plan.same} 筆已在帳本中，不會重複。`);
   if(plan.duplicates)lines.push(`${plan.duplicates} 筆與現有紀錄的日期、金額、分類、店家、備註都相同，視為重複而略過。`);
   if(plan.updated)lines.push(`${plan.updated} 筆改用備份中較新的版本。`);
@@ -446,13 +443,6 @@ async function prepareImport(file) {
       }});
   }catch(e){showToast('未匯入：'+e.message);}
 }
-function switchBook(target) {
-  discardForm();
-  book=target;try{localStorage.setItem(BOOK_PREFIX+'active',book);}catch{}
-  state=loadBook();modalState=null;lastDeletedRecord=null;searchQuery='';$('recordSearch').value='';$('undoBar').classList.add('hidden');
-  $('storageError').classList.add('hidden');renderAll();if(loadIssue)showStorageError(loadIssue);
-  LedgerSync.onBookChanged();
-}
 function removeRecord() {
   const rec=state.records.find(r=>r.id===modalState?.editingRecordId);if(!rec)return;
   if(!commit(s=>{s.records=s.records.filter(r=>r.id!==rec.id);}))return;
@@ -469,10 +459,9 @@ function handleKeypadInput(key) {
   modalState.amountExpr=s;$('inputAmountExpr').value=s;updateCalcPreviewAndRecommendations();
 }
 window.addEventListener('DOMContentLoaded',()=>{
-  try{book=localStorage.getItem(BOOK_PREFIX+'active')==='personal'?'personal':'demo';}catch{}
+  removeSampleBook();
   state=loadBook();
   const on=(id,event,fn)=>$(id).addEventListener(event,fn);
-  on('btnStartPersonal','click',()=>switchBook('personal'));on('btnSwitchBook','click',()=>switchBook('demo'));
   on('navBtnHome','click',()=>{discardForm();state.activeView='home';renderAll();});on('navBtnStats','click',()=>{discardForm();state.activeView='stats';renderAll();});on('navBtnSettings','click',()=>{discardForm();state.activeView='settings';renderAll();});
   on('btnSyncBadge','click',()=>{discardForm();state.activeView='settings';renderAll();});
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n,1);state.currentMonth=today(d).slice(0,7);renderAll();};

@@ -106,14 +106,12 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 </head>
 <body class="min-h-screen flex flex-col items-center justify-start selection:bg-accent/30 selection:text-white">
 
-  <!-- 頂部原型狀態提示列 -->
+  <!-- 頂部名稱列 -->
   <div class="w-full bg-[#1E2028] border-b border-borderSubtle px-3 py-2 text-xs text-textMuted flex flex-wrap items-center justify-between gap-2 max-w-md mx-auto sticky top-0 z-30">
     <div class="flex items-center gap-1.5">
       <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse"></span>
       <span class="font-medium text-textMain">日常記帳</span>
-      <span id="dataModeLabel" class="text-xs text-textMuted">示例帳本</span>
     </div>
-    <button id="btnStartPersonal" class="text-xs text-accent">建立個人帳本</button><button id="btnSwitchBook" class="hidden text-xs text-accent">查看示例</button>
   </div>
 
 <div id="storageError" class="hidden storage-error" role="alert"></div>
@@ -460,7 +458,6 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 <p id="syncError" class="hidden sync-error" role="alert"></p>
 <div class="flex gap-2 flex-wrap"><button id="btnSyncSignIn" type="button" class="action hidden">使用 Google 登入並同步</button><button id="btnSyncNow" type="button" class="action hidden">立即同步</button><button id="btnSyncConfirmDeletes" type="button" class="action hidden">確認刪除並同步</button><button id="btnSyncConflicts" type="button" class="action hidden">衝突紀錄</button><button id="btnSyncSignOut" type="button" class="action hidden">登出</button><button id="btnSyncUnlink" type="button" class="action hidden">解除此裝置連結</button></div>
 <div id="syncConflictList" class="hidden space-y-2"></div>
-<p class="text-xs text-textMuted">只有「個人帳本」會同步；示例帳本永遠只存在此瀏覽器。</p>
 </section>
 
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
@@ -476,7 +473,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
 <div id="appUpdateBox" class="hidden flex gap-2 flex-wrap items-center"><span class="text-sm">有新版本可以使用。</span><button id="btnApplyUpdate" type="button" class="action">更新並重新開啟</button></div>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">2782450f37de</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">e6156a01aa34</span></p>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
 </section>
     </main>
@@ -1578,7 +1575,8 @@ const $ = id => document.getElementById(id);
 const clone = x => JSON.parse(JSON.stringify(x));
 const MAX_AMOUNT = 999999999;
 const BOOK_PREFIX = 'minimal_expense_v3_';
-let book = 'demo', storageBlocked = false, persistedRaw = null, loadIssue = '';
+// Only the personal book remains; `book` keeps the existing storage key (minimal_expense_v3_personal).
+let book = 'personal', storageBlocked = false, persistedRaw = null, loadIssue = '';
 let state, modalState = null, searchQuery = '', searchAcrossMonths = false;
 let keypadOpen = true, lastDeletedRecord = null;
 window.__selectedIconKey = 'dinner';
@@ -1612,16 +1610,15 @@ function evaluateSimpleMath(expr) {
 function uid(prefix='rec') {
   return prefix+'_'+(globalThis.crypto?.randomUUID?.() || Date.now().toString(36)+'_'+Math.random().toString(36).slice(2));
 }
-function freshBook(mode=book) {
+function freshBook() {
   const s=getInitialState();
-  s.archivedMerchants=[]; s.merchantTypes={}; 
-  if (mode==='personal') { s.records=[]; s.merchants=[]; }
-  else {
-    s.records=s.records.map(r=>({...r,date:today().slice(0,7)+r.date.slice(7)}));
-  }
-  s.records.forEach(r=> { s.merchantTypes[r.merchant]=r.type; });
+  s.records=[]; s.merchants=[]; s.archivedMerchants=[]; s.merchantTypes={};
   s.schemaVersion=3;
   return s;
+}
+// The sample (demo) book was removed; clear its leftover data from this browser.
+function removeSampleBook() {
+  try { for (const key of ['demo','demo_before_import','demo_last_backup','active']) localStorage.removeItem(BOOK_PREFIX+key); } catch {}
 }
 function validateBackup(input) {
   if (input?.format && input.format!=='daily-ledger') throw new Error('這不是支援的記帳備份格式。');
@@ -1714,9 +1711,6 @@ function filteredHomeRecords() {
 }
 function renderAll() {
   renderHeader();renderHome();renderStats();renderSettings();updateBottomNav();updateSyncStatusUI();
-  $('dataModeLabel').textContent=book==='demo'?'示例帳本':'個人帳本';
-  $('btnStartPersonal').classList.toggle('hidden',book==='personal');
-  $('btnSwitchBook').classList.toggle('hidden',book==='demo');
   $('btnSyncBadge').classList.toggle('hidden',state.activeView==='record');
   $('statsMerchantList').parentElement.querySelector('h3').textContent=state.statsType==='income'?'收入來源累積金額':'店家累積金額';
   $('statsMerchantList').parentElement.querySelector('span').textContent='點擊查看明細';
@@ -1913,7 +1907,7 @@ function downloadText(text,name) {
 function exportBackup() {
   try {
     const text=storageBlocked&&persistedRaw?persistedRaw:JSON.stringify(backupEnvelope(),null,2);
-    downloadText(text,`記帳-${book==='demo'?'示例':'個人'}-${today()}.json`);
+    downloadText(text,`記帳-備份-${today()}.json`);
     $('backupStatus').textContent='已送出備份下載，請確認檔案已存入下載資料夾。';
     try{localStorage.setItem(storageKey()+'_last_backup',String(Date.now()));}catch{}
   }catch(e){showToast('無法下載，請重試或更換瀏覽器。');}
@@ -1986,8 +1980,8 @@ function planImportReplace(current,imported,origin) {
   return next;
 }
 function importSummary(imported,plan,origin) {
-  const target=book==='demo'?'示例':'個人',lines=[`備份內容：${imported.records.length} 筆紀錄、${imported.categories.length} 個分類${origin.book==='demo'?'（來自示例帳本）':''}。`];
-  lines.push(`合併到目前${target}帳本：新增 ${plan.added} 筆紀錄${plan.newCategories?`、${plan.newCategories} 個分類`:''}${plan.newMerchants?`、${plan.newMerchants} 個店家／來源`:''}。`);
+  const lines=[`備份內容：${imported.records.length} 筆紀錄、${imported.categories.length} 個分類${origin.book==='demo'?'（來自示例帳本）':''}。`];
+  lines.push(`合併到目前帳本：新增 ${plan.added} 筆紀錄${plan.newCategories?`、${plan.newCategories} 個分類`:''}${plan.newMerchants?`、${plan.newMerchants} 個店家／來源`:''}。`);
   if(plan.same)lines.push(`${plan.same} 筆已在帳本中，不會重複。`);
   if(plan.duplicates)lines.push(`${plan.duplicates} 筆與現有紀錄的日期、金額、分類、店家、備註都相同，視為重複而略過。`);
   if(plan.updated)lines.push(`${plan.updated} 筆改用備份中較新的版本。`);
@@ -2021,13 +2015,6 @@ async function prepareImport(file) {
       }});
   }catch(e){showToast('未匯入：'+e.message);}
 }
-function switchBook(target) {
-  discardForm();
-  book=target;try{localStorage.setItem(BOOK_PREFIX+'active',book);}catch{}
-  state=loadBook();modalState=null;lastDeletedRecord=null;searchQuery='';$('recordSearch').value='';$('undoBar').classList.add('hidden');
-  $('storageError').classList.add('hidden');renderAll();if(loadIssue)showStorageError(loadIssue);
-  LedgerSync.onBookChanged();
-}
 function removeRecord() {
   const rec=state.records.find(r=>r.id===modalState?.editingRecordId);if(!rec)return;
   if(!commit(s=>{s.records=s.records.filter(r=>r.id!==rec.id);}))return;
@@ -2044,10 +2031,9 @@ function handleKeypadInput(key) {
   modalState.amountExpr=s;$('inputAmountExpr').value=s;updateCalcPreviewAndRecommendations();
 }
 window.addEventListener('DOMContentLoaded',()=>{
-  try{book=localStorage.getItem(BOOK_PREFIX+'active')==='personal'?'personal':'demo';}catch{}
+  removeSampleBook();
   state=loadBook();
   const on=(id,event,fn)=>$(id).addEventListener(event,fn);
-  on('btnStartPersonal','click',()=>switchBook('personal'));on('btnSwitchBook','click',()=>switchBook('demo'));
   on('navBtnHome','click',()=>{discardForm();state.activeView='home';renderAll();});on('navBtnStats','click',()=>{discardForm();state.activeView='stats';renderAll();});on('navBtnSettings','click',()=>{discardForm();state.activeView='settings';renderAll();});
   on('btnSyncBadge','click',()=>{discardForm();state.activeView='settings';renderAll();});
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n,1);state.currentMonth=today(d).slice(0,7);renderAll();};
@@ -2259,7 +2245,7 @@ const LedgerFirebase = (() => {
   return { create, docIdForKey, classify, SDK_VERSION };
 })();
 // 雲端同步的流程與畫面：Google 登入、首次連結確認、自動同步、狀態顯示、衝突紀錄。
-// 只有個人帳本會同步；示例帳本、直接開啟的 HTML 檔、尚未填入 Firebase 設定時都只存在本機。
+// 直接開啟的 HTML 檔、或尚未填入 Firebase 設定時，帳本只存在本機。
 const LedgerSync = (() => {
   'use strict';
   const Core = LedgerSyncCore;
@@ -2454,7 +2440,7 @@ const LedgerSync = (() => {
     if (!count) return link();
     openDialog({
       title: '連結此裝置的帳本？',
-      message: `此裝置的個人帳本有 ${count} 筆紀錄。\n連結後會與 ${account.email || '這個 Google 帳號'} 的雲端帳本合併成同一本，相同的紀錄不會重複。之後在任何一台裝置新增、修改或刪除，都會同步到其他裝置。\n示例帳本不會上傳。`,
+      message: `此裝置的帳本有 ${count} 筆紀錄。\n連結後會與 ${account.email || '這個 Google 帳號'} 的雲端帳本合併成同一本，相同的紀錄不會重複。之後在任何一台裝置新增、修改或刪除，都會同步到其他裝置。`,
       checkbox: { label: '連結前先下載此裝置的完整備份（建議）', checked: true },
       confirmText: '連結並同步',
       onConfirm: (_, backupFirst) => {
@@ -2634,7 +2620,6 @@ const LedgerSync = (() => {
 
   // ---------- 狀態顯示 ----------
   function badge() {
-    if (book !== 'personal') return { text: '示例・不同步', tone: 'muted' };
     if (!isLinked()) return { text: '僅存本機', tone: 'ok' };
     const n = pendingSet.size;
     if (mismatch()) return { text: '同步暫停', tone: 'danger' };
@@ -2665,14 +2650,12 @@ const LedgerSync = (() => {
     const buttons = { signIn: false, now: false, deletes: false, conflicts: false, signOut: false, unlink: false };
     let signInText = '使用 Google 登入並同步', nowText = '立即同步';
 
-    if (book !== 'personal') {
-      summary = '示例帳本不會同步，也不會上傳。切換到個人帳本後，才能使用雲端同步。';
-    } else if (fileMode) {
+    if (fileMode) {
       summary = '目前是直接開啟的 HTML 檔案，無法使用 Google 登入。請改用網站網址開啟才能同步；帳本仍存在此瀏覽器。';
     } else if (!configured) {
       summary = '同步服務尚未設定。完成 Firebase 專案設定並填入設定值後，這裡會出現「使用 Google 登入」。目前帳本只存在此瀏覽器。';
     } else if (mismatch()) {
-      summary = `此裝置的個人帳本已連結 ${m.email || '另一個帳號'}，與目前登入的 ${account.email || '帳號'} 不同。為避免兩本帳本混在一起，已停止同步。`;
+      summary = `此裝置的帳本已連結 ${m.email || '另一個帳號'}，與目前登入的 ${account.email || '帳號'} 不同。為避免兩本帳本混在一起，已停止同步。`;
       buttons.signOut = buttons.unlink = true;
     } else if (!linked) {
       if (account) {
@@ -2680,7 +2663,7 @@ const LedgerSync = (() => {
         buttons.now = buttons.signOut = true;
         nowText = '連結並同步';
       } else {
-        summary = '登入後，個人帳本會同步到你 Google 帳號專屬的雲端空間；其他裝置用同一個帳號登入，就會看到同一本帳本。示例帳本不會上傳。';
+        summary = '登入後，帳本會同步到你 Google 帳號專屬的雲端空間；其他裝置用同一個帳號登入，就會看到同一本帳本。';
         buttons.signIn = true;
       }
     } else if (authKnown && !account) {
@@ -2751,16 +2734,6 @@ const LedgerSync = (() => {
     if (opts.source !== 'sync') schedule(DEBOUNCE_MS);
   }
 
-  function onBookChanged() {
-    metaCache = null;
-    lastError = null; lastResult = null; heldDeletes = 0; showConflicts = false; bulkAck = null;
-    refreshPending();
-    if (book === 'personal' && configured && !fileMode && info().uid) {
-      startBackend().then(() => schedule(0)).catch(() => {});
-    }
-    render();
-  }
-
   function init() {
     el('btnSyncSignIn').onclick = signIn;
     el('btnSyncNow').onclick = () => {
@@ -2799,7 +2772,7 @@ const LedgerSync = (() => {
   } : undefined;
 
   return {
-    badge, renderPanel, afterCommit, savedMessage, onBookChanged, acknowledgeBulkChange,
+    badge, renderPanel, afterCommit, savedMessage, acknowledgeBulkChange,
     isLinked, isPending: key => pendingSet.has(key), __test: testApi,
   };
 })();

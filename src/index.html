@@ -32,14 +32,12 @@
 </head>
 <body class="min-h-screen flex flex-col items-center justify-start selection:bg-accent/30 selection:text-white">
 
-  <!-- 頂部原型狀態提示列 -->
+  <!-- 頂部名稱列 -->
   <div class="w-full bg-[#1E2028] border-b border-borderSubtle px-3 py-2 text-xs text-textMuted flex flex-wrap items-center justify-between gap-2 max-w-md mx-auto sticky top-0 z-30">
     <div class="flex items-center gap-1.5">
       <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse"></span>
       <span class="font-medium text-textMain">日常記帳</span>
-      <span id="dataModeLabel" class="text-xs text-textMuted">示例帳本</span>
     </div>
-    <button id="btnStartPersonal" class="text-xs text-accent">建立個人帳本</button><button id="btnSwitchBook" class="hidden text-xs text-accent">查看示例</button>
   </div>
 
 <div id="storageError" class="hidden storage-error" role="alert"></div>
@@ -386,7 +384,6 @@
 <p id="syncError" class="hidden sync-error" role="alert"></p>
 <div class="flex gap-2 flex-wrap"><button id="btnSyncSignIn" type="button" class="action hidden">使用 Google 登入並同步</button><button id="btnSyncNow" type="button" class="action hidden">立即同步</button><button id="btnSyncConfirmDeletes" type="button" class="action hidden">確認刪除並同步</button><button id="btnSyncConflicts" type="button" class="action hidden">衝突紀錄</button><button id="btnSyncSignOut" type="button" class="action hidden">登出</button><button id="btnSyncUnlink" type="button" class="action hidden">解除此裝置連結</button></div>
 <div id="syncConflictList" class="hidden space-y-2"></div>
-<p class="text-xs text-textMuted">只有「個人帳本」會同步；示例帳本永遠只存在此瀏覽器。</p>
 </section>
 
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
