@@ -60,7 +60,7 @@ function validateBackup(input) {
   for (const c of src.categories) {
     if (!c || !safeString(c.id,100) || !/^[\w-]+$/.test(c.id) || cats.has(c.id) || !safeString(c.name,40) || !c.name.trim() || !['expense','income'].includes(c.type) || !Number.isFinite(c.order)) throw new Error('分類資料格式錯誤或代碼重複。');
     // Keep icon keys from newer versions so a device on an older version does not overwrite them while syncing.
-    cats.set(c.id,{id:c.id,type:c.type,name:c.name.trim(),icon:Object.hasOwn(ICONS,c.icon)||(typeof c.icon==='string'&&/^[\w-]{1,60}$/.test(c.icon))?c.icon:'other',order:c.order});
+    cats.set(c.id,{id:c.id,type:c.type,name:c.name.trim(),icon:Object.hasOwn(ICONS,c.icon)||(typeof c.icon==='string'&&/^[\w-]{1,60}$/.test(c.icon))?c.icon:'other',order:c.order,...(c.type==='expense'&&LedgerSyncCore.validBudget(c.budget)?{budget:c.budget}:{})});
   }
   if (!['expense','income'].every(t=>[...cats.values()].some(c=>c.type===t))) throw new Error('必須保留支出及收入分類。');
   const ids=new Set();
@@ -70,11 +70,20 @@ function validateBackup(input) {
     return {id:r.id,seq:Number.isSafeInteger(r.seq)?r.seq:i+1,type:r.type,date:r.date,categoryId:r.categoryId,amount:r.amount,merchant:r.merchant.trim(),note:r.note};
   });
   if (!src.merchants.every(m=>safeString(m,100)&&m.trim())) throw new Error('店家名稱格式錯誤。');
+  // 固定收支規則：格式不符的略過，不影響帳本其他資料。分類被刪掉的規則保留，
+  // 設定頁會提示「分類已刪除，請修改」，修好之前不會自動記帳。
+  const ruleIds=new Set(),recurring=[];
+  for (const raw of Array.isArray(src.recurring)?src.recurring:[]) {
+    if(!raw||typeof raw!=='object')continue;
+    const r=LedgerSyncCore.canon.rule(raw);
+    if(!LedgerSyncCore.validEntityData('pref',r.id,r)||ruleIds.has(r.id))continue;
+    ruleIds.add(r.id);recurring.push(r);
+  }
   const merchants=[...new Set([...src.merchants.map(m=>m.trim()),...records.map(r=>r.merchant).filter(Boolean)])];
   const archived=Array.isArray(src.archivedMerchants)?src.archivedMerchants.filter(m=>merchants.includes(m)):[];
   const merchantTypes=Object.create(null);
   for (const m of merchants) merchantTypes[m]=src.merchantTypes?.[m]==='income'?'income':(records.some(r=>r.merchant===m&&r.type==='income')&&!records.some(r=>r.merchant===m&&r.type==='expense')?'income':'expense');
-  return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',statsType:'expense',statsPeriod:'month',catMgrType:'expense',merchantMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true},entityTimes:sanitizeEntityTimes(src.entityTimes)};
+  return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',settingsPage:'',statsType:'expense',statsPeriod:'month',catMgrType:'expense',merchantMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,recurring,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true,monthlyBudget:LedgerSyncCore.validBudget(src.preferences?.monthlyBudget)?src.preferences.monthlyBudget:0},entityTimes:sanitizeEntityTimes(src.entityTimes)};
 }
 // Last-change time of each record, category, merchant and preference; used to pick the newer side in sync conflicts.
 function sanitizeEntityTimes(raw) {
@@ -125,13 +134,41 @@ function updateSyncStatusUI() {
   if (!$('syncText')) return;
   const failed=!$('storageError').classList.contains('hidden');
   const view=failed?{text:'儲存需注意',tone:'warn'}:LedgerSync.badge();
+  const dot={ok:'bg-incomeGreen',warn:'bg-warnAmber',danger:'sync-dot-danger',accent:'bg-accent animate-pulse',muted:'bg-textMuted'}[view.tone]||'bg-incomeGreen';
   $('syncText').textContent=view.text;
-  $('syncDot').className='w-1.5 h-1.5 rounded-full '+({ok:'bg-incomeGreen',warn:'bg-warnAmber',danger:'sync-dot-danger',accent:'bg-accent animate-pulse',muted:'bg-textMuted'}[view.tone]||'bg-incomeGreen');
+  $('syncDot').className='w-1.5 h-1.5 rounded-full '+dot;
   LedgerSync.renderPanel();
+  // 設定第一頁的同步與備份卡片，內容沿用同步分頁剛算好的文字。
+  $('settingsSyncDot').className='w-2 h-2 rounded-full shrink-0 '+dot;
+  $('settingsSyncText').textContent=view.text;
+  $('settingsSyncSummary').textContent=$('syncSummary').textContent;
+  $('btnSettingsSyncAction').textContent=canSyncNow()?'立即同步':'前往設定';
+  $('settingsBackupAge').textContent=$('backupAge').textContent;
 }
-function showToast(msg) {
+const canSyncNow=()=>LedgerSync.isLinked()&&!$('btnSyncNow').classList.contains('hidden');
+// 設定分頁：進入時加一筆瀏覽紀錄，Android 返回手勢會回到設定第一頁，而不是離開網頁。
+let settingsHistory=false,skipNextPop=false;
+function openSettingsPage(page='') {
+  discardForm();
+  if(!page)leaveSettingsPage();
+  else if(!settingsHistory){try{history.pushState({ledgerSettings:page},'');settingsHistory=true;}catch{}}
+  state.activeView='settings';state.settingsPage=page;
+  renderAll();window.scrollTo({top:0});
+}
+// 離開設定分頁時收回剛才加的瀏覽紀錄，之後按返回才不會停在原地。
+function leaveSettingsPage() {
+  if(settingsHistory){settingsHistory=false;skipNextPop=true;try{history.back();}catch{skipNextPop=false;}}
+  state.settingsPage='';
+}
+function onSettingsPopState() {
+  if(skipNextPop){skipNextPop=false;return;}
+  if(!settingsHistory)return;
+  settingsHistory=false;
+  if(state.activeView==='settings'&&state.settingsPage){state.settingsPage='';renderAll();window.scrollTo({top:0});}
+}
+function showToast(msg,ms=2800) {
   $('toastBox').textContent=msg; $('toastBox').classList.remove('hidden');
-  clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>$('toastBox').classList.add('hidden'),2800);
+  clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>$('toastBox').classList.add('hidden'),ms);
 }
 function filteredHomeRecords() {
   const q=searchQuery.trim().toLocaleLowerCase();
@@ -139,7 +176,11 @@ function filteredHomeRecords() {
   return q?rows.filter(r=>[r.merchant,r.note,getCategoryById(r.categoryId).name].some(t=>t.toLocaleLowerCase().includes(q))):rows;
 }
 function renderAll() {
-  renderHeader();renderHome();renderStats();renderSettings();updateBottomNav();updateSyncStatusUI();
+  // 只重畫目前看得到的頁面，其他頁面切過去時才重畫；帳本大時切換與儲存比較快。
+  const view=state.activeView;
+  renderHeader();
+  if(view==='home')renderHome();else if(view==='stats')renderStats();else if(view==='settings')renderSettings();
+  updateBottomNav();updateSyncStatusUI();
   $('btnSyncBadge').classList.toggle('hidden',state.activeView==='record');
   $('statsMerchantList').parentElement.querySelector('h3').textContent=state.statsType==='income'?'收入來源累積金額':'店家累積金額';
   $('statsMerchantList').parentElement.querySelector('span').textContent='點擊查看明細';
@@ -291,12 +332,14 @@ function handleSaveRecord(keepOpenForNext=false) {
   if (d.selectedMerchant.trim().length>100||d.note.length>1000) return formError('店家／來源限 100 字，備註限 1,000 字。');
   if (d.editingRecordId&&!state.records.some(r=>r.id===d.editingRecordId)) return formError('這筆紀錄已被刪除（可能是在其他裝置），無法儲存修改。請返回後重新記一筆。');
   const rec={id:d.editingRecordId||uid(),seq:d.editingRecordId?state.records.find(r=>r.id===d.editingRecordId).seq:getNextSeq(),type:d.type,date:d.date,categoryId:d.categoryId,amount:parsed.value,merchant:d.selectedMerchant.trim(),note:d.note.trim()};
+  const before=state;
   if (!commit(s=>{
     const index=s.records.findIndex(r=>r.id===rec.id);if(index<0)s.records.push(rec);else s.records[index]=rec;
     if(rec.merchant&&!s.merchants.includes(rec.merchant)){s.merchants.push(rec.merchant);Object.defineProperty(s.merchantTypes,rec.merchant,{value:rec.type,enumerable:true,writable:true,configurable:true});}
     s.currentMonth=rec.date.slice(0,7);
   })) return formError('尚未儲存成功。請查看上方提示並重試，輸入內容仍保留。');
-  showToast(LedgerSync.savedMessage());searchQuery='';$('recordSearch').value='';
+  const notice=budgetAlert(before,rec);
+  showToast(notice?`${LedgerSync.savedMessage()}。${notice}`:LedgerSync.savedMessage(),notice?5000:undefined);searchQuery='';$('recordSearch').value='';
   if(keepOpenForNext){modalState=emptyForm(d.type,d.date);renderAll();renderRecordModal();window.scrollTo({top:0});}
   else {modalState=null;state.activeView=state.previousView||'home';renderAll();}
 }
@@ -304,6 +347,7 @@ function archiveMerchant(s,name) { if(!s.archivedMerchants.includes(name))s.arch
 function renameMerchant(s,name,target) {
   const type=s.merchantTypes[name]||'expense';
   s.records.forEach(r=>{if(r.merchant===name)r.merchant=target;});
+  (s.recurring||[]).forEach(r=>{if(r.merchant===name)r.merchant=target;});
   s.merchants=[...new Set(s.merchants.map(m=>m===name?target:m))];
   s.archivedMerchants=s.archivedMerchants.filter(m=>m!==name&&m!==target);
   delete s.merchantTypes[name];s.merchantTypes[target]=type;
@@ -320,14 +364,11 @@ function handleMerchantAction(action,name) {
   }});
 }
 function handleCategoryAction(action,id) {
-  const cat=getCategoryById(id),list=getCategoriesByType(cat.type),index=list.findIndex(c=>c.id===id);
+  const cat=getCategoryById(id),list=getCategoriesByType(cat.type);
   if(action==='icon'){openCategoryIconPicker(cat);return;}
-  if(action==='up'||action==='down'){
-    const other=list[index+(action==='up'?-1:1)];if(!other)return;
-    if(commit(s=>{const a=s.categories.find(c=>c.id===id),b=s.categories.find(c=>c.id===other.id);[a.order,b.order]=[b.order,a.order];}))renderAll();return;
-  }
   if(action==='delete'){
     if(state.records.some(r=>r.categoryId===id))return showToast('紀錄仍使用此分類，請先改到其他分類。');
+    if((state.recurring||[]).some(r=>r.categoryId===id))return showToast('固定收支還在使用這個分類，請先修改或刪除。');
     if(list.length<=1)return showToast('至少保留一個分類。');
     openDialog({title:'刪除未使用分類？',message:cat.name,onConfirm:()=>{if(!commit(s=>s.categories=s.categories.filter(c=>c.id!==id)))return false;renderAll();}});return;
   }
@@ -336,22 +377,88 @@ function handleCategoryAction(action,id) {
     if(!commit(s=>s.categories.find(c=>c.id===id).name=name))return false;renderAll();
   }});
 }
+const GRIP_ICON='<svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+// 依畫面上的順序重新編號（1、2、3…）並存檔；focusId 是用鍵盤移動時要保留焦點的分類。
+function saveCategoryOrder(ids,focusId) {
+  if(!commit(s=>ids.forEach((id,i)=>{const c=s.categories.find(c=>c.id===id);if(c)c.order=i+1;})))return renderSettings();
+  renderAll();
+  if(focusId)$('settingsCategoryList').querySelector(`.category-row[data-id="${CSS.escape(focusId)}"] .drag-handle`)?.focus();
+}
+// 分類拖曳排序：按住左邊的把手上下拖，經過相鄰分類的一半就交換位置，放開後一次存檔；
+// 拖到畫面上下緣會自動捲動。用鍵盤時，在把手上按上下鍵移動一格。
+function setupCategoryDrag() {
+  const list=$('settingsCategoryList');
+  let drag=null;
+  const rowIds=()=>[...list.querySelectorAll('.category-row')].map(r=>r.dataset.id);
+  // 列在清單中移動後，調整起點讓它仍停在手指下。
+  function shift(move) { const before=drag.row.offsetTop;move();drag.originY+=drag.row.offsetTop-before; }
+  function place(y) {
+    const row=drag.row;
+    row.style.transform=`translateY(${y-drag.originY}px)`;
+    const rect=row.getBoundingClientRect(),mid=rect.top+rect.height/2,prev=row.previousElementSibling,next=row.nextElementSibling;
+    const middle=el=>el.getBoundingClientRect().top+el.offsetHeight/2;
+    if(next&&mid>middle(next)){shift(()=>list.insertBefore(next,row));place(y);}
+    else if(prev&&mid<middle(prev)){shift(()=>list.insertBefore(row,prev));place(y);}
+  }
+  function autoScroll() {
+    if(!drag)return;
+    const y=drag.lastY,top=70,bottom=window.innerHeight-130;   // 底部留給導覽列
+    const speed=y<top?-Math.ceil((top-y)/6):y>bottom?Math.ceil((y-bottom)/6):0;
+    if(speed){const before=window.scrollY;window.scrollBy(0,speed);const moved=window.scrollY-before;if(moved){drag.originY-=moved;place(y);}}
+    drag.raf=requestAnimationFrame(autoScroll);
+  }
+  function move(e) { if(!drag)return;e.preventDefault();drag.lastY=e.clientY;place(e.clientY); }
+  function finish(save) {
+    if(!drag)return;
+    const {row,before,raf}=drag;drag=null;
+    cancelAnimationFrame(raf);
+    window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',drop);window.removeEventListener('pointercancel',cancel);
+    row.classList.remove('dragging');row.style.transform='';
+    const ids=rowIds();
+    if(save&&ids.join()!==before.join())saveCategoryOrder(ids);else renderSettings();
+  }
+  const drop=()=>finish(true),cancel=()=>finish(false);
+  list.addEventListener('pointerdown',e=>{
+    const handle=e.target.closest('.drag-handle');
+    if(!handle||drag||e.button>0)return;
+    e.preventDefault();
+    drag={row:handle.closest('.category-row'),originY:e.clientY,lastY:e.clientY,before:rowIds(),raf:0};
+    drag.row.classList.add('dragging');
+    try{handle.setPointerCapture(e.pointerId);}catch{}
+    window.addEventListener('pointermove',move);window.addEventListener('pointerup',drop);window.addEventListener('pointercancel',cancel);
+    drag.raf=requestAnimationFrame(autoScroll);
+  });
+  list.addEventListener('keydown',e=>{
+    const handle=e.target.closest('.drag-handle');
+    if(!handle||(e.key!=='ArrowUp'&&e.key!=='ArrowDown'))return;
+    e.preventDefault();
+    const ids=rowIds(),id=handle.closest('.category-row').dataset.id,i=ids.indexOf(id),j=i+(e.key==='ArrowUp'?-1:1);
+    if(j<0||j>=ids.length)return;
+    [ids[i],ids[j]]=[ids[j],ids[i]];
+    saveCategoryOrder(ids,id);
+  });
+}
 function renderSettings() {
+  $('settingsHome').classList.toggle('hidden',Boolean(state.settingsPage));
+  document.querySelectorAll('.settings-page').forEach(el=>el.classList.toggle('hidden',el.dataset.page!==state.settingsPage));
   document.querySelectorAll('.setting-header-btn').forEach(b=>{const yes=b.dataset.mode===state.preferences.homeHeaderMode;b.classList.toggle('border-accent',yes);b.classList.toggle('bg-accentSoft',yes);b.querySelector('.mode-check').textContent=yes?'✓':'';b.setAttribute('aria-pressed',String(yes));});
   $('toggleSaveAndNext').setAttribute('aria-checked',String(state.preferences.enableSaveAndNext));
   $('toggleSaveAndNext').classList.toggle('bg-accent',state.preferences.enableSaveAndNext);
   $('toggleSaveAndNextDot').style.left=state.preferences.enableSaveAndNext?'22px':'4px';
   ['expense','income'].forEach(t=>{$(t==='expense'?'catMgrTabExpense':'catMgrTabIncome').classList.toggle('bg-accent',state.catMgrType===t);$(t==='expense'?'catMgrTabExpense':'catMgrTabIncome').classList.toggle('text-bgMain',state.catMgrType===t);});
   const list=$('settingsCategoryList');list.innerHTML='';
-  getCategoriesByType(state.catMgrType).forEach((c,i)=>{
-    const row=document.createElement('div');row.className='flex items-center justify-between px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-xs';
-    row.innerHTML=`<span class="flex items-center gap-2">${ICONS[c.icon]||ICONS.other}<span>${escapeHtml(c.name)}</span></span><div class="flex gap-1"></div>`;
+  getCategoriesByType(state.catMgrType).forEach(c=>{
+    const row=document.createElement('div');row.className='category-row flex items-center justify-between px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-xs';row.dataset.id=c.id;
+    row.innerHTML=`<span class="flex items-center gap-2"><button type="button" class="drag-handle" aria-label="拖曳調整「${escapeHtml(c.name)}」的順序，也可以用上下鍵">${GRIP_ICON}</button>${ICONS[c.icon]||ICONS.other}<span>${escapeHtml(c.name)}</span></span><div class="flex gap-1"></div>`;
     const actions=row.lastElementChild;
-    [['up','↑'],['down','↓'],['icon','圖示'],['rename','改名'],['delete','刪除']].forEach(([a,text])=>{const b=document.createElement('button');b.textContent=text;b.className='px-2 text-accent';b.setAttribute('aria-label',c.name+' '+({up:'上移',down:'下移'}[a]||text));b.onclick=()=>handleCategoryAction(a,c.id);actions.appendChild(b);});
+    [['icon','圖示'],['rename','改名'],['delete','刪除']].forEach(([a,text])=>{const b=document.createElement('button');b.textContent=text;b.className='px-2 text-accent';b.setAttribute('aria-label',c.name+' '+text);b.onclick=()=>handleCategoryAction(a,c.id);actions.appendChild(b);});
     list.appendChild(row);
   });
   renderMerchantManager();
   try{$('btnUndoImport').classList.toggle('hidden',!localStorage.getItem(storageKey()+'_before_import'));}catch{}
+  if(state.settingsPage==='data')renderCsvRanges();
+  if(state.settingsPage==='budget')renderBudgetSettings();
+  if(state.settingsPage==='recurring')renderRecurringSettings();
   renderIconPickers();
 }
 function addCategory(inline=false) {
@@ -362,11 +469,11 @@ function addCategory(inline=false) {
   input.value='';if(inline){modalState.categoryId=id;$('inlineAddCatPanel').classList.add('hidden');renderRecordModal();}else renderAll();
 }
 let dialogReturnFocus=null;
-function openDialog({title,message,inputValue,textareaValue,hideCancel=false,checkbox,confirmText='確認',onConfirm}) {
+function openDialog({title,message,inputValue,inputMode='text',textareaValue,hideCancel=false,checkbox,confirmText='確認',onConfirm}) {
   dialogReturnFocus=document.activeElement;
   $('dialogIconPicker').classList.add('hidden');
   $('dialogTitle').textContent=title;$('dialogMessage').textContent=message||'';
-  $('dialogInput').classList.toggle('hidden',inputValue===undefined);$('dialogInput').value=inputValue||'';
+  $('dialogInput').classList.toggle('hidden',inputValue===undefined);$('dialogInput').value=inputValue||'';$('dialogInput').inputMode=inputMode;
   $('dialogTextarea').classList.toggle('hidden',textareaValue===undefined);$('dialogTextarea').value=textareaValue||'';
   $('dialogCheckWrap').classList.toggle('hidden',!checkbox);$('dialogCheck').checked=Boolean(checkbox?.checked);$('dialogCheckLabel').textContent=checkbox?.label||'';
   $('dialogBtnCancel').classList.toggle('hidden',hideCancel);$('dialogBtnConfirm').textContent=confirmText;
@@ -375,8 +482,8 @@ function openDialog({title,message,inputValue,textareaValue,hideCancel=false,che
 }
 function closeDialog() {$('modalDialog').classList.add('hidden');dialogReturnFocus?.focus?.();}
 function backupEnvelope(s=state) { return {format:'daily-ledger',version:3,book,exportedAt:new Date().toISOString(),data:{...clone(s),activeView:'home',previousView:'home'}}; }
-function downloadText(text,name) {
-  const url=URL.createObjectURL(new Blob([text],{type:'application/json;charset=utf-8'}));
+function downloadText(text,name,type='application/json') {
+  const url=URL.createObjectURL(new Blob([text],{type:type+';charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
 function exportBackup() {
@@ -386,6 +493,37 @@ function exportBackup() {
     $('backupStatus').textContent='已送出備份下載，請確認檔案已存入下載資料夾。';
     try{localStorage.setItem(storageKey()+'_last_backup',String(Date.now()));}catch{}
   }catch(e){showToast('無法下載，請重試或更換瀏覽器。');}
+}
+// CSV 給試算表看：日期由舊到新，同一天依記帳先後。文字開頭是 = + - @ 時前面加 '，避免試算表把它當成公式執行。
+const CSV_HEADER=['日期','類型','分類','金額','店家／收入來源','備註'];
+function csvCell(value) {
+  let s=String(value??'');
+  if(typeof value==='string'&&/^[=+\-@\t\r]/.test(s))s="'"+s;
+  return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+function recordsCsv(records) {
+  const rows=records.slice().sort((a,b)=>a.date.localeCompare(b.date)||(Number(a.seq)||0)-(Number(b.seq)||0))
+    .map(r=>[r.date,r.type==='income'?'收入':'支出',getCategoryById(r.categoryId)?.name||'',r.amount,r.merchant,r.note]);
+  return [CSV_HEADER,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
+}
+// 匯出範圍：全部、首頁目前的月份、有紀錄的每一年（值是日期開頭，'' 代表全部）。
+function csvRanges() {
+  const count=prefix=>state.records.reduce((n,r)=>n+(r.date.startsWith(prefix)?1:0),0);
+  const [y,m]=state.currentMonth.split('-'),years=[...new Set(state.records.map(r=>r.date.slice(0,4)))].sort().reverse();
+  return [{value:'',label:'全部紀錄',count:state.records.length},{value:state.currentMonth,label:`${y} 年 ${Number(m)} 月`,count:count(state.currentMonth)},...years.map(y=>({value:y,label:`${y} 年`,count:count(y)}))]
+    .filter((o,i)=>i===0||o.count>0);
+}
+function renderCsvRanges() {
+  const select=$('csvRange'),keep=select.value;
+  select.innerHTML=csvRanges().map(o=>`<option value="${o.value}">${o.label}（${o.count.toLocaleString('zh-TW')} 筆）</option>`).join('');
+  if([...select.options].some(o=>o.value===keep))select.value=keep;
+}
+function exportCsv() {
+  const prefix=$('csvRange').value,records=state.records.filter(r=>r.date.startsWith(prefix));
+  if(!records.length)return showToast('這個範圍沒有紀錄。');
+  const name=`隨便記-紀錄-${prefix||'全部-'+today()}.csv`;
+  try{downloadText('\ufeff'+recordsCsv(records),name,'text/csv');}catch{return showToast('無法下載，請重試或更換瀏覽器。');}
+  $('csvStatus').textContent=`已匯出 ${records.length.toLocaleString('zh-TW')} 筆紀錄：${name}`;
 }
 const DEMO_MERCHANT_NAMES=new Set(getInitialState().merchants);
 function importOrigin(raw) {
@@ -411,7 +549,7 @@ function planImportMerge(current,imported,origin) {
     const sameName=next.categories.find(x=>x.type===c.type&&x.name===c.name);
     if(sameName){catMap.set(c.id,sameName.id);continue;}
     const id=sameId?uid('cat'):c.id,order=Math.max(0,...next.categories.filter(x=>x.type===c.type).map(x=>x.order))+1;
-    next.categories.push({id,type:c.type,name:c.name,icon:c.icon,order});setTime('cat:'+id,importedTime('cat:'+c.id));catMap.set(c.id,id);plan.newCategories++;
+    next.categories.push({id,type:c.type,name:c.name,icon:c.icon,order,...(c.budget?{budget:c.budget}:{})});setTime('cat:'+id,importedTime('cat:'+c.id));catMap.set(c.id,id);plan.newCategories++;
   }
   const at=new Map(next.records.map((r,i)=>[r.id,i])),sigs=new Map(),used=new Set();
   for (const r of next.records){const k=recordSignature(r);sigs.set(k,(sigs.get(k)||0)+1);}
@@ -430,6 +568,12 @@ function planImportMerge(current,imported,origin) {
     const sig=recordSignature(r);
     if(sigs.get(sig)>0){sigs.set(sig,sigs.get(sig)-1);plan.duplicates++;continue;}
     next.records.push(r);at.set(r.id,next.records.length-1);setTime(key,importedTime(key));plan.added++;
+  }
+  next.recurring=next.recurring||[];
+  for (const r of imported.recurring||[]) {
+    if(next.recurring.some(x=>x.id===r.id))continue;
+    next.recurring.push({...r,categoryId:catMap.get(r.categoryId)||r.categoryId});setTime('pref:'+r.id,importedTime('pref:'+r.id));
+    if(r.merchant)used.add(r.merchant);
   }
   for (const name of imported.merchants) {
     if(next.merchants.includes(name)||skipDemoMerchant(name,imported,origin,used))continue;
@@ -509,8 +653,14 @@ window.addEventListener('DOMContentLoaded',()=>{
   removeSampleBook();
   state=loadBook();
   const on=(id,event,fn)=>$(id).addEventListener(event,fn);
-  on('navBtnHome','click',()=>{discardForm();state.activeView='home';renderAll();});on('navBtnStats','click',()=>{discardForm();state.activeView='stats';renderAll();});on('navBtnSettings','click',()=>{discardForm();state.activeView='settings';renderAll();});
-  on('btnSyncBadge','click',()=>{discardForm();state.activeView='settings';renderAll();});
+  on('navBtnHome','click',()=>{discardForm();leaveSettingsPage();state.activeView='home';renderAll();});on('navBtnStats','click',()=>{discardForm();leaveSettingsPage();state.activeView='stats';renderAll();});on('navBtnSettings','click',()=>openSettingsPage(''));
+  on('btnSyncBadge','click',()=>openSettingsPage('sync'));
+  document.querySelectorAll('[data-settings-page]').forEach(b=>b.onclick=()=>openSettingsPage(b.dataset.settingsPage));
+  on('btnSettingsBack','click',()=>openSettingsPage(''));
+  on('btnSettingsSyncAction','click',()=>{if(canSyncNow())$('btnSyncNow').click();else openSettingsPage('sync');});
+  on('btnSettingsBackup','click',()=>{exportBackup();updateSyncStatusUI();});
+  window.addEventListener('popstate',onSettingsPopState);
+  setupCategoryDrag();
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
   on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
@@ -545,7 +695,13 @@ window.addEventListener('DOMContentLoaded',()=>{
   ['expense','income'].forEach(t=>on(t==='expense'?'merMgrTabExpense':'merMgrTabIncome','click',()=>{state.merchantMgrType=t;merchantMgrShowAll=false;renderMerchantManager();}));
   on('merchantMgrSearch','input',e=>{merchantMgrQuery=e.target.value;renderMerchantManager();});
   on('btnMerchantShowAll','click',()=>{merchantMgrShowAll=!merchantMgrShowAll;renderMerchantManager();});
-  on('btnExportJsonDemo','click',exportBackup);on('btnImportBackup','click',()=>$('backupFile').click());
+  on('btnEditTotalBudget','click',()=>editBudget(''));
+  on('btnHomeBudgetMore','click',()=>{state.activeView='stats';state.statsPeriod='month';state.statsType='expense';renderAll();window.scrollTo({top:0});});
+  on('btnStatsBudgetEdit','click',()=>openSettingsPage('budget'));
+  on('btnCompareMore','click',()=>{compareShowAll=!compareShowAll;renderStats();});
+  setupTrendTooltip();
+  setupRecurringForm();
+  on('btnExportJsonDemo','click',exportBackup);on('btnExportCsv','click',exportCsv);on('btnImportBackup','click',()=>$('backupFile').click());
   on('backupFile','change',e=>{prepareImport(e.target.files[0]);e.target.value='';});
   on('btnUndoImport','click',()=>{
     try{const raw=localStorage.getItem(storageKey()+'_before_import');if(!raw)return;const previous=validateBackup(JSON.parse(raw));previous.entityTimes={...(state.entityTimes||{})};openDialog({title:'還原匯入前帳本？',message:`將恢復 ${previous.records.length} 筆紀錄。目前帳本會成為下一份可還原版本。${LedgerSync.isLinked()?'\n這個變更也會同步到其他裝置。':''}`,onConfirm:()=>{LedgerSync.acknowledgeBulkChange(state.records.length);return installImport(previous);}});}catch(e){showToast('無法讀取還原資料：'+e.message);}
@@ -559,5 +715,6 @@ window.addEventListener('DOMContentLoaded',()=>{
   window.addEventListener('storage',e=>{if(e.key===storageKey()&&e.newValue!==persistedRaw)showStorageError('帳本已在另一個分頁變更。請先下載帳本備份，再重新開啟，避免覆蓋。');});
   window.addEventListener('pagehide',()=>{if(state.activeView==='record'){discardForm();state.activeView=state.previousView||'home';renderAll();}});
   renderAll();if(loadIssue)showStorageError(loadIssue);
+  scheduleRecurring();
 });
 

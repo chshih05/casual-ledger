@@ -29,6 +29,9 @@ JS_ORDER = [
     "js/50-icon-picker.js",
     "js/55-sync-core.js",       # 同步核心：比對、衝突、補傳（不綁定雲端服務）
     "js/60-app.js",
+    "js/62-budget.js",          # 每月預算
+    "js/64-stats-compare.js",   # 統計比較與近 12 個月走勢
+    "js/66-recurring.js",       # 固定收支（到期自動記帳）
     "js/70-sync-firebase.js",   # Firebase 登入與資料庫連線
     "js/80-sync-ui.js",         # 同步流程與畫面
     "js/90-pwa.js",             # 離線載入與版本更新

@@ -8,6 +8,7 @@
     return {
       records: [], merchants: [], archivedMerchants: [], merchantTypes: {},
       preferences: { homeHeaderMode: 'expense_only', enableSaveAndNext: false },
+      recurring: [],
       categories: [
         { id: 'cat_breakfast', type: 'expense', name: '早餐', icon: 'breakfast', order: 1 },
         { id: 'cat_dinner', type: 'expense', name: '晚餐', icon: 'dinner', order: 2 },
@@ -37,6 +38,7 @@
         metaValue = m;
       },
       meta: () => metaValue,
+      setMeta: m => { metaValue = structuredClone(m); },
       pending: () => Core.computePending(s, Core.normalizeMeta(metaValue, 'dev_' + name), d.clock),
       sync: () => d.engine.sync(),
     };
@@ -114,6 +116,113 @@
     eq(b.state.preferences.homeHeaderMode, 'full_net');
     eq(b.pending().length, 0, 'B 下載後不應有待同步');
     checkInvariants(b.state);
+  });
+
+  test('核心｜預算跟著分類與偏好設定同步；沒設預算時格式和舊版相同，不會重新上傳', async () => {
+    eq(Object.keys(Core.canon.cat({ id: 'c', type: 'expense', name: 'x', icon: 'other', order: 1 })), ['id', 'type', 'name', 'icon', 'order']);
+    eq(Object.keys(Core.canon.pref({ homeHeaderMode: 'expense_only', enableSaveAndNext: false, monthlyBudget: 0 })), ['homeHeaderMode', 'enableSaveAndNext']);
+    eq(Core.canon.cat({ id: 'c', type: 'income', name: 'x', icon: 'other', order: 1, budget: 500 }).budget, undefined, '收入分類沒有預算');
+    assert(!Core.validEntityData('cat', 'c', { id: 'c', type: 'expense', name: 'x', icon: 'other', order: 1, budget: -5 }), '負數預算不接受');
+    assert(!Core.validEntityData('pref', 'main', { homeHeaderMode: 'expense_only', enableSaveAndNext: false, monthlyBudget: 1.5 }), '小數預算不接受');
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B');
+    await a.sync(); await b.sync();
+    a.clock = 2000;
+    a.commit(s => { s.preferences.monthlyBudget = 20000; s.categories.find(c => c.id === 'cat_dinner').budget = 3000; });
+    eq(a.pending().map(p => p.key).sort(), ['cat:cat_dinner', 'pref:main'], '只上傳改了預算的項目');
+    await a.sync(); await b.sync();
+    eq(b.state.preferences.monthlyBudget, 20000);
+    eq(b.state.categories.find(c => c.id === 'cat_dinner').budget, 3000);
+    b.clock = 3000;
+    b.commit(s => { s.preferences.monthlyBudget = 0; delete s.categories.find(c => c.id === 'cat_dinner').budget; });
+    await b.sync(); await a.sync();
+    eq(a.state.preferences.monthlyBudget, 0, '另一台取消總預算');
+    assert(!('budget' in a.state.categories.find(c => c.id === 'cat_dinner')), '另一台取消分類預算');
+    eq(a.pending().length, 0);
+    eq(b.pending().length, 0);
+  });
+
+  const rule = (extra = {}) => Object.assign({ id: 'rule_rent', type: 'expense', categoryId: 'cat_daily', amount: 12000, merchant: '房東', note: '', freq: 'month', day: 5, next: '2026-11-05' }, extra);
+  // 模擬網頁自動記下固定收支：紀錄代碼與修改時間由規則與日期決定，規則的時間只往後 1 毫秒。
+  function generate(dev, r, date, next) {
+    dev.commit(s => {
+      const id = `rec_${r.id}_${date.replace(/-/g, '')}`;
+      s.records.push({ id, seq: 0, type: r.type, date, categoryId: r.categoryId, amount: r.amount, merchant: r.merchant, note: r.note });
+      if (!s.merchants.includes(r.merchant)) { s.merchants.push(r.merchant); s.merchantTypes[r.merchant] = r.type; }
+      s.recurring.find(x => x.id === r.id).next = next;
+      s.entityTimes = Object.assign({}, s.entityTimes, { [`rec:${id}`]: new Date(date + 'T00:00:00').getTime(), [`pref:${r.id}`]: (s.entityTimes[`pref:${r.id}`] || 0) + 1 });
+    });
+  }
+
+  test('核心｜固定收支規則跟著同步；兩台各自自動記下同一天的紀錄，不會重複也不算衝突', async () => {
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B');
+    a.commit(s => { s.recurring = [rule({ next: '2026-10-05' })]; });
+    await a.sync();
+    const doc = cloud.docs.get('pref:rule_rent');
+    eq(doc.kind, 'pref', '沿用偏好設定的類別，雲端安全規則不用改');
+    assert(Object.keys(doc.d).length <= 12, '欄位數在雲端規則的上限內');
+    await b.sync();
+    eq(b.state.recurring, [rule({ next: '2026-10-05' })]);
+    a.clock = 5000; b.clock = 9000;
+    generate(a, rule(), '2026-10-05', '2026-11-05');
+    generate(b, rule(), '2026-10-05', '2026-11-05');
+    await a.sync(); await b.sync(); await a.sync();
+    eq(cloud.live('rec').length, 1, '雲端只有一筆');
+    eq(b.state.records.length, 1);
+    eq(a.meta().conflicts.length + b.meta().conflicts.length, 0, '不算衝突');
+    eq(a.pending().length + b.pending().length, 0);
+    a.clock = 20000;
+    a.commit(s => { s.recurring = []; });
+    await a.sync(); await b.sync();
+    eq(b.state.recurring, [], '刪除規則也會同步');
+    eq(b.state.records.length, 1, '已經記下的紀錄保留');
+    assert(!Core.validEntityData('pref', 'rule_x', rule({ id: 'rule_x', day: 32 })), '日期不合理的規則不接受');
+    assert(!Core.validEntityData('pref', 'rule_x', rule({ id: 'rule_x', next: '2026-02-30' })));
+  });
+
+  test('核心｜另一台同時修改規則時，以使用者的修改為準，不會被自動往後推的版本蓋掉', async () => {
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B');
+    a.commit(s => { s.recurring = [rule({ next: '2026-10-05' })]; });
+    await a.sync(); await b.sync();
+    b.clock = 3000;
+    b.commit(s => { s.recurring[0].amount = 13000; });
+    await b.sync();
+    a.clock = 999999;
+    generate(a, rule(), '2026-10-05', '2026-11-05');
+    await a.sync();
+    eq(a.state.recurring[0].amount, 13000, '金額的修改保留');
+    eq(a.state.recurring[0].next, '2026-10-05', '規則回到修改後的版本，下次產生時會略過已經記下的日期');
+    eq(a.state.records.length, 1);
+  });
+
+  test('核心｜換新版後第一次同步會重新比對：舊版程式略過的固定收支與去掉的預算會補回來', async () => {
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B');
+    await a.sync(); await b.sync();
+    a.clock = 4000;
+    a.commit(s => { s.categories.find(c => c.id === 'cat_dinner').budget = 3000; s.recurring = [rule()]; });
+    await a.sync();
+    // 舊版的 B：讀到時去掉預算欄位、略過看不懂的規則，讀取位置也已經往後。
+    const meta = b.meta(), catDoc = cloud.docs.get('cat:cat_dinner');
+    const { budget, ...withoutBudget } = catDoc.d;
+    meta.shadow['cat:cat_dinner'] = Core.packShadow(Core.hashString(JSON.stringify(withoutBudget)), catDoc.rev);
+    meta.cursor = [...cloud.docs.values()].map(d => d.ts).sort(Core.cmpTs).at(-1);
+    meta.skipped = 1;
+    delete meta.format;
+    b.setMeta(meta);
+    eq(Core.normalizeMeta(b.meta(), 'x').format, 1, '舊版留下的同步狀態視為第 1 版');
+    await b.sync();
+    eq(b.state.categories.find(c => c.id === 'cat_dinner').budget, 3000, '預算補回來');
+    eq(b.state.recurring, [rule()], '規則補回來');
+    eq(b.meta().conflicts.length, 0);
+    eq(b.meta().format, Core.FORMAT);
+    eq(b.meta().skipped, 0);
+    eq(b.pending().length, 0);
+    const reads = cloud.reads;
+    await b.sync();
+    assert(cloud.reads - reads < 5, '之後恢復只讀新的變更');
   });
 
   test('核心｜離線時保留待同步資料，恢復連線後補傳', async () => {

@@ -2,6 +2,7 @@
       return {
         currentMonth: today().slice(0,7),
         activeView: 'home', // 'home' | 'stats' | 'settings' | 'record'
+        settingsPage: '', // 設定分頁；空字串是設定第一頁
         previousView: 'home',
         statsType: 'expense',
         statsPeriod: 'month', // 'month' | 'year'
@@ -11,7 +12,8 @@
         pendingSyncIds: [],
         preferences: {
           homeHeaderMode: 'expense_only',
-          enableSaveAndNext: false
+          enableSaveAndNext: false,
+          monthlyBudget: 0 // 每月總預算（0 = 未設定）；分類預算存在各支出分類的 budget
         },
         categories: [
           { id: 'cat_breakfast', type: 'expense', name: '早餐', icon: 'breakfast', order: 1 },
@@ -28,6 +30,7 @@
           { id: 'cat_bonus', type: 'income', name: '獎金補助', icon: 'bonus', order: 2 },
           { id: 'cat_other_inc', type: 'income', name: '其他收入', icon: 'other', order: 3 }
         ],
+        recurring: [], // 固定收支規則（見 66-recurring.js）
         merchants: [
           '麥當勞', '全聯', '7-11', '全家', '八方雲集', '星巴克', '50嵐',
           '爭鮮', '台灣中油', '台鐵', '屈臣氏', '路易莎', '中華電信', '公司薪轉'
@@ -83,14 +86,23 @@
       document.getElementById('btnNextMonth').title = yearMode ? '下一年' : '下個月';
       const monthWrap = document.getElementById('monthSelectorWrap');
       const titleOnly = document.getElementById('headerTitleOnly');
+      const subHeader = document.getElementById('settingsSubHeader');
       const recHeader = document.getElementById('recordPageHeader');
 
       monthWrap.classList.add('hidden');
       titleOnly.classList.add('hidden');
+      subHeader.classList.add('hidden');
       recHeader.classList.add('hidden');
 
       if (state.activeView === 'settings') {
-        titleOnly.classList.remove('hidden');
+        // 設定分頁顯示「‹ 設定」與頁名，頁名取自第一頁清單上的名稱。
+        const pageTitle = state.settingsPage && document.querySelector(`[data-settings-page="${state.settingsPage}"] .settings-menu-title`);
+        if (pageTitle) {
+          document.getElementById('settingsPageTitle').textContent = pageTitle.textContent;
+          subHeader.classList.remove('hidden');
+        } else {
+          titleOnly.classList.remove('hidden');
+        }
       } else if (state.activeView === 'record') {
         recHeader.classList.remove('hidden');
       } else {
@@ -114,6 +126,7 @@
         .sort((a, b) => b.date.localeCompare(a.date) || (Number(a.seq) || 0) - (Number(b.seq) || 0));
     }
     function renderHome() {
+      renderHomeBudget();
       const monthRecords = filteredHomeRecords();
       const totalExp = getMonthRecords().filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
       const totalInc = getMonthRecords().filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0);
@@ -189,6 +202,7 @@
           const categoryBadge = hasMerchant ? `<span class="text-[11px] px-1.5 py-0.5 rounded bg-bgElevated text-textMuted font-normal">${escapeHtml(cat.name)}</span>` : '';
           const isPendingSync = LedgerSync.isPending('rec:' + rec.id);
           const pendingBadge = isPendingSync ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-warnAmber/20 text-warnAmber font-medium">待同步</span>` : '';
+          const fixedBadge = isRuleRecord(rec.id) ? `<span class="text-[11px] px-1.5 py-0.5 rounded bg-accentSoft text-accent">固定</span>` : '';
           const amountPrefix = rec.type === 'income' ? '+' : '';
           const amountColor = rec.type === 'income' ? 'text-incomeGreen' : 'text-textMain';
 
@@ -202,6 +216,7 @@
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-semibold text-textMain truncate">${escapeHtml(primaryTitle)}</span>
                     ${categoryBadge}
+                    ${fixedBadge}
                     ${pendingBadge}
                   </div>
                   ${rec.note ? `<div class="text-xs text-textMuted truncate mt-0.5">${escapeHtml(rec.note)}</div>` : ''}
@@ -324,6 +339,9 @@
       }
 
       renderStatsMonthly(records, yearMode);
+      renderStatsBudget(yearMode);
+      renderStatsCompare(yearMode);
+      renderStatsTrend(yearMode);
     }
     // 整年度時列出 1～12 月的金額；長條以金額最高的月份為滿格，點月份切回該月的統計。
     function renderStatsMonthly(records, yearMode) {

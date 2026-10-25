@@ -16,7 +16,7 @@ SRC = ROOT / "src"
 # 只當作程式掛鉤、刻意沒有樣式的名稱。
 HOOK_CLASSES = {
     "record-item-btn", "keypad-btn", "op-btn", "setting-header-btn", "mode-check",
-    "dark",
+    "settings-page", "dark",
 }
 TEMPLATE_EXPR = re.compile(r"\$\{[^{}]*\}")
 
