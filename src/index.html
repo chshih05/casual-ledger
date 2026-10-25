@@ -38,6 +38,8 @@
       <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse"></span>
       <span class="font-medium text-textMain">日常記帳</span>
     </div>
+    <!-- 有新版本、但正在操作而沒有自動更新時才出現 -->
+    <button id="btnTopUpdate" type="button" class="hidden px-3 py-1 rounded-lg bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover transition">有新版本・點此更新</button>
   </div>
 
 <div id="storageError" class="hidden storage-error" role="alert"></div>
@@ -258,6 +260,12 @@
 
     <!-- ==================== 視圖 2：統計頁 ==================== -->
     <main id="viewStats" class="hidden px-4 space-y-4 animate-fade">
+      <!-- 按月或整年度統計（整年度看目前月份所在的年份，上方左右箭頭改為切換年份） -->
+      <div id="statsPeriodToggle" role="group" aria-label="統計期間" class="grid grid-cols-2 rounded-xl bg-bgInput p-1 border border-borderSubtle">
+        <button id="statsPeriodMonth" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition">按月</button>
+        <button id="statsPeriodYear" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition">整年</button>
+      </div>
+
       <!-- 支出 / 收入 切換與總額 -->
       <div class="bg-bgCard border border-borderSubtle rounded-2xl p-3.5 flex items-center justify-between">
         <div class="inline-flex rounded-xl bg-bgInput p-1 border border-borderSubtle">
@@ -286,6 +294,15 @@
           <span class="text-[11px] text-textMuted">共用店家庫統計・點擊查看明細</span>
         </div>
         <div id="statsMerchantList" class="space-y-2"></div>
+      </section>
+
+      <!-- 整年度：每月金額（點月份查看該月統計） -->
+      <section id="statsMonthlySection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 id="statsMonthlyTitle" class="text-sm font-semibold text-textMain">每月支出</h3>
+          <span class="text-[11px] text-textMuted">點擊月份查看當月統計</span>
+        </div>
+        <div id="statsMonthlyList" class="space-y-1.5"></div>
       </section>
     </main>
 
@@ -398,8 +415,9 @@
 
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<div id="appUpdateBox" class="hidden flex gap-2 flex-wrap items-center"><span class="text-sm">有新版本可以使用。</span><button id="btnApplyUpdate" type="button" class="action">更新並重新開啟</button></div>
 <p class="text-xs text-textMuted">網頁版本：<span id="appVersion">__BUILD_VERSION__</span></p>
+<p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
+<div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
 </section>
     </main>

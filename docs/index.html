@@ -45,6 +45,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 #recordPageHeader { flex-wrap:wrap; gap:12px; }
 #mainTopHeader { flex-wrap:wrap; gap:8px; }
 #btnSyncBadge { font-size:12px; }
+#btnTopUpdate { min-height:32px; }
+/* 金額欄固定最小寬度，讓每個月的長條一樣長、可以直接比較 */
+.stats-month-row { display:grid; grid-template-columns:3rem minmax(0,1fr) minmax(7.5rem,max-content); align-items:center; gap:10px; }
+.stats-month-row > :last-child { text-align:right; }
 #recordSearch { max-width:100%; }
 #step1CategorySection { padding:16px; }
 #step1CategorySection > #singleAmountBox { margin-top:18px; padding:18px 0 0; border:0; border-top:1px solid #343846; border-radius:0; background:transparent; }
@@ -94,7 +98,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
  #viewHome { display:grid; grid-template-columns:260px minmax(0,1fr); align-items:start; gap:24px; }
  #viewHome > section + section { margin-top:0; }
  #viewStats { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
- #viewStats > div:first-child { grid-column:1/-1; }
+ #viewStats > div, #statsMonthlySection { grid-column:1/-1; margin-top:0; }
+ #statsPeriodToggle { width:360px; }
  #viewStats > section { margin-top:0; }
  #viewSettings { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
  #viewSettings > section { margin-top:0; }
@@ -112,6 +117,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
       <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse"></span>
       <span class="font-medium text-textMain">日常記帳</span>
     </div>
+    <!-- 有新版本、但正在操作而沒有自動更新時才出現 -->
+    <button id="btnTopUpdate" type="button" class="hidden px-3 py-1 rounded-lg bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover transition">有新版本・點此更新</button>
   </div>
 
 <div id="storageError" class="hidden storage-error" role="alert"></div>
@@ -332,6 +339,12 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 
     <!-- ==================== 視圖 2：統計頁 ==================== -->
     <main id="viewStats" class="hidden px-4 space-y-4 animate-fade">
+      <!-- 按月或整年度統計（整年度看目前月份所在的年份，上方左右箭頭改為切換年份） -->
+      <div id="statsPeriodToggle" role="group" aria-label="統計期間" class="grid grid-cols-2 rounded-xl bg-bgInput p-1 border border-borderSubtle">
+        <button id="statsPeriodMonth" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition">按月</button>
+        <button id="statsPeriodYear" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition">整年</button>
+      </div>
+
       <!-- 支出 / 收入 切換與總額 -->
       <div class="bg-bgCard border border-borderSubtle rounded-2xl p-3.5 flex items-center justify-between">
         <div class="inline-flex rounded-xl bg-bgInput p-1 border border-borderSubtle">
@@ -360,6 +373,15 @@ body { padding-bottom: env(safe-area-inset-bottom); }
           <span class="text-[11px] text-textMuted">共用店家庫統計・點擊查看明細</span>
         </div>
         <div id="statsMerchantList" class="space-y-2"></div>
+      </section>
+
+      <!-- 整年度：每月金額（點月份查看該月統計） -->
+      <section id="statsMonthlySection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 id="statsMonthlyTitle" class="text-sm font-semibold text-textMain">每月支出</h3>
+          <span class="text-[11px] text-textMuted">點擊月份查看當月統計</span>
+        </div>
+        <div id="statsMonthlyList" class="space-y-1.5"></div>
       </section>
     </main>
 
@@ -472,8 +494,9 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<div id="appUpdateBox" class="hidden flex gap-2 flex-wrap items-center"><span class="text-sm">有新版本可以使用。</span><button id="btnApplyUpdate" type="button" class="action">更新並重新開啟</button></div>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">e6156a01aa34</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">f802aa827821</span></p>
+<p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
+<div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
 </section>
     </main>
@@ -665,6 +688,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         activeView: 'home', // 'home' | 'stats' | 'settings' | 'record'
         previousView: 'home',
         statsType: 'expense',
+        statsPeriod: 'month', // 'month' | 'year'
         catMgrType: 'expense',
         isOfflineSim: false,
         pendingSyncIds: [],
@@ -730,9 +754,16 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       const maxSeq = state.records.reduce((m, r) => Math.max(m, Number(r.seq) || 0), 100);
       return maxSeq + 1;
     }
+    // 只有統計頁可以切到整年度；首頁一律按月。
+    function isYearStats() {
+      return state.activeView === 'stats' && state.statsPeriod === 'year';
+    }
     function renderHeader() {
       const [y, m] = state.currentMonth.split('-');
-      document.getElementById('currentMonthLabel').textContent = `${y} 年 ${parseInt(m, 10)} 月`;
+      const yearMode = isYearStats();
+      document.getElementById('currentMonthLabel').textContent = yearMode ? `${y} 年` : `${y} 年 ${parseInt(m, 10)} 月`;
+      document.getElementById('btnPrevMonth').title = yearMode ? '上一年' : '上個月';
+      document.getElementById('btnNextMonth').title = yearMode ? '下一年' : '下個月';
       const monthWrap = document.getElementById('monthSelectorWrap');
       const titleOnly = document.getElementById('headerTitleOnly');
       const recHeader = document.getElementById('recordPageHeader');
@@ -757,6 +788,13 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           if (dateDiff !== 0) return dateDiff;
           return (Number(a.seq) || 0) - (Number(b.seq) || 0);
         });
+    }
+    // 統計頁的紀錄：按月為目前選擇的月份，整年度為該月份所在的整個年份。
+    function getStatsRecords() {
+      const prefix = isYearStats() ? state.currentMonth.slice(0, 4) + '-' : state.currentMonth + '-';
+      return state.records
+        .filter(r => r.type === state.statsType && r.date.startsWith(prefix))
+        .sort((a, b) => b.date.localeCompare(a.date) || (Number(a.seq) || 0) - (Number(b.seq) || 0));
     }
     function renderHome() {
       const monthRecords = filteredHomeRecords();
@@ -870,24 +908,31 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       });
     }
     function renderStats() {
-      const monthRecords = getMonthRecords().filter(r => r.type === state.statsType);
-      const total = monthRecords.reduce((s, r) => s + r.amount, 0);
+      const yearMode = isYearStats();
+      const records = getStatsRecords();
+      const total = records.reduce((s, r) => s + r.amount, 0);
+      const periodWord = yearMode ? '本年度' : '本月';
 
       const tabExp = document.getElementById('statsTabExpense');
       const tabInc = document.getElementById('statsTabIncome');
       if (state.statsType === 'expense') {
         tabExp.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition';
         tabInc.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition';
-        document.getElementById('statsTotalTitle').textContent = '當月總支出';
+        document.getElementById('statsTotalTitle').textContent = yearMode ? '全年總支出' : '當月總支出';
       } else {
         tabInc.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition';
         tabExp.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition';
-        document.getElementById('statsTotalTitle').textContent = '當月總收入';
+        document.getElementById('statsTotalTitle').textContent = yearMode ? '全年總收入' : '當月總收入';
       }
       document.getElementById('statsTotalValue').textContent = `NT$ ${formatMoney(total)}`;
+      [['statsPeriodMonth', !yearMode], ['statsPeriodYear', yearMode]].forEach(([id, on]) => {
+        const btn = document.getElementById(id);
+        btn.className = `px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${on ? 'bg-accent text-bgMain' : 'text-textMuted hover:text-textMain'}`;
+        btn.setAttribute('aria-pressed', String(on));
+      });
 
       const catMap = {};
-      for (const r of monthRecords) {
+      for (const r of records) {
         if (!catMap[r.categoryId]) catMap[r.categoryId] = { categoryId: r.categoryId, amount: 0, count: 0 };
         catMap[r.categoryId].amount += r.amount;
         catMap[r.categoryId].count += 1;
@@ -897,7 +942,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       catContainer.innerHTML = '';
 
       if (catList.length === 0) {
-        catContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">本月尚無此類別資料</div>`;
+        catContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">${periodWord}尚無此類別資料</div>`;
       } else {
         catList.forEach(item => {
           const cat = getCategoryById(item.categoryId);
@@ -927,7 +972,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       }
 
       const merMap = {};
-      for (const r of monthRecords) {
+      for (const r of records) {
         const key = (r.merchant && r.merchant.trim() !== '') ? r.merchant.trim() : '__BLANK__';
         if (!merMap[key]) merMap[key] = { key, amount: 0, count: 0 };
         merMap[key].amount += r.amount;
@@ -938,7 +983,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       merContainer.innerHTML = '';
 
       if (merList.length === 0) {
-        merContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">本月尚無店家統計資料</div>`;
+        merContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">${periodWord}尚無店家統計資料</div>`;
       } else {
         merList.forEach(item => {
           const displayName = item.key === '__BLANK__' ? (state.statsType === 'income' ? '未指定來源' : '未指定店家') : item.key;
@@ -960,10 +1005,44 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           merContainer.appendChild(btn);
         });
       }
+
+      renderStatsMonthly(records, yearMode);
+    }
+    // 整年度時列出 1～12 月的金額；長條以金額最高的月份為滿格，點月份切回該月的統計。
+    function renderStatsMonthly(records, yearMode) {
+      document.getElementById('statsMonthlySection').classList.toggle('hidden', !yearMode);
+      const list = document.getElementById('statsMonthlyList');
+      list.innerHTML = '';
+      if (!yearMode) return;
+      document.getElementById('statsMonthlyTitle').textContent = state.statsType === 'income' ? '每月收入' : '每月支出';
+      const year = state.currentMonth.slice(0, 4);
+      const sums = new Array(12).fill(0);
+      for (const r of records) sums[parseInt(r.date.slice(5, 7), 10) - 1] += r.amount;
+      const max = Math.max(...sums);
+      sums.forEach((amount, i) => {
+        const pct = amount > 0 ? Math.max(Math.round((amount / max) * 100), 3) : 0;
+        const tone = amount > 0 ? 'text-textMain' : 'text-textDim';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'stats-month-row w-full p-2.5 rounded-xl bg-bgInput hover:bg-bgElevated border border-borderSubtle/60 text-left text-xs transition';
+        btn.innerHTML = `
+          <span class="font-semibold text-sm ${tone}">${i + 1} 月</span>
+          <div class="w-full h-1.5 bg-bgCard rounded-full overflow-hidden">
+            <div class="h-full bg-accent rounded-full" style="width: ${pct}%"></div>
+          </div>
+          <span class="font-bold text-sm num-tabular ${tone}">NT$ ${formatMoney(amount)}</span>
+        `;
+        btn.addEventListener('click', () => {
+          state.statsPeriod = 'month';
+          state.currentMonth = `${year}-${String(i + 1).padStart(2, '0')}`;
+          renderAll();
+          window.scrollTo({ top: 0 });
+        });
+        list.appendChild(btn);
+      });
     }
     function openDrilldownModal(filterType, filterValue, titleName) {
-      const records = getMonthRecords().filter(r => {
-        if (r.type !== state.statsType) return false;
+      const records = getStatsRecords().filter(r => {
         if (filterType === 'category') return r.categoryId === filterValue;
         const mKey = (r.merchant && r.merchant.trim() !== '') ? r.merchant.trim() : '__BLANK__';
         return mKey === filterValue;
@@ -971,7 +1050,8 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       const sum = records.reduce((s, r) => s + r.amount, 0);
 
       document.getElementById('drilldownTitle').textContent = `${titleName} — 明細紀錄`;
-      document.getElementById('drilldownSubtitle').textContent = `${state.currentMonth}・共 ${records.length} 筆・合計 NT$ ${formatMoney(sum)}`;
+      const period = isYearStats() ? `${state.currentMonth.slice(0, 4)} 年` : state.currentMonth;
+      document.getElementById('drilldownSubtitle').textContent = `${period}・共 ${records.length} 筆・合計 NT$ ${formatMoney(sum)}`;
 
       const listEl = document.getElementById('drilldownList');
       listEl.innerHTML = '';
@@ -1645,7 +1725,7 @@ function validateBackup(input) {
   const archived=Array.isArray(src.archivedMerchants)?src.archivedMerchants.filter(m=>merchants.includes(m)):[];
   const merchantTypes=Object.create(null);
   for (const m of merchants) merchantTypes[m]=src.merchantTypes?.[m]==='income'?'income':(records.some(r=>r.merchant===m&&r.type==='income')&&!records.some(r=>r.merchant===m&&r.type==='expense')?'income':'expense');
-  return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',statsType:'expense',catMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true},entityTimes:sanitizeEntityTimes(src.entityTimes)};
+  return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',statsType:'expense',statsPeriod:'month',catMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true},entityTimes:sanitizeEntityTimes(src.entityTimes)};
 }
 // Last-change time of each record, category, merchant and preference; used to pick the newer side in sync conflicts.
 function sanitizeEntityTimes(raw) {
@@ -2036,7 +2116,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   const on=(id,event,fn)=>$(id).addEventListener(event,fn);
   on('navBtnHome','click',()=>{discardForm();state.activeView='home';renderAll();});on('navBtnStats','click',()=>{discardForm();state.activeView='stats';renderAll();});on('navBtnSettings','click',()=>{discardForm();state.activeView='settings';renderAll();});
   on('btnSyncBadge','click',()=>{discardForm();state.activeView='settings';renderAll();});
-  const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n,1);state.currentMonth=today(d).slice(0,7);renderAll();};
+  const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
   on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
   on('btnOpenAddModal','click',openNewRecordModal);
@@ -2062,6 +2142,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   on('btnSaveRecord','click',()=>handleSaveRecord(false));on('btnSaveAndNextRecord','click',()=>handleSaveRecord(true));on('btnDeleteRecordInModal','click',removeRecord);
   on('btnUndoDelete','click',()=>{if(!lastDeletedRecord)return;const r=lastDeletedRecord;if(!commit(s=>{if(!s.records.some(x=>x.id===r.id))s.records.push(r);} ))return;lastDeletedRecord=null;$('undoBar').classList.add('hidden');renderAll();showToast('已復原紀錄');});
   ['expense','income'].forEach(t=>{on(t==='expense'?'statsTabExpense':'statsTabIncome','click',()=>{state.statsType=t;renderAll();});on(t==='expense'?'catMgrTabExpense':'catMgrTabIncome','click',()=>{state.catMgrType=t;renderSettings();});});
+  ['month','year'].forEach(p=>on(p==='month'?'statsPeriodMonth':'statsPeriodYear','click',()=>{state.statsPeriod=p;renderAll();}));
   on('btnCloseDrilldown','click',()=>$('modalDrilldown').classList.add('hidden'));
   document.querySelectorAll('.setting-header-btn').forEach(b=>b.onclick=()=>{if(commit(s=>s.preferences.homeHeaderMode=b.dataset.mode))renderAll();});
   on('toggleSaveAndNext','click',()=>{if(commit(s=>s.preferences.enableSaveAndNext=!s.preferences.enableSaveAndNext))renderSettings();});
@@ -2776,47 +2857,162 @@ const LedgerSync = (() => {
     isLinked, isPending: key => pendingSet.has(key), __test: testApi,
   };
 })();
-// 網站離線載入：註冊 Service Worker，手機沒有網路時也能開啟記帳頁（帳目本來就存在本機）。
-// 有新版本時不自動重新整理（避免中斷記帳），改在設定頁顯示「更新並重新開啟」。
-(() => {
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
-  const allowed = 'serviceWorker' in navigator && (location.protocol === 'https:' || local)
+// 網站離線載入與版本更新：註冊 Service Worker，手機沒有網路時也能開啟記帳頁（帳目本來就存在本機）。
+// 每次進入網頁（開啟、或從其他 App 切回來）都檢查網站有沒有新版本。剛進入、還沒操作而且停在首頁時，
+// 直接換成新版本；正在記帳、開著對話框或已經開始操作時不打斷，改在頂部顯示「有新版本・點此更新」，
+// 下次進入網頁時再自動更新。
+const LedgerUpdate = (() => {
+  'use strict';
+  const APP_VERSION = 'f802aa827821';
+  const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');
-  if (!allowed) return;
-  let waiting = null, updateRequested = false;
+  const UPDATED_KEY = 'ledger_updated_from';
+  const STATUS_TEXT = {
+    unsupported: '直接開啟檔案或測試網址時不會檢查新版本。',
+    checking: '正在檢查有沒有新版本…',
+    downloading: '發現新版本，正在下載…',
+    ready: '有新版本可以使用。',
+    error: '目前無法取得新版本（可能沒有網路），下次開啟網頁時會再試。',
+  };
+  let reg = null, waiting = null, outdated = false, applying = false, touched = false;
+  let checking = false, failed = false, checkedAt = 0;
+  let controller = supported ? navigator.serviceWorker.controller : null;
 
-  function offerUpdate(worker) {
-    waiting = worker;
-    const box = document.getElementById('appUpdateBox');
-    if (box) box.classList.remove('hidden');
+  const el = id => document.getElementById(id);
+  const closed = id => el(id).classList.contains('hidden');
+  const clock = t => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
+  function status() {
+    if (waiting || outdated) return 'ready';
+    if (!supported) return 'unsupported';
+    if (reg && reg.installing) return 'downloading';
+    if (checking || (!checkedAt && !failed)) return 'checking';
+    return failed ? 'error' : 'latest';
   }
 
-  window.addEventListener('load', async () => {
+  function render() {
+    if (!el('appUpdateStatus')) return;
+    const now = status();
+    el('appUpdateStatus').textContent = now === 'latest'
+      ? `已是最新版本（${clock(checkedAt)} 檢查）。每次開啟網頁都會自動檢查。`
+      : STATUS_TEXT[now];
+    el('btnTopUpdate').classList.toggle('hidden', now !== 'ready');
+    el('btnApplyUpdate').classList.toggle('hidden', now !== 'ready');
+    el('btnCheckUpdate').classList.toggle('hidden', now !== 'latest' && now !== 'error');
+  }
+
+  // 剛進入網頁、還沒點任何東西，而且停在首頁沒有開著對話框時，重新開啟不會打斷任何操作。
+  function quiet() {
+    return !touched && typeof state === 'object' && state !== null && state.activeView === 'home'
+      && ['modalDialog', 'modalDrilldown', 'undoBar'].every(closed);
+  }
+
+  function apply() {
+    if (!waiting && !outdated) return;
+    applying = true;
+    try { sessionStorage.setItem(UPDATED_KEY, APP_VERSION); } catch {}
+    if (waiting) waiting.postMessage('SKIP_WAITING'); // 新版本接手後（controllerchange）重新開啟
+    else location.reload();
+  }
+
+  function ready() {
+    if (quiet()) apply();
+    render();
+  }
+
+  // 已經下載好的新版本直接處理；否則請瀏覽器重新下載 sw.js 比對，內容不同就會開始下載新版本。
+  async function check() {
+    if (applying) return;
+    if (reg && reg.waiting && navigator.serviceWorker.controller) waiting = reg.waiting;
+    if (waiting || outdated) return ready();
+    if (!reg || checking) return;
+    checking = true;
+    render();
     try {
-      const reg = await navigator.serviceWorker.register('sw.js');
-      if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
-      reg.addEventListener('updatefound', () => {
-        const worker = reg.installing;
-        if (!worker) return;
-        worker.addEventListener('statechange', () => {
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(worker);
-        });
-      });
-    } catch (e) {
-      console.warn('service worker registration failed', e);
+      await reg.update();
+      failed = false;
+      checkedAt = Date.now();
+    } catch {
+      failed = true;
     }
+    checking = false;
+    render();
+  }
+
+  function entered() {
+    touched = false;
+    check();
+  }
+
+  function watch(worker) {
+    worker.addEventListener('statechange', () => {
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+        waiting = worker;
+        ready();
+        return;
+      }
+      // 下載中斷，或拿到的檔案不是同一版（見 sw.js）：這次放棄，下次進入網頁再試。
+      if (worker.state === 'redundant' && worker !== waiting) failed = true;
+      render();
+    });
+    render();
+  }
+
+  for (const type of ['pointerdown', 'keydown', 'wheel']) {
+    document.addEventListener(type, () => { touched = true; }, { capture: true, passive: true });
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    el('btnTopUpdate').addEventListener('click', () => {
+      if (state.activeView !== 'record') return apply();
+      openDialog({ title: '更新到新版本？', message: '網頁會重新開啟，這筆還沒儲存的內容會被捨棄。', confirmText: '更新', onConfirm: apply });
+    });
+    el('btnApplyUpdate').addEventListener('click', apply);
+    el('btnCheckUpdate').addEventListener('click', () => check());
+    let from = null;
+    try { from = sessionStorage.getItem(UPDATED_KEY); sessionStorage.removeItem(UPDATED_KEY); } catch {}
+    if (from && from !== APP_VERSION) showToast('已更新到最新版本');
+    render();
   });
 
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (updateRequested) location.reload();
-  });
+  if (supported) {
+    window.addEventListener('load', async () => {
+      try {
+        reg = await navigator.serviceWorker.register('sw.js');
+      } catch (e) {
+        console.warn('service worker registration failed', e);
+        failed = true;
+        render();
+        return;
+      }
+      reg.addEventListener('updatefound', () => { if (reg.installing) watch(reg.installing); });
+      // 第一次開啟（還沒有 Service Worker）時，網頁直接取自網站，本來就是最新版本。
+      if (navigator.serviceWorker.controller) check();
+      else { checkedAt = Date.now(); render(); }
+    });
 
-  document.addEventListener('click', e => {
-    if (e.target && e.target.id === 'btnApplyUpdate' && waiting) {
-      updateRequested = true;
-      waiting.postMessage('SKIP_WAITING');
-    }
-  });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      const previous = controller;
+      controller = navigator.serviceWorker.controller;
+      if (applying) { location.reload(); return; }
+      // 另一個分頁已經換成新版本，這一頁仍是舊版。
+      if (previous) { outdated = true; waiting = null; ready(); }
+    });
+
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') entered(); });
+    window.addEventListener('pageshow', e => { if (e.persisted) entered(); });
+    window.addEventListener('online', () => { if (failed) check(); });
+  }
+
+  // 本機測試專用：模擬「新版本已下載好」與「重新進入網頁」。正式網址上不提供。
+  const testApi = isLocalHost ? {
+    offer(worker) { waiting = worker; ready(); },
+    enter: entered,
+    snapshot: () => ({ status: status(), applying, touched }),
+  } : undefined;
+
+  return { check, __test: testApi };
 })();
 </script>
 </body>

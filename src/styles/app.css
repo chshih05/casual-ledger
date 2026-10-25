@@ -15,6 +15,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 #recordPageHeader { flex-wrap:wrap; gap:12px; }
 #mainTopHeader { flex-wrap:wrap; gap:8px; }
 #btnSyncBadge { font-size:12px; }
+#btnTopUpdate { min-height:32px; }
+/* 金額欄固定最小寬度，讓每個月的長條一樣長、可以直接比較 */
+.stats-month-row { display:grid; grid-template-columns:3rem minmax(0,1fr) minmax(7.5rem,max-content); align-items:center; gap:10px; }
+.stats-month-row > :last-child { text-align:right; }
 #recordSearch { max-width:100%; }
 #step1CategorySection { padding:16px; }
 #step1CategorySection > #singleAmountBox { margin-top:18px; padding:18px 0 0; border:0; border-top:1px solid #343846; border-radius:0; background:transparent; }
@@ -64,7 +68,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
  #viewHome { display:grid; grid-template-columns:260px minmax(0,1fr); align-items:start; gap:24px; }
  #viewHome > section + section { margin-top:0; }
  #viewStats { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
- #viewStats > div:first-child { grid-column:1/-1; }
+ #viewStats > div, #statsMonthlySection { grid-column:1/-1; margin-top:0; }
+ #statsPeriodToggle { width:360px; }
  #viewStats > section { margin-top:0; }
  #viewSettings { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
  #viewSettings > section { margin-top:0; }

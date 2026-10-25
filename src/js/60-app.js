@@ -73,7 +73,7 @@ function validateBackup(input) {
   const archived=Array.isArray(src.archivedMerchants)?src.archivedMerchants.filter(m=>merchants.includes(m)):[];
   const merchantTypes=Object.create(null);
   for (const m of merchants) merchantTypes[m]=src.merchantTypes?.[m]==='income'?'income':(records.some(r=>r.merchant===m&&r.type==='income')&&!records.some(r=>r.merchant===m&&r.type==='expense')?'income':'expense');
-  return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',statsType:'expense',catMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true},entityTimes:sanitizeEntityTimes(src.entityTimes)};
+  return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',statsType:'expense',statsPeriod:'month',catMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true},entityTimes:sanitizeEntityTimes(src.entityTimes)};
 }
 // Last-change time of each record, category, merchant and preference; used to pick the newer side in sync conflicts.
 function sanitizeEntityTimes(raw) {
@@ -464,7 +464,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   const on=(id,event,fn)=>$(id).addEventListener(event,fn);
   on('navBtnHome','click',()=>{discardForm();state.activeView='home';renderAll();});on('navBtnStats','click',()=>{discardForm();state.activeView='stats';renderAll();});on('navBtnSettings','click',()=>{discardForm();state.activeView='settings';renderAll();});
   on('btnSyncBadge','click',()=>{discardForm();state.activeView='settings';renderAll();});
-  const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n,1);state.currentMonth=today(d).slice(0,7);renderAll();};
+  const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
   on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
   on('btnOpenAddModal','click',openNewRecordModal);
@@ -490,6 +490,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   on('btnSaveRecord','click',()=>handleSaveRecord(false));on('btnSaveAndNextRecord','click',()=>handleSaveRecord(true));on('btnDeleteRecordInModal','click',removeRecord);
   on('btnUndoDelete','click',()=>{if(!lastDeletedRecord)return;const r=lastDeletedRecord;if(!commit(s=>{if(!s.records.some(x=>x.id===r.id))s.records.push(r);} ))return;lastDeletedRecord=null;$('undoBar').classList.add('hidden');renderAll();showToast('已復原紀錄');});
   ['expense','income'].forEach(t=>{on(t==='expense'?'statsTabExpense':'statsTabIncome','click',()=>{state.statsType=t;renderAll();});on(t==='expense'?'catMgrTabExpense':'catMgrTabIncome','click',()=>{state.catMgrType=t;renderSettings();});});
+  ['month','year'].forEach(p=>on(p==='month'?'statsPeriodMonth':'statsPeriodYear','click',()=>{state.statsPeriod=p;renderAll();}));
   on('btnCloseDrilldown','click',()=>$('modalDrilldown').classList.add('hidden'));
   document.querySelectorAll('.setting-header-btn').forEach(b=>b.onclick=()=>{if(commit(s=>s.preferences.homeHeaderMode=b.dataset.mode))renderAll();});
   on('toggleSaveAndNext','click',()=>{if(commit(s=>s.preferences.enableSaveAndNext=!s.preferences.enableSaveAndNext))renderSettings();});
