@@ -4,6 +4,7 @@
         activeView: 'home', // 'home' | 'stats' | 'settings' | 'record'
         previousView: 'home',
         statsType: 'expense',
+        statsPeriod: 'month', // 'month' | 'year'
         catMgrType: 'expense',
         isOfflineSim: false,
         pendingSyncIds: [],
@@ -69,9 +70,16 @@
       const maxSeq = state.records.reduce((m, r) => Math.max(m, Number(r.seq) || 0), 100);
       return maxSeq + 1;
     }
+    // 只有統計頁可以切到整年度；首頁一律按月。
+    function isYearStats() {
+      return state.activeView === 'stats' && state.statsPeriod === 'year';
+    }
     function renderHeader() {
       const [y, m] = state.currentMonth.split('-');
-      document.getElementById('currentMonthLabel').textContent = `${y} 年 ${parseInt(m, 10)} 月`;
+      const yearMode = isYearStats();
+      document.getElementById('currentMonthLabel').textContent = yearMode ? `${y} 年` : `${y} 年 ${parseInt(m, 10)} 月`;
+      document.getElementById('btnPrevMonth').title = yearMode ? '上一年' : '上個月';
+      document.getElementById('btnNextMonth').title = yearMode ? '下一年' : '下個月';
       const monthWrap = document.getElementById('monthSelectorWrap');
       const titleOnly = document.getElementById('headerTitleOnly');
       const recHeader = document.getElementById('recordPageHeader');
@@ -96,6 +104,13 @@
           if (dateDiff !== 0) return dateDiff;
           return (Number(a.seq) || 0) - (Number(b.seq) || 0);
         });
+    }
+    // 統計頁的紀錄：按月為目前選擇的月份，整年度為該月份所在的整個年份。
+    function getStatsRecords() {
+      const prefix = isYearStats() ? state.currentMonth.slice(0, 4) + '-' : state.currentMonth + '-';
+      return state.records
+        .filter(r => r.type === state.statsType && r.date.startsWith(prefix))
+        .sort((a, b) => b.date.localeCompare(a.date) || (Number(a.seq) || 0) - (Number(b.seq) || 0));
     }
     function renderHome() {
       const monthRecords = filteredHomeRecords();
@@ -209,24 +224,31 @@
       });
     }
     function renderStats() {
-      const monthRecords = getMonthRecords().filter(r => r.type === state.statsType);
-      const total = monthRecords.reduce((s, r) => s + r.amount, 0);
+      const yearMode = isYearStats();
+      const records = getStatsRecords();
+      const total = records.reduce((s, r) => s + r.amount, 0);
+      const periodWord = yearMode ? '本年度' : '本月';
 
       const tabExp = document.getElementById('statsTabExpense');
       const tabInc = document.getElementById('statsTabIncome');
       if (state.statsType === 'expense') {
         tabExp.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition';
         tabInc.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition';
-        document.getElementById('statsTotalTitle').textContent = '當月總支出';
+        document.getElementById('statsTotalTitle').textContent = yearMode ? '全年總支出' : '當月總支出';
       } else {
         tabInc.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition';
         tabExp.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition';
-        document.getElementById('statsTotalTitle').textContent = '當月總收入';
+        document.getElementById('statsTotalTitle').textContent = yearMode ? '全年總收入' : '當月總收入';
       }
       document.getElementById('statsTotalValue').textContent = `NT$ ${formatMoney(total)}`;
+      [['statsPeriodMonth', !yearMode], ['statsPeriodYear', yearMode]].forEach(([id, on]) => {
+        const btn = document.getElementById(id);
+        btn.className = `px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${on ? 'bg-accent text-bgMain' : 'text-textMuted hover:text-textMain'}`;
+        btn.setAttribute('aria-pressed', String(on));
+      });
 
       const catMap = {};
-      for (const r of monthRecords) {
+      for (const r of records) {
         if (!catMap[r.categoryId]) catMap[r.categoryId] = { categoryId: r.categoryId, amount: 0, count: 0 };
         catMap[r.categoryId].amount += r.amount;
         catMap[r.categoryId].count += 1;
@@ -236,7 +258,7 @@
       catContainer.innerHTML = '';
 
       if (catList.length === 0) {
-        catContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">本月尚無此類別資料</div>`;
+        catContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">${periodWord}尚無此類別資料</div>`;
       } else {
         catList.forEach(item => {
           const cat = getCategoryById(item.categoryId);
@@ -266,7 +288,7 @@
       }
 
       const merMap = {};
-      for (const r of monthRecords) {
+      for (const r of records) {
         const key = (r.merchant && r.merchant.trim() !== '') ? r.merchant.trim() : '__BLANK__';
         if (!merMap[key]) merMap[key] = { key, amount: 0, count: 0 };
         merMap[key].amount += r.amount;
@@ -277,7 +299,7 @@
       merContainer.innerHTML = '';
 
       if (merList.length === 0) {
-        merContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">本月尚無店家統計資料</div>`;
+        merContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">${periodWord}尚無店家統計資料</div>`;
       } else {
         merList.forEach(item => {
           const displayName = item.key === '__BLANK__' ? (state.statsType === 'income' ? '未指定來源' : '未指定店家') : item.key;
@@ -299,10 +321,44 @@
           merContainer.appendChild(btn);
         });
       }
+
+      renderStatsMonthly(records, yearMode);
+    }
+    // 整年度時列出 1～12 月的金額；長條以金額最高的月份為滿格，點月份切回該月的統計。
+    function renderStatsMonthly(records, yearMode) {
+      document.getElementById('statsMonthlySection').classList.toggle('hidden', !yearMode);
+      const list = document.getElementById('statsMonthlyList');
+      list.innerHTML = '';
+      if (!yearMode) return;
+      document.getElementById('statsMonthlyTitle').textContent = state.statsType === 'income' ? '每月收入' : '每月支出';
+      const year = state.currentMonth.slice(0, 4);
+      const sums = new Array(12).fill(0);
+      for (const r of records) sums[parseInt(r.date.slice(5, 7), 10) - 1] += r.amount;
+      const max = Math.max(...sums);
+      sums.forEach((amount, i) => {
+        const pct = amount > 0 ? Math.max(Math.round((amount / max) * 100), 3) : 0;
+        const tone = amount > 0 ? 'text-textMain' : 'text-textDim';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'stats-month-row w-full p-2.5 rounded-xl bg-bgInput hover:bg-bgElevated border border-borderSubtle/60 text-left text-xs transition';
+        btn.innerHTML = `
+          <span class="font-semibold text-sm ${tone}">${i + 1} 月</span>
+          <div class="w-full h-1.5 bg-bgCard rounded-full overflow-hidden">
+            <div class="h-full bg-accent rounded-full" style="width: ${pct}%"></div>
+          </div>
+          <span class="font-bold text-sm num-tabular ${tone}">NT$ ${formatMoney(amount)}</span>
+        `;
+        btn.addEventListener('click', () => {
+          state.statsPeriod = 'month';
+          state.currentMonth = `${year}-${String(i + 1).padStart(2, '0')}`;
+          renderAll();
+          window.scrollTo({ top: 0 });
+        });
+        list.appendChild(btn);
+      });
     }
     function openDrilldownModal(filterType, filterValue, titleName) {
-      const records = getMonthRecords().filter(r => {
-        if (r.type !== state.statsType) return false;
+      const records = getStatsRecords().filter(r => {
         if (filterType === 'category') return r.categoryId === filterValue;
         const mKey = (r.merchant && r.merchant.trim() !== '') ? r.merchant.trim() : '__BLANK__';
         return mKey === filterValue;
@@ -310,7 +366,8 @@
       const sum = records.reduce((s, r) => s + r.amount, 0);
 
       document.getElementById('drilldownTitle').textContent = `${titleName} — 明細紀錄`;
-      document.getElementById('drilldownSubtitle').textContent = `${state.currentMonth}・共 ${records.length} 筆・合計 NT$ ${formatMoney(sum)}`;
+      const period = isYearStats() ? `${state.currentMonth.slice(0, 4)} 年` : state.currentMonth;
+      document.getElementById('drilldownSubtitle').textContent = `${period}・共 ${records.length} 筆・合計 NT$ ${formatMoney(sum)}`;
 
       const listEl = document.getElementById('drilldownList');
       listEl.innerHTML = '';

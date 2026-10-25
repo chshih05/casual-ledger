@@ -253,6 +253,136 @@
     eq(a.text('merchantFieldLabel'), '收入來源');
   });
 
+  // ---------- 統計：按月與整年度 ----------
+  function yearRecords(y) {
+    const rec = (id, date, amount, categoryId = 'cat_lunch', type = 'expense') => ({ id, seq: 1, type, date, categoryId, amount, merchant: '', note: '' });
+    return [
+      rec('rec_y_jan', `${y}-01-15`, 100),
+      rec('rec_y_mar1', `${y}-03-02`, 250, 'cat_dinner'),
+      rec('rec_y_mar2', `${y}-03-20`, 50),
+      rec('rec_y_dec', `${y}-12-31`, 1000, 'cat_transport'),
+      rec('rec_prev_dec', `${y - 1}-12-31`, 7000),
+      rec('rec_y_salary', `${y}-03-05`, 52000, 'cat_salary', 'income'),
+    ];
+  }
+
+  async function statsApp() {
+    const a = await personalApp();
+    const y = Number(a.ev('today()').slice(0, 4));
+    await importBackup(a, { records: yearRecords(y), categories: defaultCategories(a), merchants: [] });
+    a.ev(`state.currentMonth = '${y}-03'`);
+    a.click('navBtnStats');
+    return { a, y };
+  }
+
+  test('統計｜切換整年度：合計整年（不含其他年份與收入），左右切換以年為單位', async () => {
+    const { a, y } = await statsApp();
+    eq(a.text('currentMonthLabel'), `${y} 年 3 月`);
+    eq(a.text('statsTotalValue'), 'NT$ 300', '按月只算 3 月');
+    assert(!a.visible('statsMonthlySection'), '按月時不顯示每月金額');
+    a.click('statsPeriodYear');
+    eq(a.text('currentMonthLabel'), `${y} 年`);
+    eq(a.text('statsTotalTitle'), '全年總支出');
+    eq(a.text('statsTotalValue'), 'NT$ 1,400', '整年不含去年與收入');
+    eq(a.$('statsPeriodYear').getAttribute('aria-pressed'), 'true');
+    eq(a.$('statsCategoryList').children.length, 3, '整年有三個分類');
+    a.click('btnPrevMonth');
+    eq(a.text('currentMonthLabel'), `${y - 1} 年`);
+    eq(a.text('statsTotalValue'), 'NT$ 7,000');
+    a.click('btnNextMonth');
+    a.click('statsTabIncome');
+    eq(a.text('statsTotalTitle'), '全年總收入');
+    eq(a.text('statsTotalValue'), 'NT$ 52,000');
+    a.click('navBtnHome');
+    eq(a.text('currentMonthLabel'), `${y} 年 3 月`, '首頁仍按月顯示');
+    assert(!a.visible('statsPeriodToggle'), '首頁不顯示月／年切換');
+    eq(a.text('homeTotalExpense'), '300');
+  });
+
+  test('統計｜整年度列出 1～12 月金額，點月份回到該月統計', async () => {
+    const { a, y } = await statsApp();
+    a.click('statsPeriodYear');
+    assert(a.visible('statsMonthlySection'), '整年度應顯示每月金額');
+    const rows = [...a.$('statsMonthlyList').children].map(b => b.textContent.replace(/\s+/g, ' ').trim());
+    eq(rows.length, 12);
+    eq([rows[0], rows[1], rows[2], rows[11]], ['1 月 NT$ 100', '2 月 NT$ 0', '3 月 NT$ 300', '12 月 NT$ 1,000']);
+    a.click(a.$('statsMonthlyList').children[11]);
+    eq(a.ev('state.statsPeriod'), 'month');
+    eq(a.text('currentMonthLabel'), `${y} 年 12 月`);
+    eq(a.text('statsTotalValue'), 'NT$ 1,000');
+    assert(!a.visible('statsMonthlySection'));
+  });
+
+  test('統計｜整年度明細：點分類列出這一年的紀錄', async () => {
+    const { a, y } = await statsApp();
+    a.click('statsPeriodYear');
+    const lunch = [...a.$('statsCategoryList').children].find(b => b.textContent.includes('午餐'));
+    a.click(lunch);
+    assert(a.visible('modalDrilldown'));
+    eq(a.$('drilldownList').children.length, 2, '1 月與 3 月的午餐，不含去年');
+    assert(a.text('drilldownSubtitle').startsWith(`${y} 年・共 2 筆・合計 NT$ 150`), a.text('drilldownSubtitle'));
+  });
+
+  // ---------- 版本更新 ----------
+  function fakeWorker() {
+    const posted = [];
+    return { posted, postMessage: m => posted.push(m) };
+  }
+
+  test('版本更新｜剛開啟還沒操作時，有新版本就直接更新', async () => {
+    const a = await personalApp();
+    const worker = fakeWorker();
+    a.ev('LedgerUpdate.__test').offer(worker);
+    eq(worker.posted, ['SKIP_WAITING'], '應直接換成新版本');
+  });
+
+  test('版本更新｜正在記帳時不打斷：顯示頂部更新按鈕，回到首頁也不會突然重新開啟', async () => {
+    const a = await personalApp();
+    const worker = fakeWorker();
+    a.click('btnOpenAddModal');
+    a.$('step1CategoryGrid').querySelectorAll('button')[0].click();
+    a.type('inputAmountExpr', '88');
+    a.ev('LedgerUpdate.__test').offer(worker);
+    eq(worker.posted, [], '記帳中不應自動更新');
+    assert(a.visible('btnTopUpdate'), '應顯示頂部更新按鈕');
+    a.click('btnTopUpdate');
+    await waitFor(() => a.visible('modalDialog'), { message: '記帳中按更新應先確認' });
+    assert(a.text('dialogMessage').includes('捨棄'), a.text('dialogMessage'));
+    a.click('dialogBtnCancel');
+    eq(worker.posted, [], '取消後不更新');
+    eq(a.$('inputAmountExpr').value, '88', '輸入內容保留');
+    a.click('btnCloseRecordModal');
+    eq(worker.posted, [], '回到首頁也不會突然重新開啟');
+    a.click('navBtnSettings');
+    eq(a.text('appUpdateStatus'), '有新版本可以使用。');
+    a.click('btnApplyUpdate');
+    eq(worker.posted, ['SKIP_WAITING']);
+  });
+
+  test('版本更新｜已經開始操作時，等下次進入網頁才自動更新', async () => {
+    const a = await personalApp();
+    const worker = fakeWorker();
+    a.d.dispatchEvent(new a.w.PointerEvent('pointerdown', { bubbles: true }));
+    a.ev('LedgerUpdate.__test').offer(worker);
+    eq(worker.posted, [], '操作中不應自動更新');
+    assert(a.visible('btnTopUpdate'));
+    a.ev('LedgerUpdate.__test').enter();
+    eq(worker.posted, ['SKIP_WAITING'], '重新進入網頁、還沒操作時自動更新');
+  });
+
+  test('版本更新｜更新後重新開啟只提示一次「已更新到最新版本」', async () => {
+    let a = await personalApp();
+    a.w.sessionStorage.setItem('ledger_updated_from', 'old-version');
+    a = await reloadApp();
+    eq(a.text('toastBox'), '已更新到最新版本');
+    eq(a.w.sessionStorage.getItem('ledger_updated_from'), null);
+    a = await reloadApp();
+    assert(!a.visible('toastBox'), '只提示一次');
+    a.click('navBtnSettings');
+    eq(a.text('appUpdateStatus'), '直接開啟檔案或測試網址時不會檢查新版本。');
+    assert(!a.visible('btnCheckUpdate') && !a.visible('btnTopUpdate'));
+  });
+
   // ---------- 資料層調整 ----------
   test('資料｜儲存時記錄每筆的修改時間，備份會帶上帳本類型與修改時間', async () => {
     const a = await personalApp();
