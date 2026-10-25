@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>日常記帳</title>
+  <title>隨便記</title>
   <meta name="theme-color" content="#14161B" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
   
   <style>
@@ -36,7 +36,7 @@
   <div class="w-full bg-[#1E2028] border-b border-borderSubtle px-3 py-2 text-xs text-textMuted flex flex-wrap items-center justify-between gap-2 max-w-md mx-auto sticky top-0 z-30">
     <div class="flex items-center gap-1.5">
       <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse"></span>
-      <span class="font-medium text-textMain">日常記帳</span>
+      <span class="font-medium text-textMain">隨便記</span>
     </div>
     <!-- 有新版本、但正在操作而沒有自動更新時才出現 -->
     <button id="btnTopUpdate" type="button" class="hidden px-3 py-1 rounded-lg bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover transition">有新版本・點此更新</button>
@@ -365,7 +365,7 @@
             <h3 class="text-sm font-semibold text-textMain">分類管理（固定順序）</h3>
             <p class="text-xs text-textMuted mt-0.5">順序固定不隨頻率跳動；改名會同步更新紀錄，有帳目時禁止誤刪</p>
           </div>
-          <div class="inline-flex rounded-lg bg-bgInput p-0.5 border border-borderSubtle text-xs">
+          <div class="inline-flex rounded-lg bg-bgInput p-0.5 border border-borderSubtle text-xs shrink-0">
             <button id="catMgrTabExpense" type="button" class="px-2.5 py-1 rounded-md bg-accent text-bgMain font-medium">支出</button>
             <button id="catMgrTabIncome" type="button" class="px-2.5 py-1 rounded-md text-textMuted">收入</button>
           </div>
@@ -383,13 +383,21 @@
 
       <!-- 4. 店家與收入來源 -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
-        <div>
-          <h3 class="text-sm font-semibold text-textMain">店家與收入來源</h3>
-          <p class="text-xs text-textMuted mt-0.5">停用後不再推薦，歷史紀錄仍保留。可改名或合併重複名稱。</p>
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm font-semibold text-textMain">店家與收入來源</h3>
+            <p class="text-xs text-textMuted mt-0.5">只列最近 6 個月最常用的 12 個，其他的可以搜尋或按「顯示全部」。停用後不再推薦，歷史紀錄保留。</p>
+          </div>
+          <div class="inline-flex rounded-lg bg-bgInput p-0.5 border border-borderSubtle text-xs shrink-0">
+            <button id="merMgrTabExpense" type="button" class="px-2.5 py-1 rounded-md bg-accent text-bgMain font-medium">店家</button>
+            <button id="merMgrTabIncome" type="button" class="px-2.5 py-1 rounded-md text-textMuted">收入來源</button>
+          </div>
         </div>
-        <div id="settingsMerchantList" class="space-y-1.5 max-h-60 overflow-y-auto pr-1"></div>
+        <input id="merchantMgrSearch" type="search" aria-label="搜尋全部店家與收入來源" placeholder="搜尋全部（含不常用、已停用）" class="search-input w-full" />
+        <div id="settingsMerchantList" class="space-y-1.5"></div>
+        <button id="btnMerchantShowAll" type="button" class="text-xs text-accent">顯示全部</button>
         <div class="flex gap-2 pt-1">
-          <input id="inputManageNewMerchant" type="text" placeholder="新增常用店家名稱..." class="flex-1 bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-xs text-textMain focus:outline-none focus:border-accent" />
+          <input id="inputManageNewMerchant" type="text" placeholder="新增店家名稱..." class="flex-1 bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-xs text-textMain focus:outline-none focus:border-accent" />
           <button id="btnManageAddMerchant" type="button" class="px-3.5 py-2 rounded-xl bg-bgElevated border border-borderSubtle hover:border-accent text-textMain text-xs font-medium transition">新增店家</button>
         </div>
       </section>

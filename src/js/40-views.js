@@ -6,6 +6,7 @@
         statsType: 'expense',
         statsPeriod: 'month', // 'month' | 'year'
         catMgrType: 'expense',
+        merchantMgrType: 'expense', // 設定頁店家清單：'expense' 店家 | 'income' 收入來源
         isOfflineSim: false,
         pendingSyncIds: [],
         preferences: {

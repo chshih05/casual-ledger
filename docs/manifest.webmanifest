@@ -1,6 +1,6 @@
 {
-  "name": "日常記帳",
-  "short_name": "記帳",
+  "name": "隨便記",
+  "short_name": "隨便記",
   "description": "個人記帳：以支出為主、可記收入，個人帳本可用 Google 帳號跨裝置同步。",
   "lang": "zh-Hant-TW",
   "start_url": "./",

@@ -6,6 +6,7 @@ const BOOK_PREFIX = 'minimal_expense_v3_';
 // Only the personal book remains; `book` keeps the existing storage key (minimal_expense_v3_personal).
 let book = 'personal', storageBlocked = false, persistedRaw = null, loadIssue = '';
 let state, modalState = null, searchQuery = '', searchAcrossMonths = false;
+let merchantMgrQuery = '', merchantMgrShowAll = false;
 let keypadOpen = true, lastDeletedRecord = null;
 window.__selectedIconKey = 'dinner';
 
@@ -73,7 +74,7 @@ function validateBackup(input) {
   const archived=Array.isArray(src.archivedMerchants)?src.archivedMerchants.filter(m=>merchants.includes(m)):[];
   const merchantTypes=Object.create(null);
   for (const m of merchants) merchantTypes[m]=src.merchantTypes?.[m]==='income'?'income':(records.some(r=>r.merchant===m&&r.type==='income')&&!records.some(r=>r.merchant===m&&r.type==='expense')?'income':'expense');
-  return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',statsType:'expense',statsPeriod:'month',catMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true},entityTimes:sanitizeEntityTimes(src.entityTimes)};
+  return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',statsType:'expense',statsPeriod:'month',catMgrType:'expense',merchantMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true},entityTimes:sanitizeEntityTimes(src.entityTimes)};
 }
 // Last-change time of each record, category, merchant and preference; used to pick the newer side in sync conflicts.
 function sanitizeEntityTimes(raw) {
@@ -199,18 +200,69 @@ function renderRecordModal() {
   $('recordFormError').classList.add('hidden');
   renderIconPickers();setKeypad(keypadOpen);updateCalcPreviewAndRecommendations();
 }
+// 「常用」只看最近 6 個月：設定頁列出最常用的 12 個，記帳頁推薦 8 個；搜尋時仍包含所有店家。
+const RECENT_MONTHS=6,SETTINGS_FREQUENT_LIMIT=12,RECORD_SUGGEST_LIMIT=8;
+function recentSince(now=new Date()) { return today(new Date(now.getFullYear(),now.getMonth()-RECENT_MONTHS,now.getDate())); }
 function getRecommendedMerchants(categoryId,amount,keyword='') {
-  const type=state.categories.find(c=>c.id===categoryId)?.type||'expense';
-  const rows=state.records.filter(r=>r.categoryId===categoryId&&r.merchant&&!state.archivedMerchants.includes(r.merchant));
-  const map=new Map();rows.forEach(r=>{if(!map.has(r.merchant))map.set(r.merchant,[]);map.get(r.merchant).push(r.amount);});
+  const type=state.categories.find(c=>c.id===categoryId)?.type||'expense',since=recentSince(),archived=new Set(state.archivedMerchants);
+  const amounts=new Map(),recent=new Map();
+  for(const r of state.records){
+    if(r.categoryId!==categoryId||!r.merchant||archived.has(r.merchant))continue;
+    if(!amounts.has(r.merchant))amounts.set(r.merchant,[]);
+    amounts.get(r.merchant).push(r.amount);
+    if(r.date>=since)recent.set(r.merchant,(recent.get(r.merchant)||0)+1);
+  }
   const q=keyword.trim().toLocaleLowerCase();
-  const names=q?state.merchants.filter(m=>!state.archivedMerchants.includes(m)&&(state.merchantTypes[m]===type||state.records.some(r=>r.merchant===m&&r.type===type))):[...map.keys()];
-  return names.filter(m=>!q||m.toLocaleLowerCase().includes(q)).map(name=>{
-    const amounts=map.get(name)||[], nearest=amounts.length?Math.min(...amounts.map(a=>Math.abs(a-amount))):Infinity;
-    const frequency=Math.min(20,Math.log2(amounts.length+1)*5);
+  // 沒輸入時只推薦最近 6 個月在這個分類用過的；輸入文字時搜尋全部，不常用的也找得到。
+  let names=[...recent.keys()];
+  if(q){
+    const usedForType=new Set(state.records.filter(r=>r.type===type&&r.merchant).map(r=>r.merchant));
+    names=state.merchants.filter(m=>!archived.has(m)&&(state.merchantTypes[m]===type||usedForType.has(m))&&m.toLocaleLowerCase().includes(q));
+  }
+  return names.map(name=>{
+    const list=amounts.get(name)||[], nearest=list.length?Math.min(...list.map(a=>Math.abs(a-amount))):Infinity;
+    const frequency=Math.min(20,Math.log2((recent.get(name)||0)+1)*5);
     const similarity=amount>0?60*Math.exp(-nearest/Math.max(30,amount*.25)):0;
-    return {name,score:similarity+frequency};
-  }).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'zh-TW')).slice(0,q?8:4);
+    return {name,count:recent.get(name)||0,score:similarity+frequency};
+  }).sort((a,b)=>b.score-a.score||b.count-a.count||a.name.localeCompare(b.name,'zh-TW')).slice(0,RECORD_SUGGEST_LIMIT);
+}
+// 設定頁的店家清單：預設只列最近 6 個月最常用的 12 個；搜尋或「顯示全部」時列出全部（含不常用、已停用）。
+function merchantManagerRows() {
+  const type=state.merchantMgrType==='income'?'income':'expense',since=recentSince(),archived=new Set(state.archivedMerchants),usage=new Map();
+  for(const r of state.records){
+    if(!r.merchant)continue;
+    const u=usage.get(r.merchant)||{recent:0,last:''};
+    if(r.date>=since)u.recent++;
+    if(r.date>u.last)u.last=r.date;
+    usage.set(r.merchant,u);
+  }
+  const all=state.merchants.filter(name=>(state.merchantTypes[name]==='income'?'income':'expense')===type).map(name=>{
+    const u=usage.get(name),added=ownTime(state.entityTimes,'mer:'+name);
+    // 手動新增、還沒用過的名稱：新增後 6 個月內也算常用。
+    const fresh=!u&&added!==undefined&&today(new Date(added))>=since;
+    return {name,used:Boolean(u),archived:archived.has(name),recent:u?u.recent:fresh?1:0,last:u?u.last:fresh?today(new Date(added)):''};
+  }).sort((a,b)=>b.recent-a.recent||b.last.localeCompare(a.last)||a.name.localeCompare(b.name,'zh-TW'));
+  const q=merchantMgrQuery.trim().toLocaleLowerCase();
+  if(q)return {rows:all.filter(m=>m.name.toLocaleLowerCase().includes(q)),total:all.length,query:q};
+  return {rows:merchantMgrShowAll?all:all.filter(m=>m.recent>0&&!m.archived).slice(0,SETTINGS_FREQUENT_LIMIT),total:all.length,query:''};
+}
+function renderMerchantManager() {
+  const income=state.merchantMgrType==='income',{rows,total,query}=merchantManagerRows(),list=$('settingsMerchantList');
+  ['expense','income'].forEach(t=>{const b=$(t==='expense'?'merMgrTabExpense':'merMgrTabIncome'),on=income===(t==='income');b.classList.toggle('bg-accent',on);b.classList.toggle('text-bgMain',on);b.classList.toggle('text-textMuted',!on);b.setAttribute('aria-pressed',String(on));});
+  list.innerHTML='';list.classList.toggle('merchant-list-scroll',Boolean(query)||merchantMgrShowAll);
+  rows.forEach(m=>{
+    const row=document.createElement('div');row.className='flex items-center justify-between px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-xs';
+    const meta=m.archived?'已停用':!m.used?(m.recent?'新加入':'尚未使用'):m.recent?`近半年 ${m.recent} 次`:`上次 ${m.last}`;
+    row.innerHTML=`<span>${escapeHtml(m.name)} <span class="text-textDim">· ${meta}</span></span><div class="flex gap-1"></div>`;
+    [['rename','改名'],['merge','合併'],[m.archived?'restore':'archive',m.archived?'恢復':'停用']].forEach(([a,t])=>{const b=document.createElement('button');b.textContent=t;b.className='px-2 text-accent';b.onclick=()=>handleMerchantAction(a,m.name);row.lastElementChild.appendChild(b);});
+    list.appendChild(row);
+  });
+  if(!rows.length){const p=document.createElement('p');p.className='text-xs text-textMuted';p.textContent=query?`找不到「${merchantMgrQuery.trim()}」。`:total?'最近 6 個月沒有常用的，按「顯示全部」可以看到全部。':income?'還沒有收入來源。記收入時輸入來源名稱就會自動加入。':'還沒有店家。記帳時輸入店家名稱就會自動加入。';list.appendChild(p);}
+  const more=$('btnMerchantShowAll');
+  more.classList.toggle('hidden',Boolean(query)||!total||(!merchantMgrShowAll&&rows.length>=total));
+  more.textContent=merchantMgrShowAll?'只顯示常用':`顯示全部（共 ${total} 個）`;
+  $('inputManageNewMerchant').placeholder=income?'新增收入來源名稱...':'新增店家名稱...';
+  $('btnManageAddMerchant').textContent=income?'新增來源':'新增店家';
 }
 function updateCalcPreviewAndRecommendations() {
   const parsed=evaluateSimpleMath(modalState.amountExpr);
@@ -298,12 +350,7 @@ function renderSettings() {
     [['up','↑'],['down','↓'],['icon','圖示'],['rename','改名'],['delete','刪除']].forEach(([a,text])=>{const b=document.createElement('button');b.textContent=text;b.className='px-2 text-accent';b.setAttribute('aria-label',c.name+' '+({up:'上移',down:'下移'}[a]||text));b.onclick=()=>handleCategoryAction(a,c.id);actions.appendChild(b);});
     list.appendChild(row);
   });
-  const merchants=$('settingsMerchantList');merchants.innerHTML='';
-  state.merchants.forEach(name=>{
-    const off=state.archivedMerchants.includes(name),row=document.createElement('div');row.className='flex items-center justify-between px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-xs';
-    row.innerHTML=`<span>${escapeHtml(name)}${off?' · 已停用':''}</span><div class="flex gap-1"></div>`;
-    [['rename','改名'],['merge','合併'],[off?'restore':'archive',off?'恢復':'停用']].forEach(([a,t])=>{const b=document.createElement('button');b.textContent=t;b.className='px-2 text-accent';b.onclick=()=>handleMerchantAction(a,name);row.lastElementChild.appendChild(b);});merchants.appendChild(row);
-  });
+  renderMerchantManager();
   try{$('btnUndoImport').classList.toggle('hidden',!localStorage.getItem(storageKey()+'_before_import'));}catch{}
   renderIconPickers();
 }
@@ -494,7 +541,10 @@ window.addEventListener('DOMContentLoaded',()=>{
   on('btnCloseDrilldown','click',()=>$('modalDrilldown').classList.add('hidden'));
   document.querySelectorAll('.setting-header-btn').forEach(b=>b.onclick=()=>{if(commit(s=>s.preferences.homeHeaderMode=b.dataset.mode))renderAll();});
   on('toggleSaveAndNext','click',()=>{if(commit(s=>s.preferences.enableSaveAndNext=!s.preferences.enableSaveAndNext))renderSettings();});
-  on('btnManageAddMerchant','click',()=>{const name=$('inputManageNewMerchant').value.trim();if(!name||name.length>100||state.merchants.includes(name))return showToast('請輸入尚未存在的名稱（最多 100 字）。');if(commit(s=>{s.merchants.push(name);s.merchantTypes[name]=state.catMgrType;})){$('inputManageNewMerchant').value='';renderSettings();}});
+  on('btnManageAddMerchant','click',()=>{const name=$('inputManageNewMerchant').value.trim();if(!name||name.length>100||state.merchants.includes(name))return showToast('請輸入尚未存在的名稱（最多 100 字）。');const type=state.merchantMgrType==='income'?'income':'expense';if(commit(s=>{s.merchants.push(name);Object.defineProperty(s.merchantTypes,name,{value:type,enumerable:true,writable:true,configurable:true});})){$('inputManageNewMerchant').value='';renderSettings();showToast(`已新增「${name}」`);}});
+  ['expense','income'].forEach(t=>on(t==='expense'?'merMgrTabExpense':'merMgrTabIncome','click',()=>{state.merchantMgrType=t;merchantMgrShowAll=false;renderMerchantManager();}));
+  on('merchantMgrSearch','input',e=>{merchantMgrQuery=e.target.value;renderMerchantManager();});
+  on('btnMerchantShowAll','click',()=>{merchantMgrShowAll=!merchantMgrShowAll;renderMerchantManager();});
   on('btnExportJsonDemo','click',exportBackup);on('btnImportBackup','click',()=>$('backupFile').click());
   on('backupFile','change',e=>{prepareImport(e.target.files[0]);e.target.value='';});
   on('btnUndoImport','click',()=>{

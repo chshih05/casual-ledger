@@ -31,9 +31,12 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .category-icon { flex-shrink:0; }
 .icon-picker { display:block; min-width:0; }
 .icon-picker-intro { font-size:13px; color:#9CA3AF; margin:8px 0; }
-.icon-search, .icon-filter-row select { width:100%; background:#191B22; color:#F3F4F6; border:1px solid #3D4251; border-radius:10px; padding:10px; font-size:14px; min-height:44px; }
-.icon-filter-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; }
-.icon-filter-row select { min-width:0; }
+.icon-search { width:100%; background:#191B22; color:#F3F4F6; border:1px solid #3D4251; border-radius:10px; padding:10px; font-size:14px; min-height:44px; }
+/* 圖示大分類：一排可以左右滑動的按鈕 */
+.icon-group-chips { display:flex; gap:6px; overflow-x:auto; margin:8px 0; padding-bottom:2px; scrollbar-width:none; }
+.icon-group-chips::-webkit-scrollbar { display:none; }
+.icon-chip { flex-shrink:0; padding:6px 12px; min-height:36px; border-radius:999px; border:1px solid #3D4251; background:#191B22; color:#D1D5DB; font-size:13px; white-space:nowrap; }
+.icon-chip[aria-pressed=true] { background:#A78BFA; border-color:#A78BFA; color:#14161B; font-weight:600; }
 .icon-selected { display:flex; gap:8px; align-items:center; padding:8px 0; color:#D4C4FF; font-size:14px; }
 .icon-results-count { color:#9CA3AF; font-size:12px; margin-bottom:8px; }
 .icon-results { max-height:320px; overflow-y:auto; overscroll-behavior:contain; padding:2px 5px 4px 2px; scrollbar-color:#555065 #191B22; }
@@ -43,7 +46,6 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .icon-option { display:flex; flex-direction:column; gap:5px; align-items:center; justify-content:center; padding:10px 3px; border:1px solid #343846; border-radius:12px; min-height:82px; color:#CCD0DA; background:#1B1E26; }
 .icon-option svg { width:25px; height:25px; }
 .icon-option span { font-size:12px; line-height:1.3; overflow-wrap:anywhere; }
-.icon-option small { font-size:10px; color:#B6A5DE; }
 .icon-option:hover { border-color:#8573AD; }
 .icon-option[aria-pressed=true] { background:#A78BFA20; border-color:#B7A0FC; color:#D4C4FF; }
 .icon-empty { color:#9CA3AF; padding:24px 8px; font-size:14px; }
@@ -51,6 +53,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 #dialogIconPicker .icon-results { max-height:34dvh; }
 #merchantChipsContainer button { min-height:42px; }
 #settingsCategoryList > div, #settingsMerchantList > div { flex-wrap:wrap; gap:6px; }
+.merchant-list-scroll { max-height:60vh; overflow-y:auto; padding-right:4px; }
 #settingsCategoryList button, #settingsMerchantList button { min-height:36px; }
 #bottomNavBar { padding-bottom:env(safe-area-inset-bottom); }
 #toastBox { max-width:90vw; width:max-content; }
