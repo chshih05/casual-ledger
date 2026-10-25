@@ -34,16 +34,11 @@
 - 在新裝置按「匯入備份」：預設是合併（不刪除現有紀錄，重複的略過），也可以勾選改為完全取代。匯入前的帳本會保留一份，可以按「還原匯入前帳本」。
 
 ### Google 雲端同步
-- 設定 →「雲端同步」→「使用 Google 登入並同步」。如果這台裝置已經有紀錄，連結前會先詢問，並建議先下載備份。
+- 設定 →「雲端同步」→「使用 Google 登入並同步」。只有白名單裡的 Gmail 能同步（目前只有擁有者本人）。
+- 如果這台裝置已經有紀錄，連結前會先詢問，並建議先下載備份。
 - 離線時記的帳會標示「待同步」，恢復連線後自動上傳。
 - 兩台裝置改了同一筆：保留較晚修改的版本，另一個版本放在「衝突紀錄」，可以改用。
 - 一次刪除很多筆時會先暫停，按「確認刪除並同步」才會刪除雲端的資料。
-- 第一次使用前，Firebase 主控台要完成以下設定（只需做一次）：
-  1. Authentication →「登入方式」→ 啟用 Google。
-  2. Authentication →「設定」→「授權網域」→ 新增 `chshih05.github.io`。
-  3. Firestore Database → 建立資料庫（標準版、位置 `asia-east1`、正式版模式）。
-  4. Firestore Database →「規則」→ 貼上 `firestore.rules` 的內容，把 `your_gmail@gmail.com` 換成你的 Gmail（全部小寫）→ 發布。
-     真實的 Gmail 只填在主控台，不要寫進 GitHub 上的檔案。
 
 ### 版本更新
 - 每次開啟網頁或從其他 App 切回來，都會自動檢查新版本。剛開啟還沒操作時直接換成新版；正在記帳時不打斷，改在頂部顯示「有新版本・點此更新」。
@@ -53,8 +48,8 @@
 
 - **帳本存在這個瀏覽器：** 清除瀏覽器資料，或在 iPhone 刪除主畫面上的「隨便記」，都會刪除這台裝置上的帳本。沒有開同步時，請定期「下載完整備份」。
 - **沒有自動備份：** 雲端同步不是備份，任何一台裝置刪除的紀錄，其他裝置也會刪除。
+- **同步只開放白名單：** 目前只有擁有者本人的 Gmail 能同步。其他人也能用這個網址記帳，但帳本只存在他們自己的瀏覽器；登入同步會顯示「雲端拒絕存取」。
 - **同步判斷新舊靠各裝置的時鐘：** 手機和電腦的時間差很多時，可能選錯版本（被取代的版本仍會留在「衝突紀錄」）。
-- **還沒實際測試：** Google 登入與雲端讀寫（Firebase 主控台設定完成後要實際測一次）；手機實機上的離線開啟、自動更新與跨裝置同步。
 - **主畫面的名稱與圖示：** 改版後由 Chrome 自己更新，可能會先詢問；iPhone 要刪掉重新加入（刪除前先下載備份）。
 - **直接開啟 `docs/index.html` 檔案時：** 可以記帳，但不能同步，也不會離線快取或自動更新。
 - **自動測試的已知訊息：** 測試時會出現 `Maximum call stack size exceeded`，只發生在測試用的模擬雲端，不影響測試結果和正式網站。
@@ -78,4 +73,6 @@
 - 測試：執行 `python -m http.server 8765 --bind 127.0.0.1`，開啟 <http://localhost:8765/tests/run.html>；另外執行 `python tools/check_classes.py` 檢查樣式名稱。
 - 推送到 `main` 後，GitHub Pages 幾分鐘內更新，手機下次開啟會自動換成新版。
 - 其他位置：主畫面圖示 `tools/make_icons.py`；Firebase 設定 `src/firebase-config.js`（公開值，改成 `null` 可停用同步）；安全規則 `firestore.rules`；常用店家數量 `src/js/60-app.js` 的 `SETTINGS_FREQUENT_LIMIT`、`RECORD_SUGGEST_LIMIT`。
+- **開放同步給其他人：** Firebase 主控台 → Firestore Database →「規則」，在 `isOwner` 的 Gmail 清單加入對方的 Gmail（全部小寫，例如 `['me@gmail.com', 'family@gmail.com']`）後發布。每個帳號的帳本各自獨立。
+  真實的 Gmail 只填在主控台；GitHub 上的 `firestore.rules` 保留範例文字。
 - **不要上傳到 GitHub：** 帳本備份（`.json`）和 `reference/`。`.gitignore` 已排除它們，但用 GitHub 網頁上傳時不會套用。
