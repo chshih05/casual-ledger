@@ -197,8 +197,8 @@ function renderAll() {
 }
 function discardForm() {
   modalState=null;
-  ['inputAmountExpr','inputMerchantSearch','inputRecordNote','inputRecordDate','inputInlineCatName'].forEach(id=>{if($(id))$(id).value='';});
-  $('inlineAddCatPanel').classList.add('hidden');
+  ['inputAmountExpr','inputMerchantSearch','inputRecordNote','inputRecordDate'].forEach(id=>{if($(id))$(id).value='';});
+  closeCategoryEditor();
 }
 function emptyForm(type='expense',date=today()) { return {editingRecordId:null,type,categoryId:'',date,amountExpr:'',selectedMerchant:'',note:''}; }
 function openNewRecordModal() {
@@ -234,6 +234,11 @@ function renderRecordModal() {
     b.onclick=()=>{d.categoryId=c.id;keypadOpen=true;renderRecordModal();$('inputAmountExpr').focus();};
     $('step1CategoryGrid').appendChild(b);
   });
+  // 分類最後面直接「＋ 新增」，新增完自動選取（不用先找到其他地方的按鈕）。
+  const add=document.createElement('button');add.type='button';add.className='category-add-tile';
+  add.innerHTML=`${PLUS_ICON}<span class="text-xs">新增</span>`;add.setAttribute('aria-label',`新增${d.type==='income'?'收入':'支出'}分類`);
+  add.onclick=()=>openCategoryEditor({type:d.type,from:'record'});
+  $('step1CategoryGrid').appendChild(add);
   $('step1CategoryGrid').classList.remove('hidden');
   $('categoryPrompt').classList.toggle('hidden',Boolean(cat));
   $('categoryPrompt').textContent='選擇分類，填入金額';
@@ -249,7 +254,7 @@ function renderRecordModal() {
   $('btnDeleteRecordInModal').classList.toggle('hidden',!isEdit);
   $('btnSaveAndNextRecord').classList.toggle('hidden',isEdit||!state.preferences.enableSaveAndNext);
   $('recordFormError').classList.add('hidden');
-  renderIconPickers();setKeypad(keypadOpen);updateCalcPreviewAndRecommendations();
+  setKeypad(keypadOpen);updateCalcPreviewAndRecommendations();
 }
 // 「常用」只看最近 6 個月：設定頁列出最常用的 12 個，記帳頁推薦 8 個；搜尋時仍包含所有店家。
 const RECENT_MONTHS=6,SETTINGS_FREQUENT_LIMIT=12,RECORD_SUGGEST_LIMIT=8;
@@ -282,16 +287,17 @@ function merchantManagerRows() {
   const type=state.merchantMgrType==='income'?'income':'expense',since=recentSince(),archived=new Set(state.archivedMerchants),usage=new Map();
   for(const r of state.records){
     if(!r.merchant)continue;
-    const u=usage.get(r.merchant)||{recent:0,last:''};
+    const u=usage.get(r.merchant)||{recent:0,last:'',ofType:0};
     if(r.date>=since)u.recent++;
     if(r.date>u.last)u.last=r.date;
+    if(r.type===type)u.ofType++;
     usage.set(r.merchant,u);
   }
   const all=state.merchants.filter(name=>(state.merchantTypes[name]==='income'?'income':'expense')===type).map(name=>{
     const u=usage.get(name),added=ownTime(state.entityTimes,'mer:'+name);
     // 手動新增、還沒用過的名稱：新增後 6 個月內也算常用。
     const fresh=!u&&added!==undefined&&today(new Date(added))>=since;
-    return {name,used:Boolean(u),archived:archived.has(name),recent:u?u.recent:fresh?1:0,last:u?u.last:fresh?today(new Date(added)):''};
+    return {name,used:Boolean(u),history:Boolean(u?.ofType),archived:archived.has(name),recent:u?u.recent:fresh?1:0,last:u?u.last:fresh?today(new Date(added)):''};
   }).sort((a,b)=>b.recent-a.recent||b.last.localeCompare(a.last)||a.name.localeCompare(b.name,'zh-TW'));
   const q=merchantMgrQuery.trim().toLocaleLowerCase();
   if(q)return {rows:all.filter(m=>m.name.toLocaleLowerCase().includes(q)),total:all.length,query:q};
@@ -305,7 +311,7 @@ function renderMerchantManager() {
     const row=document.createElement('div');row.className='flex items-center justify-between px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-xs';
     const meta=m.archived?'已停用':!m.used?(m.recent?'新加入':'尚未使用'):m.recent?`近半年 ${m.recent} 次`:`上次 ${m.last}`;
     row.innerHTML=`<span>${escapeHtml(m.name)} <span class="text-textDim">· ${meta}</span></span><div class="flex gap-1"></div>`;
-    [['rename','改名'],['merge','合併'],[m.archived?'restore':'archive',m.archived?'恢復':'停用']].forEach(([a,t])=>{const b=document.createElement('button');b.textContent=t;b.className='px-2 text-accent';b.onclick=()=>handleMerchantAction(a,m.name);row.lastElementChild.appendChild(b);});
+    [m.history?['history','紀錄']:null,['rename','改名'],['merge','合併'],[m.archived?'restore':'archive',m.archived?'恢復':'停用']].filter(Boolean).forEach(([a,t])=>{const b=document.createElement('button');b.textContent=t;b.className='px-2 text-accent';b.setAttribute('aria-label',`${m.name} ${t}`);b.onclick=()=>a==='history'?openMerchantHistory(m.name,{type:income?'income':'expense'}):handleMerchantAction(a,m.name);row.lastElementChild.appendChild(b);});
     list.appendChild(row);
   });
   if(!rows.length){const p=document.createElement('p');p.className='text-xs text-textMuted';p.textContent=query?`找不到「${merchantMgrQuery.trim()}」。`:total?'最近 6 個月沒有常用的，按「顯示全部」可以看到全部。':income?'還沒有收入來源。記收入時輸入來源名稱就會自動加入。':'還沒有店家。記帳時輸入店家名稱就會自動加入。';list.appendChild(p);}
@@ -324,6 +330,10 @@ function updateCalcPreviewAndRecommendations() {
 function renderMerchantChips(amount) {
   const input=$('inputMerchantSearch').value.trim(),source=modalState.type==='income';
   $('btnClearMerchant').classList.toggle('hidden',!input);
+  // 這家店（來源）以前記過的紀錄：只看不改，不會打斷正在記的這一筆。
+  const past=input?state.records.filter(r=>r.type===modalState.type&&r.merchant===input&&r.id!==modalState.editingRecordId).length:0;
+  $('btnMerchantHistory').classList.toggle('hidden',!past);
+  $('btnMerchantHistory').textContent=past?`看「${input}」以前的 ${past} 筆紀錄 ›`:'';
   const results=getRecommendedMerchants(modalState.categoryId,amount,input);
   $('merchantRecHint').textContent=input?(results.length?'搜尋結果':'可直接儲存這個名稱'):(amount>0?(source?'推薦來源':'依金額推薦'):(source?'常用來源':'常用店家'));
   const box=$('merchantChipsContainer');box.innerHTML='';
@@ -373,20 +383,7 @@ function handleMerchantAction(action,name) {
     if(!commit(s=>renameMerchant(s,name,target)))return false;renderAll();showToast('已更新，歷史金額保留');
   }});
 }
-function handleCategoryAction(action,id) {
-  const cat=getCategoryById(id),list=getCategoriesByType(cat.type);
-  if(action==='icon'){openCategoryIconPicker(cat);return;}
-  if(action==='delete'){
-    if(state.records.some(r=>r.categoryId===id))return showToast('紀錄仍使用此分類，請先改到其他分類。');
-    if((state.recurring||[]).some(r=>r.categoryId===id))return showToast('固定收支還在使用這個分類，請先修改或刪除。');
-    if(list.length<=1)return showToast('至少保留一個分類。');
-    openDialog({title:'刪除未使用分類？',message:cat.name,onConfirm:()=>{if(!commit(s=>s.categories=s.categories.filter(c=>c.id!==id)))return false;renderAll();}});return;
-  }
-  openDialog({title:'修改分類名稱',message:'歷史紀錄會顯示新名稱。',inputValue:cat.name,onConfirm:value=>{
-    const name=value.trim();if(!name||name.length>40||state.categories.some(c=>c.type===cat.type&&c.id!==id&&c.name===name))return showToast('名稱須為 1～40 字，且不可與同類型分類重複。'),false;
-    if(!commit(s=>s.categories.find(c=>c.id===id).name=name))return false;renderAll();
-  }});
-}
+const PLUS_ICON='<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>';
 const GRIP_ICON='<svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
 // 依畫面上的順序重新編號（1、2、3…）並存檔；focusId 是用鍵盤移動時要保留焦點的分類。
 function saveCategoryOrder(ids,focusId) {
@@ -460,8 +457,10 @@ function renderSettings() {
   getCategoriesByType(state.catMgrType).forEach(c=>{
     const row=document.createElement('div');row.className='category-row flex items-center justify-between px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-xs';row.dataset.id=c.id;
     row.innerHTML=`<span class="flex items-center gap-2"><button type="button" class="drag-handle" aria-label="拖曳調整「${escapeHtml(c.name)}」的順序，也可以用上下鍵">${GRIP_ICON}</button>${ICONS[c.icon]||ICONS.other}<span>${escapeHtml(c.name)}</span></span><div class="flex gap-1"></div>`;
-    const actions=row.lastElementChild;
-    [['icon','圖示'],['rename','改名'],['delete','刪除']].forEach(([a,text])=>{const b=document.createElement('button');b.textContent=text;b.className='px-2 text-accent';b.setAttribute('aria-label',c.name+' '+text);b.onclick=()=>handleCategoryAction(a,c.id);actions.appendChild(b);});
+    // 點分類（把手以外）就能改名、換圖示或刪除。
+    const edit=document.createElement('button');edit.type='button';edit.className='px-2 text-accent category-edit';edit.textContent='編輯 ›';edit.setAttribute('aria-label',`編輯「${c.name}」`);
+    row.lastElementChild.appendChild(edit);
+    row.onclick=e=>{if(!e.target.closest('.drag-handle'))openCategoryEditor({mode:'edit',id:c.id});};
     list.appendChild(row);
   });
   renderMerchantManager();
@@ -469,19 +468,11 @@ function renderSettings() {
   if(state.settingsPage==='data')renderCsvRanges();
   if(state.settingsPage==='budget')renderBudgetSettings();
   if(state.settingsPage==='recurring')renderRecurringSettings();
-  renderIconPickers();
-}
-function addCategory(inline=false) {
-  const input=$(inline?'inputInlineCatName':'inputNewCategoryName'),name=input.value.trim(),type=inline?modalState.type:state.catMgrType;
-  if(!name||name.length>40||state.categories.some(c=>c.type===type&&c.name===name))return showToast('分類名稱須為 1～40 字，且不可重複。');
-  const id=uid('cat'),order=Math.max(0,...getCategoriesByType(type).map(c=>c.order))+1;
-  if(!commit(s=>s.categories.push({id,type,name,order,icon:selectedIcon(inline?'inlineIconPickerGrid':'settingsIconPickerGrid')})))return;
-  input.value='';if(inline){modalState.categoryId=id;$('inlineAddCatPanel').classList.add('hidden');renderRecordModal();}else renderAll();
+  $('btnAddCategory').textContent=`＋ 新增${state.catMgrType==='income'?'收入':'支出'}分類`;
 }
 let dialogReturnFocus=null;
 function openDialog({title,message,inputValue,inputMode='text',textareaValue,hideCancel=false,checkbox,confirmText='確認',onConfirm}) {
   dialogReturnFocus=document.activeElement;
-  $('dialogIconPicker').classList.add('hidden');
   $('dialogTitle').textContent=title;$('dialogMessage').textContent=message||'';
   $('dialogInput').classList.toggle('hidden',inputValue===undefined);$('dialogInput').value=inputValue||'';$('dialogInput').inputMode=inputMode;
   $('dialogTextarea').classList.toggle('hidden',textareaValue===undefined);$('dialogTextarea').value=textareaValue||'';
@@ -685,9 +676,8 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(modalState.type===t)return;
     modalState.type=t;modalState.categoryId='';modalState.selectedMerchant='';renderRecordModal();
   }));
-  on('btnChangeCategoryInStep2','click',()=>{$('inlineAddCatPanel').classList.toggle('hidden');renderIconPickers();});
-  on('btnCloseInlineAddCat','click',()=>$('inlineAddCatPanel').classList.add('hidden'));
-  on('btnConfirmInlineAddCat','click',()=>addCategory(true));on('btnAddNewCategory','click',()=>addCategory(false));
+  on('btnAddCategory','click',()=>openCategoryEditor({type:state.catMgrType}));
+  setupCategoryEditor();
   on('inputAmountExpr','focus',()=>setKeypad(true));on('btnToggleKeypad','click',()=>setKeypad(!keypadOpen));
   on('inputAmountExpr','input',e=>{modalState.amountExpr=e.target.value;updateCalcPreviewAndRecommendations();});
   document.querySelectorAll('.keypad-btn').forEach(b=>b.onclick=()=>handleKeypadInput(b.dataset.key));
@@ -695,6 +685,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   on('btnApplyCalcNow','click',()=>{const p=evaluateSimpleMath(modalState.amountExpr);if(!p.valid)return formError('請先完成有效算式。');modalState.amountExpr=String(p.value);$('inputAmountExpr').value=modalState.amountExpr;updateCalcPreviewAndRecommendations();});
   on('inputMerchantSearch','focus',()=>setKeypad(false));on('inputRecordNote','focus',()=>setKeypad(false));
   on('inputMerchantSearch','input',e=>{modalState.selectedMerchant=e.target.value;updateCalcPreviewAndRecommendations();});
+  on('btnMerchantHistory','click',()=>{const name=$('inputMerchantSearch').value.trim();if(name)openMerchantHistory(name,{readOnly:true,type:modalState.type});});
   on('btnClearMerchant','click',()=>{modalState.selectedMerchant='';$('inputMerchantSearch').value='';updateCalcPreviewAndRecommendations();});
   on('inputRecordNote','input',e=>{modalState.note=e.target.value;});
   on('btnDateToggle','click',()=>{$('inputRecordDate').hidden=!$('inputRecordDate').hidden;if(!$('inputRecordDate').hidden)$('inputRecordDate').focus();});
@@ -723,8 +714,8 @@ window.addEventListener('DOMContentLoaded',async()=>{
   });
   on('dialogBtnCancel','click',closeDialog);
   document.addEventListener('keydown',e=>{
-    const modal=!$('modalDialog').classList.contains('hidden')?$('modalDialog'):!$('modalDrilldown').classList.contains('hidden')?$('modalDrilldown'):null;
-    if(e.key==='Escape'){if(modal?.id==='modalDialog')closeDialog();else if(modal)modal.classList.add('hidden');else if(state.activeView==='record')closeRecordPage();}
+    const modal=['modalDialog','modalCategory','modalDrilldown'].map($).find(m=>!m.classList.contains('hidden'))||null;
+    if(e.key==='Escape'){if(modal?.id==='modalDialog')closeDialog();else if(modal?.id==='modalCategory')closeCategoryEditor();else if(modal)modal.classList.add('hidden');else if(state.activeView==='record')closeRecordPage();}
     if(e.key==='Tab'&&modal){const nodes=[...modal.querySelectorAll('button,input,textarea')].filter(x=>!x.hidden&&!x.classList.contains('hidden')&&!x.disabled);const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
   });
   LedgerStore.watchOtherTabs(()=>showStorageError('帳本已在另一個分頁變更。請先下載帳本備份，再重新開啟，避免覆蓋。'));

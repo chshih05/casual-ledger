@@ -376,28 +376,75 @@
         list.appendChild(btn);
       });
     }
-    function openDrilldownModal(filterType, filterValue, titleName) {
-      const records = getStatsRecords().filter(r => {
-        if (filterType === 'category') return r.categoryId === filterValue;
-        const mKey = (r.merchant && r.merchant.trim() !== '') ? r.merchant.trim() : '__BLANK__';
-        return mKey === filterValue;
-      });
+    // 明細（分類或店家）：統計頁點進來先看這段期間，可以切到「全部時間」；
+    // 從設定頁或記帳頁點店家，直接看全部時間。全部時間依月份分組，並列出平均與最近一次。
+    // 只看同一種類型（店家看支出、收入來源看收入），合計與平均才不會混在一起。
+    let drilldown = null;
+    function openDrilldownModal(filterType, filterValue, titleName, opts = {}) {
+      drilldown = { filterType, filterValue, titleName, scope: opts.scope || 'period', switchable: opts.scope !== 'all', readOnly: Boolean(opts.readOnly), type: opts.type || state.statsType };
+      renderDrilldown();
+      document.getElementById('modalDrilldown').classList.remove('hidden');
+      document.getElementById('drilldownList').scrollTop = 0;
+    }
+    function openMerchantHistory(name, opts = {}) {
+      openDrilldownModal('merchant', name, name, Object.assign({ scope: 'all' }, opts));
+    }
+    function drilldownRecords() {
+      const d = drilldown;
+      const match = r => d.filterType === 'category' ? r.categoryId === d.filterValue : ((r.merchant && r.merchant.trim()) || '__BLANK__') === d.filterValue;
+      if (d.scope === 'period') return getStatsRecords().filter(match);
+      return state.records.filter(r => r.type === d.type && match(r))
+        .sort((a, b) => b.date.localeCompare(a.date) || (Number(a.seq) || 0) - (Number(b.seq) || 0));
+    }
+    const shortDate = date => { const [y, m, d] = date.split('-').map(Number); return `${y}/${m}/${d}`; };
+    function renderDrilldown() {
+      const d = drilldown, records = drilldownRecords(), all = d.scope === 'all';
       const sum = records.reduce((s, r) => s + r.amount, 0);
+      document.getElementById('drilldownTitle').textContent = `${d.titleName} — ${all ? '所有紀錄' : '明細紀錄'}`;
+      const parts = [];
+      if (!all) parts.push(isYearStats() ? `${state.currentMonth.slice(0, 4)} 年` : state.currentMonth);
+      parts.push(`共 ${records.length} 筆`, `合計 NT$ ${formatMoney(sum)}`);
+      if (all && records.length) parts.push(`平均每筆 NT$ ${formatMoney(sum / records.length)}`);
+      document.getElementById('drilldownSubtitle').textContent = parts.join('・');
+      const visits = document.getElementById('drilldownVisits');
+      visits.textContent = all && records.length ? `最近一次 ${shortDate(records[0].date)}・第一次 ${shortDate(records[records.length - 1].date)}` : '';
+      visits.classList.toggle('hidden', !visits.textContent);
 
-      document.getElementById('drilldownTitle').textContent = `${titleName} — 明細紀錄`;
-      const period = isYearStats() ? `${state.currentMonth.slice(0, 4)} 年` : state.currentMonth;
-      document.getElementById('drilldownSubtitle').textContent = `${period}・共 ${records.length} 筆・合計 NT$ ${formatMoney(sum)}`;
+      const scope = document.getElementById('drilldownScope');
+      scope.classList.toggle('hidden', !d.switchable);
+      if (d.switchable) {
+        const [y, m] = state.currentMonth.split('-');
+        scope.querySelector('[data-scope="period"]').textContent = isYearStats() ? `${y} 年` : `${y} 年 ${Number(m)} 月`;
+        scope.querySelectorAll('button').forEach(b => {
+          const on = b.dataset.scope === d.scope;
+          b.setAttribute('aria-pressed', String(on));
+          b.onclick = () => { if (on) return; d.scope = b.dataset.scope; renderDrilldown(); document.getElementById('drilldownList').scrollTop = 0; };
+        });
+      }
 
       const listEl = document.getElementById('drilldownList');
       listEl.innerHTML = '';
-
+      if (!records.length) {
+        listEl.innerHTML = '<div class="text-xs text-textDim py-4 text-center">沒有紀錄</div>';
+        return;
+      }
+      let month = '';
       records.forEach(rec => {
+        // 全部時間：每個月份前面加一行小計。
+        if (all && rec.date.slice(0, 7) !== month) {
+          month = rec.date.slice(0, 7);
+          const inMonth = records.filter(r => r.date.startsWith(month));
+          const head = document.createElement('div');
+          head.className = 'drilldown-month';
+          head.innerHTML = `<span>${Number(month.slice(0, 4))} 年 ${Number(month.slice(5))} 月</span><span>${inMonth.length} 筆・NT$ ${formatMoney(inMonth.reduce((s, r) => s + r.amount, 0))}</span>`;
+          listEl.appendChild(head);
+        }
         const cat = getCategoryById(rec.categoryId);
         const hasMerchant = rec.merchant && rec.merchant.trim() !== '';
         const title = hasMerchant ? rec.merchant.trim() : cat.name;
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'w-full p-3 rounded-xl bg-bgInput hover:bg-bgElevated border border-borderSubtle flex items-center justify-between text-left transition';
+        const row = document.createElement(d.readOnly ? 'div' : 'button');
+        if (!d.readOnly) row.type = 'button';
+        row.className = `w-full p-3 rounded-xl bg-bgInput border border-borderSubtle flex items-center justify-between text-left${d.readOnly ? '' : ' hover:bg-bgElevated transition'}`;
         row.innerHTML = `
           <div>
             <div class="flex items-center gap-2">
@@ -409,14 +456,12 @@
           </div>
           <div class="text-sm font-bold num-tabular text-textMain">NT$ ${formatMoney(rec.amount)}</div>
         `;
-        row.addEventListener('click', () => {
+        if (!d.readOnly) row.addEventListener('click', () => {
           document.getElementById('modalDrilldown').classList.add('hidden');
           openEditRecordModal(rec.id);
         });
         listEl.appendChild(row);
       });
-
-      document.getElementById('modalDrilldown').classList.remove('hidden');
     }
     function escapeHtml(str) {
       return String(str || '')

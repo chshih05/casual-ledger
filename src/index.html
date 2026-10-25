@@ -154,28 +154,11 @@
             <span id="step2CatIcon" class="text-accent shrink-0"></span>
             <span id="step2CatName" class="text-xs font-bold text-accent">晚餐</span>
           </div>
-          <button id="btnChangeCategoryInStep2" type="button" class="text-[11px] px-2.5 py-1 rounded-lg bg-bgElevated hover:bg-borderSubtle text-accent font-medium transition">
-            ＋ 新增分類
-          </button>
         </div>
 
-        <!-- 固定順序大分類網格 -->
+        <!-- 分類網格（使用者排的順序），最後一格是「＋ 新增」 -->
         <p id="categoryPrompt" class="text-sm text-textMuted">選擇分類，填入金額</p><div id="step1CategoryGrid" class="grid grid-cols-5 gap-2"></div>
 
-        <!-- 記帳頁內直接展開「新增大分類 ＋ 24 款圖示選擇器」 -->
-        <div id="inlineAddCatPanel" class="hidden pt-3 mt-2 border-t border-borderSubtle space-y-2.5 animate-fade">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-accent">新增自訂分類</span>
-            <button id="btnCloseInlineAddCat" type="button" class="text-[11px] text-textMuted hover:text-textMain">收起 ✕</button>
-          </div>
-          <div id="inlineIconPickerGrid" class="icon-picker"></div>
-          <div class="flex gap-2">
-            <input id="inputInlineCatName" type="text" placeholder="輸入新大分類名稱（例如：宵夜、加油）..." class="flex-1 bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-xs text-textMain focus:outline-none focus:border-accent" />
-            <button id="btnConfirmInlineAddCat" type="button" class="px-3.5 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover shrink-0 transition">
-              新增並選取
-            </button>
-          </div>
-        </div>
         <div id="singleAmountBox" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
           <div class="flex items-center justify-between">
             <label for="inputAmountExpr" class="text-xs font-medium text-textMuted">金額</label>
@@ -233,6 +216,9 @@
           <div class="relative flex items-center gap-2">
             <input id="inputMerchantSearch" type="text" maxlength="100" placeholder="搜尋或輸入店家名稱" class="w-full bg-bgInput border border-borderSubtle rounded-xl px-3.5 py-2.5 text-sm text-textMain focus:outline-none focus:border-accent" />
           </div>
+
+          <!-- 這家店（收入來源）以前的所有紀錄 -->
+          <button id="btnMerchantHistory" type="button" class="hidden merchant-history-link"></button>
 
           <!-- 智慧推薦依據說明列 -->
           <div class="flex items-center justify-between text-[11px]">
@@ -514,7 +500,7 @@
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-sm font-semibold text-textMain">分類管理</h3>
-            <p class="text-xs text-textMuted mt-0.5">按住左邊的把手拖曳調整順序；改名會同步更新紀錄，有帳目時禁止誤刪</p>
+            <p class="text-xs text-textMuted mt-0.5">點分類可以改名、換圖示或刪除；按住左邊的把手拖曳調整順序</p>
           </div>
           <div class="inline-flex rounded-lg bg-bgInput p-0.5 border border-borderSubtle text-xs shrink-0">
             <button id="catMgrTabExpense" type="button" class="px-2.5 py-1 rounded-md bg-accent text-bgMain font-medium">支出</button>
@@ -522,14 +508,7 @@
           </div>
         </div>
         <div id="settingsCategoryList" class="space-y-1.5"></div>
-        <div class="pt-2 border-t border-borderSubtle/60 space-y-2">
-          <div class="text-xs font-medium text-textMuted">新增分類：選擇圖示與名稱</div>
-          <div id="settingsIconPickerGrid" class="icon-picker"></div>
-          <div class="flex gap-2 pt-1">
-            <input id="inputNewCategoryName" type="text" placeholder="輸入新分類名稱..." class="flex-1 bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-xs text-textMain focus:outline-none focus:border-accent" />
-            <button id="btnAddNewCategory" type="button" class="px-3.5 py-2 rounded-xl bg-accent text-bgMain text-xs font-semibold hover:bg-accentHover transition">新增分類</button>
-          </div>
-        </div>
+        <button id="btnAddCategory" type="button" class="category-add-row">＋ 新增支出分類</button>
       </section>
 
       </div>
@@ -653,12 +632,54 @@
         <div>
           <h3 id="drilldownTitle" class="text-sm font-bold text-textMain">分類明細</h3>
           <p id="drilldownSubtitle" class="text-xs text-textMuted mt-0.5">共 0 筆・合計 NT$ 0</p>
+          <p id="drilldownVisits" class="hidden text-xs text-textMuted mt-0.5"></p>
         </div>
         <button id="btnCloseDrilldown" aria-label="關閉明細" type="button" class="p-1.5 rounded-xl text-textMuted hover:text-textMain hover:bg-bgElevated">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
+      <div id="drilldownScope" role="group" aria-label="期間" class="hidden drilldown-scope">
+        <button type="button" data-scope="period">這段期間</button>
+        <button type="button" data-scope="all">全部時間</button>
+      </div>
       <div id="drilldownList" class="p-4 overflow-y-auto space-y-2.5 flex-1"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 分類編輯（新增與修改共用；見 52-category-editor.js） ==================== -->
+  <div id="modalCategory" role="dialog" aria-modal="true" aria-labelledby="catEditorTitle" class="fixed inset-0 z-40 hidden bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="cat-sheet animate-fade">
+      <div class="cat-sheet-head">
+        <h3 id="catEditorTitle" class="text-sm font-bold text-textMain">新增支出分類</h3>
+        <button id="btnCatEditorClose" type="button" aria-label="關閉" class="p-1.5 rounded-xl text-textMuted hover:text-textMain hover:bg-bgElevated">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="cat-sheet-body">
+        <div class="cat-name-row">
+          <div id="catEditorPreview" class="cat-preview" aria-hidden="true"></div>
+          <label class="cat-name-field">
+            <span>名稱</span>
+            <input id="catEditorName" type="text" maxlength="40" autocomplete="off" enterkeyhint="done" placeholder="例如：宵夜、加油、寵物" class="cat-name-input" />
+          </label>
+        </div>
+        <p id="catEditorError" class="hidden text-xs text-dangerRed" role="alert"></p>
+        <p id="catEditorHint" class="cat-hint" aria-live="polite"></p>
+        <div id="catEditorSuggestWrap">
+          <div class="cat-section-title">常見分類，點一下直接套用</div>
+          <div id="catEditorSuggest" class="cat-suggest-list"></div>
+        </div>
+        <div>
+          <div class="cat-section-title">圖示</div>
+          <div id="categoryEditorIcons" class="icon-picker"></div>
+        </div>
+      </div>
+      <div class="cat-sheet-foot">
+        <button id="btnCatEditorDelete" type="button" class="hidden cat-delete">刪除分類</button>
+        <span class="flex-1"></span>
+        <button id="btnCatEditorCancel" type="button" class="px-3.5 py-2 rounded-xl bg-bgElevated text-xs font-medium text-textMuted hover:text-textMain">取消</button>
+        <button id="btnCatEditorSave" type="button" class="px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">新增</button>
+      </div>
     </div>
   </div>
 
@@ -667,7 +688,7 @@
     <div class="w-full max-w-sm bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3 animate-fade">
       <h4 id="dialogTitle" class="text-sm font-bold text-textMain">提示</h4>
       <p id="dialogMessage" class="text-xs text-textMuted leading-relaxed"></p>
-      <div id="dialogIconPicker" class="icon-picker hidden"></div><input id="dialogInput" type="text" class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-sm text-textMain focus:outline-none focus:border-accent" />
+      <input id="dialogInput" type="text" class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-sm text-textMain focus:outline-none focus:border-accent" />
       <textarea id="dialogTextarea" rows="7" readonly class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl p-2.5 text-[11px] font-mono text-textMuted focus:outline-none"></textarea>
       <label id="dialogCheckWrap" class="hidden dialog-check"><input id="dialogCheck" type="checkbox" /><span id="dialogCheckLabel"></span></label>
       <div class="flex justify-end gap-2 pt-1">

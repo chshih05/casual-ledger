@@ -520,46 +520,227 @@
       ['food', 'transport_general', 'shopping', 'home', 'bills', 'medical', 'entertainment', 'travel', 'education', 'family', 'social', 'finance', 'income', 'other']);
     assert(a.ev('getInitialState().categories.every(c => ICON_CATALOG.some(i => i.key === c.icon))'), '預設分類用的圖示都還選得到');
     openSettings(a, 'categories');
-    const picker = a.$('settingsIconPickerGrid');
+    a.click('btnAddCategory');
+    const picker = a.$('categoryEditorIcons');
     assert(!picker.querySelector('select') && !picker.textContent.includes('大方向'), '不應再有大方向／細項的選單或標籤');
+    assert(!picker.querySelector('input') && !picker.textContent.includes('已選') && !picker.textContent.includes('／126'), '沒有搜尋框、已選與數量（打名稱就會選圖示，上方預覽已經顯示選中的圖示）');
   });
 
-  test('圖示｜點大分類只顯示該組，搜尋時找全部大分類', async () => {
+  test('圖示｜點大分類只顯示該組，點「全部」顯示全部大分類', async () => {
     const a = await personalApp();
     openSettings(a, 'categories');
-    const id = 'settingsIconPickerGrid';
+    a.click('btnAddCategory');
+    const id = 'categoryEditorIcons', options = () => a.$(id).querySelectorAll('.icon-option').length;
+    eq([activeChip(a, id), pickerGroups(a, id).length, options()], ['全部', 14, 126]);
     a.click(a.$(id).querySelector('.icon-chip[data-group="交通"]'));
-    eq(pickerGroups(a, id), ['交通']);
-    eq(a.$(id).querySelector('.icon-results-count').textContent, '顯示 12／126 個圖示');
-    const search = a.$(id).querySelector('.icon-search');
-    search.value = '咖啡';
-    search.dispatchEvent(new a.w.Event('input', { bubbles: true }));
-    eq(pickerGroups(a, id), ['餐飲'], '搜尋不受選中的大分類限制');
-    eq(activeChip(a, id), '全部');
+    eq([activeChip(a, id), pickerGroups(a, id), options()], ['交通', ['交通'], 12]);
     a.click(a.$(id).querySelector('.icon-chip[data-group="財務"]'));
-    eq(search.value, '', '點大分類會清除搜尋字');
     eq(pickerGroups(a, id), ['財務']);
+    a.click(a.$(id).querySelector('.icon-chip[data-group=""]'));
+    eq([activeChip(a, id), pickerGroups(a, id).length, options()], ['全部', 14, 126]);
   });
 
-  test('圖示｜新增收入分類時先顯示「收入」大分類', async () => {
+  test('圖示｜新增收入分類時先顯示「收入」大分類；修改分類時直接顯示目前圖示的大分類', async () => {
     const a = await personalApp();
+    const id = 'categoryEditorIcons';
     openSettings(a, 'categories');
-    const id = 'settingsIconPickerGrid';
+    a.click('btnAddCategory');
+    eq(a.text('catEditorTitle'), '新增支出分類');
     eq(activeChip(a, id), '全部');
+    a.click('btnCatEditorCancel');
     a.click('catMgrTabIncome');
+    eq(a.text('btnAddCategory'), '＋ 新增收入分類');
+    a.click('btnAddCategory');
+    eq(a.text('catEditorTitle'), '新增收入分類');
     eq(activeChip(a, id), '收入');
     eq(pickerGroups(a, id), ['收入']);
-    eq(a.ev('selectedIcon("settingsIconPickerGrid")'), 'income');
-    a.click(a.$(id).querySelector('.icon-chip[data-group="其他"]'));
-    a.ev('renderAll()');
-    eq(activeChip(a, id), '其他', '畫面更新時不會蓋掉自己點的大分類');
-    a.click('catMgrTabExpense');
-    eq(activeChip(a, id), '全部');
-    eq(a.ev('selectedIcon("settingsIconPickerGrid")'), 'dinner');
+    eq(a.ev(`selectedIcon("${id}")`), 'income');
+    a.click('btnCatEditorCancel');
+    const salary = [...a.$('settingsCategoryList').querySelectorAll('.category-row')].find(r => r.textContent.includes('薪資'));
+    a.click(salary.querySelector('.category-edit'));
+    eq(a.text('catEditorTitle'), '編輯分類');
+    eq(activeChip(a, id), '收入', '修改時顯示目前圖示所在的大分類');
+    a.click('btnCatEditorCancel');
     a.click('btnOpenAddModal');
     a.click('modalTypeIncome');
-    a.click('btnChangeCategoryInStep2');
-    eq(activeChip(a, 'inlineIconPickerGrid'), '收入', '記帳頁新增收入分類也先顯示收入');
+    a.click(a.$('step1CategoryGrid').querySelector('.category-add-tile'));
+    eq(activeChip(a, id), '收入', '記帳頁新增收入分類也先顯示收入');
+  });
+
+  // ---------- 分類：新增與修改（同一個畫面） ----------
+  const typeName = (a, value) => { a.$('catEditorName').value = value; a.$('catEditorName').dispatchEvent(new a.w.Event('input', { bubbles: true })); };
+  const categoryRow = (a, name) => [...a.$('settingsCategoryList').querySelectorAll('.category-row')].find(r => r.firstElementChild.lastElementChild.textContent === name);
+
+  test('分類｜記帳頁分類最後一格就是「＋ 新增」：打名稱自動建議圖示，新增後直接選取', async () => {
+    const a = await personalApp();
+    a.click('btnOpenAddModal');
+    const tiles = () => [...a.$('step1CategoryGrid').querySelectorAll('button')];
+    eq(tiles().at(-1).textContent.trim(), '新增');
+    assert(!a.$('btnChangeCategoryInStep2') && !a.$('inlineAddCatPanel'), '不再有角落的小按鈕與展開的面板');
+    a.click(tiles().at(-1));
+    assert(a.visible('modalCategory'));
+    eq(a.text('catEditorTitle'), '新增支出分類');
+    eq(a.d.activeElement.id, 'catEditorName', '先打名稱');
+    eq(a.text('btnCatEditorSave'), '新增並選取');
+    eq(a.ev('selectedIcon("categoryEditorIcons")'), 'other', '還沒打名稱時是「其他」，不會預設成不相關的圖示');
+    typeName(a, '加油');
+    eq(a.ev('selectedIcon("categoryEditorIcons")'), 'fuel');
+    typeName(a, '隨便');
+    eq([a.ev('selectedIcon("categoryEditorIcons")'), a.text('catEditorHint')], ['other', ''], '名稱對不到圖示時換回「其他」，不留下和名稱無關的圖示');
+    typeName(a, '加油');
+    eq(a.text('catEditorPreview'), '加油', '上方預覽在記帳頁的樣子');
+    assert(a.text('catEditorHint').includes('已依名稱選了「加油」圖示'), a.text('catEditorHint'));
+    a.click('btnCatEditorSave');
+    assert(!a.visible('modalCategory'));
+    const cat = a.ev('state.categories.find(c => c.name === "加油")');
+    eq([cat.type, cat.icon, cat.order], ['expense', 'fuel', 11]);
+    eq(a.ev('modalState.categoryId'), cat.id, '新增後直接選取');
+    eq(a.text('step2CatName'), '加油');
+    eq(tiles().at(-2).textContent.trim(), '加油', '排在最後，「＋ 新增」仍是最後一格');
+    eq(a.text('toastBox'), '已新增「加油」');
+  });
+
+  test('分類｜常見分類一鍵套用；先挑圖示時帶入圖示名稱；自己挑過圖示後，打名稱不再換圖示', async () => {
+    const a = await personalApp();
+    openSettings(a, 'categories');
+    a.click('btnAddCategory');
+    const chips = () => [...a.$('catEditorSuggest').querySelectorAll('.cat-suggest')];
+    assert(chips().length > 5);
+    a.click(chips().find(c => c.textContent === '寵物'));
+    eq(a.$('catEditorName').value, '寵物');
+    eq(a.ev('selectedIcon("categoryEditorIcons")'), 'pet');
+    eq(chips().find(c => c.textContent === '寵物').getAttribute('aria-pressed'), 'true');
+    typeName(a, '');
+    a.click(a.$('categoryEditorIcons').querySelector('.icon-option[data-icon="coffee"]'));
+    eq(a.$('catEditorName').value, '咖啡', '名稱還空著時帶入圖示名稱');
+    typeName(a, '加油錢');
+    eq(a.ev('selectedIcon("categoryEditorIcons")'), 'coffee', '自己挑的圖示不會被名稱建議蓋掉');
+    a.click('btnCatEditorSave');
+    eq(a.ev('state.categories.find(c => c.name === "加油錢").icon'), 'coffee');
+    eq(a.text('toastBox'), '已新增「加油錢」');
+    a.ev(`commit(s => s.categories.push({ id: 'cat_pet', type: 'expense', name: '寵物', icon: 'pet', order: 99 }))`);
+    a.click('btnAddCategory');
+    assert(!chips().some(c => c.textContent === '寵物'), '已經有的分類不再出現在常見分類');
+  });
+
+  test('分類｜名稱空白或重複時在畫面上提示、不關閉；Esc 或點背景可以關閉', async () => {
+    const a = await personalApp();
+    openSettings(a, 'categories');
+    a.click('btnAddCategory');
+    a.click('btnCatEditorSave');
+    eq(a.text('catEditorError'), '請輸入分類名稱。');
+    assert(a.visible('modalCategory'));
+    typeName(a, '午餐');
+    a.click('btnCatEditorSave');
+    eq(a.text('catEditorError'), '已經有「午餐」這個分類了。');
+    typeName(a, '午餐2');
+    assert(!a.visible('catEditorError'), '修改名稱後清掉錯誤');
+    a.d.dispatchEvent(new a.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert(!a.visible('modalCategory'));
+    assert(!a.ev('state.categories.some(c => c.name === "午餐2")'), '按 Esc 不會儲存');
+    a.click('btnAddCategory');
+    const backdrop = a.$('modalCategory');
+    backdrop.dispatchEvent(new a.w.PointerEvent('pointerdown', { bubbles: true }));
+    a.click(backdrop);
+    assert(!a.visible('modalCategory'), '點背景關閉');
+  });
+
+  test('分類｜設定頁點分類就能改名、換圖示；有紀錄使用時不能刪除，沒有就能刪', async () => {
+    const a = await personalApp();
+    addRecord(a, { cat: 0, amount: '50' });
+    openSettings(a, 'categories');
+    a.click(categoryRow(a, '午餐').querySelector('.drag-handle'));
+    assert(!a.visible('modalCategory'), '點把手不會打開編輯');
+    a.click(categoryRow(a, '早餐').firstElementChild.lastElementChild);
+    eq(a.text('catEditorTitle'), '編輯分類');
+    eq(a.$('catEditorName').value, '早餐');
+    assert(!a.visible('catEditorSuggestWrap'), '修改時不顯示常見分類');
+    eq(a.$('categoryEditorIcons').querySelector('.icon-chip[aria-pressed="true"]').textContent, '餐飲', '直接顯示目前圖示所在的大分類');
+    typeName(a, '早午餐');
+    eq(a.ev('selectedIcon("categoryEditorIcons")'), 'breakfast', '改名不會自動換掉原本的圖示');
+    a.click(a.$('categoryEditorIcons').querySelector('.icon-option[data-icon="bread"]'));
+    a.click('btnCatEditorSave');
+    eq(a.ev('getCategoryById("cat_breakfast")'), { id: 'cat_breakfast', type: 'expense', name: '早午餐', icon: 'bread', order: 1 });
+    eq(a.text('toastBox'), '已更新分類');
+    a.click(categoryRow(a, '早午餐').querySelector('.category-edit'));
+    a.click('btnCatEditorDelete');
+    eq(a.text('catEditorError'), '還有紀錄使用這個分類，請先把那些紀錄改到其他分類。');
+    a.click('btnCatEditorCancel');
+    a.click(categoryRow(a, '晚餐').querySelector('.category-edit'));
+    a.click('btnCatEditorDelete');
+    eq(a.text('dialogTitle'), '刪除分類？');
+    a.click('dialogBtnConfirm');
+    await waitFor(() => !a.visible('modalDialog'));
+    assert(!a.visible('modalCategory'));
+    assert(!a.ev('state.categories.some(c => c.id === "cat_dinner")'));
+  });
+
+  test('分類｜依名稱建議圖示：完全相同優先，收入分類優先用收入圖示', async () => {
+    const a = await personalApp();
+    const s = (name, type = 'expense') => a.ev(`suggestIcon(${JSON.stringify(name)}, '${type}')`);
+    eq(['加油', '宵夜', '停車費', 'Netflix', '房租', '孝親費', '寵物美容'].map(n => s(n)), ['fuel', 'dinner', 'parking', 'streaming', 'rent', 'elder', 'pet_care']);
+    eq(['水電瓦斯', '手機費', '看醫生'].map(n => s(n)), ['electricity', 'phone', 'doctor']);
+    eq(s('利息', 'income'), 'bank', '收入的利息是利息股息');
+    eq(s('利息'), 'loan', '支出的利息是貸款');
+    eq(s('隨便'), null);
+    eq(a.ev('Object.entries(CATEGORY_SUGGESTIONS).flatMap(([type, list]) => list.filter(([name, key]) => suggestIcon(name, type) !== key).map(([name]) => name))'), [], '常見分類的名稱和建議的圖示一致');
+  });
+
+  // ---------- 店家：以前的所有紀錄 ----------
+  const ymd = (month, d) => { const [y, m] = month.split('-').map(Number); return `${y}/${m}/${d}`; };
+  async function historyApp() {
+    const a = await personalApp();
+    const k = monthsFromNow(a);
+    const rec = (id, date, amount, merchant, categoryId = 'cat_lunch') => ({ id, seq: 1, type: 'expense', date, categoryId, amount, merchant, note: '' });
+    await importBackup(a, { records: [
+      rec('h1', `${k(0)}-01`, 100, '全家'), rec('h2', `${k(-1)}-05`, 200, '全家', 'cat_drink'), rec('h3', `${k(-1)}-20`, 300, '全家'),
+      rec('h4', `${k(-3)}-02`, 400, '全家'), rec('h5', `${k(0)}-01`, 999, '7-11'),
+      { ...rec('h6', `${k(0)}-02`, 50, '全家', 'cat_salary'), type: 'income' },
+    ], categories: defaultCategories(a), merchants: [] });
+    return { a, k };
+  }
+
+  test('店家｜統計頁點店家先看這段期間，可以切到全部時間：依月份分組、平均與最近一次；只算同一種類型', async () => {
+    const { a, k } = await historyApp();
+    a.click('navBtnStats');
+    a.click([...a.$('statsMerchantList').children].find(b => b.textContent.includes('全家')));
+    eq(a.$('drilldownList').children.length, 1, '這個月只有 1 筆');
+    assert(a.visible('drilldownScope'));
+    a.click(a.$('drilldownScope').querySelector('[data-scope="all"]'));
+    eq(a.text('drilldownTitle'), '全家 — 所有紀錄');
+    eq(a.text('drilldownSubtitle'), '共 4 筆・合計 NT$ 1,000・平均每筆 NT$ 250', '同一家店記成收入的退款不算在支出裡');
+    eq(a.text('drilldownVisits'), `最近一次 ${ymd(k(0), 1)}・第一次 ${ymd(k(-3), 2)}`);
+    eq([...a.$('drilldownList').querySelectorAll('.drilldown-month')].map(h => [...h.children].map(s => s.textContent).join(' | ')),
+      [k(0), k(-1), k(-3)].map((m, i) => `${Number(m.slice(0, 4))} 年 ${Number(m.slice(5))} 月 | ${['1 筆・NT$ 100', '2 筆・NT$ 500', '1 筆・NT$ 400'][i]}`));
+    a.click(a.$('drilldownScope').querySelector('[data-scope="period"]'));
+    eq(a.$('drilldownList').children.length, 1, '切回這段期間');
+  });
+
+  test('店家｜設定頁的「紀錄」與記帳頁的連結都能看到以前的紀錄；記帳頁開的只能看，不會打斷正在記的這一筆', async () => {
+    const { a } = await historyApp();
+    openSettings(a, 'merchants');
+    const row = [...a.$('settingsMerchantList').children].find(r => r.textContent.includes('全家'));
+    a.click([...row.querySelectorAll('button')].find(b => b.textContent === '紀錄'));
+    eq(a.text('drilldownTitle'), '全家 — 所有紀錄');
+    assert(!a.visible('drilldownScope'), '直接看全部時間');
+    eq(a.$('drilldownList').querySelectorAll('button').length, 4, '從設定頁開的可以點進去修改');
+    a.click('btnCloseDrilldown');
+    a.click('btnOpenAddModal');
+    a.click(a.$('step1CategoryGrid').querySelectorAll('button')[1]);
+    a.type('inputAmountExpr', '55');
+    a.type('inputMerchantSearch', '全家');
+    eq(a.text('btnMerchantHistory'), '看「全家」以前的 4 筆紀錄 ›');
+    a.click('btnMerchantHistory');
+    assert(a.visible('modalDrilldown'));
+    eq(a.$('drilldownList').querySelectorAll('button').length, 0, '只能看，不會跳去修改別筆');
+    a.click('btnCloseDrilldown');
+    eq(a.ev('modalState.amountExpr'), '55', '正在記的內容還在');
+    a.type('inputMerchantSearch', '新店家');
+    assert(!a.visible('btnMerchantHistory'), '沒有紀錄的店家不顯示連結');
+    a.click('modalTypeIncome');
+    a.click(a.$('step1CategoryGrid').querySelectorAll('button')[0]);
+    a.type('inputMerchantSearch', '全家');
+    eq(a.text('btnMerchantHistory'), '看「全家」以前的 1 筆紀錄 ›', '記收入時只算收入');
   });
 
   // ---------- 分類：拖曳排序 ----------
@@ -969,8 +1150,9 @@
     a.ev(`commit(s => { s.merchants.push('中華電信'); s.merchantTypes['中華電信'] = 'expense'; s.recurring.push({ id: 'rule_t', type: 'expense', categoryId: 'cat_bills', amount: 300, merchant: '中華電信', note: '', freq: 'month', day: 1, next: '2099-01-01' }); })`);
     openSettings(a, 'categories');
     const row = [...a.$('settingsCategoryList').querySelectorAll('.category-row')].find(r => r.textContent.includes('帳單固定'));
-    a.click([...row.querySelectorAll('button')].find(b => b.textContent === '刪除'));
-    eq(a.text('toastBox'), '固定收支還在使用這個分類，請先修改或刪除。');
+    a.click(row.querySelector('.category-edit'));
+    a.click('btnCatEditorDelete');
+    eq(a.text('catEditorError'), '固定收支還在使用這個分類，請先修改或刪除。');
     assert(a.ev('state.categories.some(c => c.id === "cat_bills")'));
     a.ev(`commit(s => renameMerchant(s, '中華電信', '中華電信 4G'))`);
     eq(a.ev('state.recurring[0].merchant'), '中華電信 4G');
