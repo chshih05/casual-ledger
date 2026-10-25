@@ -20,7 +20,7 @@ function openCategoryEditor({mode='add',type='expense',id=null,from='settings'}=
   catEditor={mode,type,id,from,iconTouched:mode==='edit',hint:'',returnFocus:document.activeElement};
   // 新增收入分類先顯示「收入」大分類；修改時直接顯示目前圖示所在的大分類，不用往下找。
   const picker=pickerState(CAT_PICKER),key=cat?(Object.hasOwn(ICONS,cat.icon)?cat.icon:'other'):defaultCategoryIcon(type);
-  Object.assign(picker,{key,query:'',group:cat?(ICON_CATALOG.find(i=>i.key===key)?.group||''):type==='income'?'收入':'',reveal:true,onPick:onCategoryIconPick});
+  Object.assign(picker,{key,group:cat?(ICON_CATALOG.find(i=>i.key===key)?.group||''):type==='income'?'收入':'',reveal:true,onPick:onCategoryIconPick});
   $('catEditorTitle').textContent=cat?'編輯分類':type==='income'?'新增收入分類':'新增支出分類';
   $('catEditorName').value=cat?cat.name:'';
   $('catEditorError').classList.add('hidden');

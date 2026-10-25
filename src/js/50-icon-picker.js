@@ -1,13 +1,8 @@
 const iconPickerStates=new Map();
 const ICON_GROUPS=[...new Set(ICON_CATALOG.map(item=>item.group))];
 function pickerState(id) {
-  if(!iconPickerStates.has(id))iconPickerStates.set(id,{key:'other',query:'',group:'',reveal:false,onPick:null});
+  if(!iconPickerStates.has(id))iconPickerStates.set(id,{key:'other',group:'',reveal:false,onPick:null});
   return iconPickerStates.get(id);
-}
-// 有輸入搜尋字時找全部大分類；沒有時只顯示選中的大分類。
-function filteredIcons(picker) {
-  const words=picker.query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return ICON_CATALOG.filter(item=>(words.length||!picker.group||item.group===picker.group)&&words.every(word=>`${item.label} ${item.group} ${item.key} ${item.keywords}`.toLocaleLowerCase().includes(word)));
 }
 function selectedIcon(id) { return pickerState(id).key; }
 // 依分類名稱建議圖示：和圖示名稱相同最優先，其次是和關鍵字相同、互相包含（取最長的相符字）。
@@ -30,42 +25,35 @@ function suggestIcon(name,type='expense') {
   }
   return best;
 }
+// 圖示依大分類分組，點「全部」或某個大分類切換。不另外提供搜尋：打分類名稱就會自動選最接近的圖示；
+// 選中的圖示顯示在分類編輯上方的預覽，這裡也不再重複列出。
 function renderIconPicker(id) {
   const host=document.getElementById(id),picker=pickerState(id);
   if(!host.dataset.ready){
     host.dataset.ready='true';
-    host.innerHTML=`<input type="search" class="icon-search" aria-label="搜尋分類圖示" placeholder="搜尋：咖啡、停車、保險…" autocomplete="off" />
-      <div class="icon-group-chips" role="group" aria-label="圖示大分類">${['',...ICON_GROUPS].map(group=>`<button type="button" class="icon-chip" data-group="${escapeHtml(group)}">${group?escapeHtml(group):'全部'}</button>`).join('')}</div>
-      <div class="icon-selected" aria-live="polite"></div><div class="icon-results-count" aria-live="polite"></div><div class="icon-results"></div>`;
-    host.querySelector('.icon-search').oninput=e=>{picker.query=e.target.value;renderPickerResults(id);};
-    host.querySelectorAll('.icon-chip').forEach(chip=>chip.onclick=()=>{picker.group=chip.dataset.group;picker.query='';host.querySelector('.icon-search').value='';renderPickerResults(id);});
+    host.innerHTML=`<div class="icon-group-chips" role="group" aria-label="圖示大分類">${['',...ICON_GROUPS].map(group=>`<button type="button" class="icon-chip" data-group="${escapeHtml(group)}">${group?escapeHtml(group):'全部'}</button>`).join('')}</div>
+      <div class="icon-results"></div>`;
+    host.querySelectorAll('.icon-chip').forEach(chip=>chip.onclick=()=>{picker.group=chip.dataset.group;renderPickerResults(id);});
   }
-  host.querySelector('.icon-search').value=picker.query;
   renderPickerResults(id);
 }
 // 改變選取的圖示（點選或依名稱建議）：只更新選取狀態，不改變顯示的大分類與捲動位置。
 function selectPickerIcon(id,key) {
-  const host=document.getElementById(id);
   pickerState(id).key=key;
-  host.querySelectorAll('.icon-option').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.icon===key)));
-  host.querySelector('.icon-selected').innerHTML=`${ICONS[key]||ICONS.other}<span>已選：${escapeHtml(ICON_LABELS[key]||'其他')}</span>`;
+  document.getElementById(id).querySelectorAll('.icon-option').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.icon===key)));
 }
 function renderPickerResults(id) {
-  const host=document.getElementById(id),picker=pickerState(id),items=filteredIcons(picker);
-  const active=picker.query.trim()?'':picker.group,chips=host.querySelector('.icon-group-chips');
-  chips.querySelectorAll('.icon-chip').forEach(chip=>chip.setAttribute('aria-pressed',String(chip.dataset.group===active)));
+  const host=document.getElementById(id),picker=pickerState(id),chips=host.querySelector('.icon-group-chips');
+  chips.querySelectorAll('.icon-chip').forEach(chip=>chip.setAttribute('aria-pressed',String(chip.dataset.group===picker.group)));
   // 預設跳到「收入」這類排在後面的大分類時，把按鈕捲到看得見的位置；畫面還沒顯示時等下次再捲。
   if(picker.reveal&&chips.clientWidth){
     const chip=chips.querySelector('.icon-chip[aria-pressed="true"]');
     chips.scrollLeft+=chip.getBoundingClientRect().left-chips.getBoundingClientRect().left-8;
     picker.reveal=false;
   }
-  host.querySelector('.icon-selected').innerHTML=`${ICONS[picker.key]||ICONS.other}<span>已選：${escapeHtml(ICON_LABELS[picker.key]||'其他')}</span>`;
-  host.querySelector('.icon-results-count').textContent=`顯示 ${items.length}／${ICON_CATALOG.length} 個圖示`;
-  const results=host.querySelector('.icon-results');results.innerHTML='';
-  if(!items.length){const empty=document.createElement('p');empty.className='icon-empty';empty.textContent='找不到相符圖示，試試其他關鍵字。';results.appendChild(empty);return;}
-  for(const group of ICON_GROUPS){
-    const groupItems=items.filter(item=>item.group===group);if(!groupItems.length)continue;
+  const results=host.querySelector('.icon-results');results.innerHTML='';results.scrollTop=0;
+  for(const group of picker.group?[picker.group]:ICON_GROUPS){
+    const groupItems=ICON_CATALOG.filter(item=>item.group===group);
     const section=document.createElement('section');section.className='icon-group-section';
     const title=document.createElement('h4');title.textContent=group;section.appendChild(title);
     const grid=document.createElement('div');grid.className='icon-options';

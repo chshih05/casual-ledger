@@ -523,24 +523,21 @@
     a.click('btnAddCategory');
     const picker = a.$('categoryEditorIcons');
     assert(!picker.querySelector('select') && !picker.textContent.includes('大方向'), '不應再有大方向／細項的選單或標籤');
+    assert(!picker.querySelector('input') && !picker.textContent.includes('已選') && !picker.textContent.includes('／126'), '沒有搜尋框、已選與數量（打名稱就會選圖示，上方預覽已經顯示選中的圖示）');
   });
 
-  test('圖示｜點大分類只顯示該組，搜尋時找全部大分類', async () => {
+  test('圖示｜點大分類只顯示該組，點「全部」顯示全部大分類', async () => {
     const a = await personalApp();
     openSettings(a, 'categories');
     a.click('btnAddCategory');
-    const id = 'categoryEditorIcons';
+    const id = 'categoryEditorIcons', options = () => a.$(id).querySelectorAll('.icon-option').length;
+    eq([activeChip(a, id), pickerGroups(a, id).length, options()], ['全部', 14, 126]);
     a.click(a.$(id).querySelector('.icon-chip[data-group="交通"]'));
-    eq(pickerGroups(a, id), ['交通']);
-    eq(a.$(id).querySelector('.icon-results-count').textContent, '顯示 12／126 個圖示');
-    const search = a.$(id).querySelector('.icon-search');
-    search.value = '咖啡';
-    search.dispatchEvent(new a.w.Event('input', { bubbles: true }));
-    eq(pickerGroups(a, id), ['餐飲'], '搜尋不受選中的大分類限制');
-    eq(activeChip(a, id), '全部');
+    eq([activeChip(a, id), pickerGroups(a, id), options()], ['交通', ['交通'], 12]);
     a.click(a.$(id).querySelector('.icon-chip[data-group="財務"]'));
-    eq(search.value, '', '點大分類會清除搜尋字');
     eq(pickerGroups(a, id), ['財務']);
+    a.click(a.$(id).querySelector('.icon-chip[data-group=""]'));
+    eq([activeChip(a, id), pickerGroups(a, id).length, options()], ['全部', 14, 126]);
   });
 
   test('圖示｜新增收入分類時先顯示「收入」大分類；修改分類時直接顯示目前圖示的大分類', async () => {

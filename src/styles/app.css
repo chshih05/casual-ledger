@@ -104,15 +104,11 @@ select.rule-input { color-scheme:dark; }
 #step2CatIcon { display:none; }
 .category-icon { flex-shrink:0; }
 .icon-picker { display:block; min-width:0; }
-.icon-picker-intro { font-size:13px; color:#9CA3AF; margin:8px 0; }
-.icon-search { width:100%; background:#191B22; color:#F3F4F6; border:1px solid #3D4251; border-radius:10px; padding:10px; font-size:14px; min-height:44px; }
 /* 圖示大分類：一排可以左右滑動的按鈕 */
-.icon-group-chips { display:flex; gap:6px; overflow-x:auto; margin:8px 0; padding-bottom:2px; scrollbar-width:none; }
+.icon-group-chips { display:flex; gap:6px; overflow-x:auto; margin:0 0 10px; padding-bottom:2px; scrollbar-width:none; }
 .icon-group-chips::-webkit-scrollbar { display:none; }
 .icon-chip { flex-shrink:0; padding:6px 12px; min-height:36px; border-radius:999px; border:1px solid #3D4251; background:#191B22; color:#D1D5DB; font-size:13px; white-space:nowrap; }
 .icon-chip[aria-pressed=true] { background:#A78BFA; border-color:#A78BFA; color:#14161B; font-weight:600; }
-.icon-selected { display:flex; gap:8px; align-items:center; padding:8px 0; color:#D4C4FF; font-size:14px; }
-.icon-results-count { color:#9CA3AF; font-size:12px; margin-bottom:8px; }
 .icon-results { max-height:320px; overflow-y:auto; overscroll-behavior:contain; padding:2px 5px 4px 2px; scrollbar-color:#555065 #191B22; }
 .icon-group-section + .icon-group-section { margin-top:14px; }
 .icon-group-section h4 { color:#AFA8BE; font-size:13px; margin:0 0 7px; font-weight:600; }
@@ -122,7 +118,6 @@ select.rule-input { color-scheme:dark; }
 .icon-option span { font-size:12px; line-height:1.3; overflow-wrap:anywhere; }
 .icon-option:hover { border-color:#8573AD; }
 .icon-option[aria-pressed=true] { background:#A78BFA20; border-color:#B7A0FC; color:#D4C4FF; }
-.icon-empty { color:#9CA3AF; padding:24px 8px; font-size:14px; }
 #modalDialog > div { max-width:520px; max-height:90dvh; overflow-y:auto; }
 #merchantChipsContainer button { min-height:42px; }
 #settingsCategoryList > div, #settingsMerchantList > div { flex-wrap:wrap; gap:6px; }
