@@ -10,7 +10,9 @@ const LedgerSync = (() => {
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const fileMode = location.protocol === 'file:';
   const config = typeof LEDGER_FIREBASE_CONFIG === 'object' && LEDGER_FIREBASE_CONFIG ? LEDGER_FIREBASE_CONFIG : null;
-  let configured = Boolean(config && config.apiKey && config.projectId && config.appId);
+  // 本機自動測試（網址帶 ?test）不連真正的 Firebase，改用模擬雲端。
+  const testMode = isLocalHost && new URLSearchParams(location.search).has('test');
+  let configured = !testMode && Boolean(config && config.apiKey && config.projectId && config.appId);
 
   const MESSAGES = {
     offline: '目前離線。已儲存的資料留在此裝置，恢復連線後會自動上傳。',

@@ -10,7 +10,7 @@
 | 資料層調整（每筆修改時間、合併匯入、排除示例資料） | 已實作、已用自動測試驗證 |
 | 同步核心（離線補傳、重試不重複、跨裝置衝突、刪除、大量刪除保護） | 已實作，用「模擬雲端」與兩台模擬裝置測試；尚未連上真實雲端 |
 | 同步畫面（狀態徽章、登入、首次連結確認、衝突紀錄） | 已實作，用模擬雲端測試 |
-| Firebase 連線（Google 登入、Firestore 資料庫） | 程式已寫好；只確認過官方元件能載入、用到的功能都存在。**登入與讀寫尚未實測**（需要先建立 Firebase 專案） |
+| Firebase 連線（Google 登入、Firestore 資料庫） | 已填入專案設定，網頁能載入 Firebase 並顯示登入按鈕。**登入與讀寫尚未實測**（要等 Firebase 後台完成 Authentication 與 Firestore 設定） |
 | 安全規則（`firestore.rules`） | 已寫好，**尚未在 Firebase 發布與實測** |
 | 離線開啟網站（Service Worker） | 已實作；在本機測試網址驗證過「關掉伺服器後仍能開啟」，手機上尚未驗證 |
 | GitHub Pages 部署 | **尚未部署** |
@@ -25,7 +25,7 @@
 | 位置 | 用途 |
 | --- | --- |
 | `src/` | 原始碼。要修改功能時改這裡。 |
-| `src/firebase-config.js` | Firebase 網頁設定（公開值，不是密碼）。未設定時為 `null`，網頁只存在本機。 |
+| `src/firebase-config.js` | Firebase 網頁設定（專案 `casual-ledger-e0b0d`，公開值，不是密碼）。改成 `null` 即可停用同步。 |
 | `docs/` | 建置後的網站，GitHub Pages 發布這個資料夾。**不要直接修改**，每次建置都會覆蓋。 |
 | `tools/build.py` | 建置：把 `src/` 組成單一 HTML 並輸出到 `docs/`。 |
 | `tools/check_classes.py` | 檢查畫面用到的樣式名稱是否存在。 |
@@ -56,6 +56,7 @@ python -m http.server 8765 --bind 127.0.0.1
 
 再用瀏覽器開啟 <http://localhost:8765/tests/run.html>，頁面會自動跑完並顯示通過與失敗的項目。
 測試只會清除「本機測試網址」的資料，不會碰到網站或直接開檔案時的帳本；測試頁也拒絕在正式網址執行。
+測試開啟的網頁帶有 `?test`，同步改用模擬雲端，不會連到真正的 Firebase 專案。
 
 ## 之後的設定步驟（決定採用 Firebase 後再做）
 

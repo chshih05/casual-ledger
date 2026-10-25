@@ -3,7 +3,7 @@
 (() => {
   const { test, assert, eq, sleep, waitFor } = T;
   const PREFIX = 'minimal_expense_v3_';
-  const APP_URL = '../docs/index.html?nosw';
+  const APP_URL = '../docs/index.html?nosw&test';
   let frame = null;
 
   function clearStorage() {
