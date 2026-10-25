@@ -383,6 +383,127 @@
     assert(!a.visible('btnCheckUpdate') && !a.visible('btnTopUpdate'));
   });
 
+  // ---------- 常用店家：只看最近 6 個月 ----------
+  function daysAgo(a, n) { return a.ev(`today(new Date(Date.now() - ${n} * 86400000))`); }
+  function shopRecords(a, name, count, { ago = 10, categoryId = 'cat_lunch', type = 'expense' } = {}) {
+    return Array.from({ length: count }, (_, i) => ({ id: `rec_${encodeURIComponent(name).replace(/%/g, '')}_${i}`, seq: i + 1, type,
+      date: daysAgo(a, ago + i), categoryId, amount: 100, merchant: name, note: '' }));
+  }
+  const chipNames = a => [...a.$('merchantChipsContainer').querySelectorAll('button')].map(b => b.textContent);
+  // 每列的名稱與狀態（不含右邊的按鈕）
+  const managerRows = a => [...a.$('settingsMerchantList').children].map(r => (r.firstElementChild || r).textContent.replace(/\s+/g, ' ').trim());
+
+  test('店家｜記帳頁沒打字時推薦最近 6 個月在這個分類用過的（最多 8 個），很久沒用的打字才找得到', async () => {
+    const a = await personalApp();
+    const shops = 'ABCDEFGHIJ'.split('').map(c => c + '店');
+    // 甲店、乙店次數多到推薦分數同為上限，仍依次數排先後（依名稱的話乙店會排前面）
+    const records = shops.flatMap((name, i) => shopRecords(a, name, 10 - i))
+      .concat(shopRecords(a, '乙店', 16), shopRecords(a, '甲店', 20), shopRecords(a, '老店', 5, { ago: 270 }));
+    await importBackup(a, { records, categories: defaultCategories(a), merchants: [...shops, '甲店', '乙店', '老店'] });
+    a.click('btnOpenAddModal');
+    a.$('step1CategoryGrid').querySelectorAll('button')[1].click();   // 午餐
+    eq(chipNames(a), ['甲店', '乙店', ...shops.slice(0, 6)], '依最近次數推薦前 8 個');
+    a.type('inputMerchantSearch', '老');
+    eq(chipNames(a), ['老店'], '9 個月前用過的店打字仍找得到');
+  });
+
+  test('店家｜設定頁只列最近常用的 12 個，搜尋與「顯示全部」找得到不常用與已停用的', async () => {
+    const a = await personalApp();
+    const shops = Array.from({ length: 15 }, (_, i) => `店${String(i + 1).padStart(2, '0')}`);
+    const records = shops.flatMap((name, i) => shopRecords(a, name, 15 - i))
+      .concat(shopRecords(a, '舊店甲', 3, { ago: 300 }), shopRecords(a, '舊店乙', 2, { ago: 400 }), shopRecords(a, '停用店', 20))
+      .concat(shopRecords(a, '公司', 1, { categoryId: 'cat_salary', type: 'income' }));
+    await importBackup(a, { records, categories: defaultCategories(a), merchants: [...shops, '舊店甲', '舊店乙', '停用店', '公司'],
+      merchantTypes: { 公司: 'income' }, archivedMerchants: ['停用店'] });
+    a.click('navBtnSettings');
+    let rows = managerRows(a);
+    eq(rows.length, 12, '只列 12 個');
+    assert(rows[0].startsWith('店01 · 近半年 15 次'), rows[0]);
+    assert(!rows.some(r => /舊店|停用店|公司/.test(r)), '不常用、已停用、收入來源不在常用清單');
+    eq(a.text('btnMerchantShowAll'), '顯示全部（共 18 個）');
+    a.type('merchantMgrSearch', '舊店');
+    rows = managerRows(a);
+    eq(rows.length, 2);
+    assert(rows[0].startsWith('舊店甲 · 上次 '), rows[0]);
+    assert(!a.visible('btnMerchantShowAll'), '搜尋時不顯示「顯示全部」');
+    a.type('merchantMgrSearch', '');
+    a.click('btnMerchantShowAll');
+    rows = managerRows(a);
+    eq(rows.length, 18, '顯示全部');
+    assert(rows.some(r => r.startsWith('停用店 · 已停用')), rows.join('\n'));
+    eq(a.text('btnMerchantShowAll'), '只顯示常用');
+  });
+
+  test('店家｜收入來源分開管理，新增的名稱歸到目前的分頁', async () => {
+    const a = await personalApp();
+    a.click('navBtnSettings');
+    a.click('merMgrTabIncome');
+    assert(a.text('settingsMerchantList').includes('還沒有收入來源'), a.text('settingsMerchantList'));
+    a.$('inputManageNewMerchant').value = '家教';
+    a.click('btnManageAddMerchant');
+    eq(a.text('toastBox'), '已新增「家教」');
+    eq(a.ev('state.merchantTypes["家教"]'), 'income');
+    eq(managerRows(a), ['家教 · 新加入']);
+    a.click('merMgrTabExpense');
+    assert(!a.text('settingsMerchantList').includes('家教'), '收入來源不出現在店家分頁');
+  });
+
+  // ---------- 新增分類的圖示：依大分類分組 ----------
+  const pickerGroups = (a, id) => [...a.$(id).querySelectorAll('.icon-group-section h4')].map(h => h.textContent);
+  const activeChip = (a, id) => a.$(id).querySelector('.icon-chip[aria-pressed="true"]').textContent;
+
+  test('圖示｜依大分類分組：沒有大方向／細項，每個圖示只出現一次，通用圖示排在各組第一個', async () => {
+    const a = await personalApp();
+    eq(a.ev('ICON_GROUPS'), ['餐飲', '交通', '購物', '日用生活', '帳單', '醫療', '娛樂運動', '旅遊', '學習工作', '家庭寵物', '人情', '財務', '收入', '其他']);
+    eq(a.ev('ICON_CATALOG.length'), 126);
+    eq(a.ev('new Set(ICON_CATALOG.map(i => i.key)).size'), 126, '每個圖示只出現一次');
+    assert(a.ev('ICON_CATALOG.every(i => Object.hasOwn(ICONS, i.key) && !("level" in i))'), '都有圖案，也沒有大方向／細項欄位');
+    eq(a.ev('ICON_GROUPS.map(g => ICON_CATALOG.find(i => i.group === g).key)'),
+      ['food', 'transport_general', 'shopping', 'home', 'bills', 'medical', 'entertainment', 'travel', 'education', 'family', 'social', 'finance', 'income', 'other']);
+    assert(a.ev('getInitialState().categories.every(c => ICON_CATALOG.some(i => i.key === c.icon))'), '預設分類用的圖示都還選得到');
+    a.click('navBtnSettings');
+    const picker = a.$('settingsIconPickerGrid');
+    assert(!picker.querySelector('select') && !picker.textContent.includes('大方向'), '不應再有大方向／細項的選單或標籤');
+  });
+
+  test('圖示｜點大分類只顯示該組，搜尋時找全部大分類', async () => {
+    const a = await personalApp();
+    a.click('navBtnSettings');
+    const id = 'settingsIconPickerGrid';
+    a.click(a.$(id).querySelector('.icon-chip[data-group="交通"]'));
+    eq(pickerGroups(a, id), ['交通']);
+    eq(a.$(id).querySelector('.icon-results-count').textContent, '顯示 12／126 個圖示');
+    const search = a.$(id).querySelector('.icon-search');
+    search.value = '咖啡';
+    search.dispatchEvent(new a.w.Event('input', { bubbles: true }));
+    eq(pickerGroups(a, id), ['餐飲'], '搜尋不受選中的大分類限制');
+    eq(activeChip(a, id), '全部');
+    a.click(a.$(id).querySelector('.icon-chip[data-group="財務"]'));
+    eq(search.value, '', '點大分類會清除搜尋字');
+    eq(pickerGroups(a, id), ['財務']);
+  });
+
+  test('圖示｜新增收入分類時先顯示「收入」大分類', async () => {
+    const a = await personalApp();
+    a.click('navBtnSettings');
+    const id = 'settingsIconPickerGrid';
+    eq(activeChip(a, id), '全部');
+    a.click('catMgrTabIncome');
+    eq(activeChip(a, id), '收入');
+    eq(pickerGroups(a, id), ['收入']);
+    eq(a.ev('selectedIcon("settingsIconPickerGrid")'), 'income');
+    a.click(a.$(id).querySelector('.icon-chip[data-group="其他"]'));
+    a.ev('renderAll()');
+    eq(activeChip(a, id), '其他', '畫面更新時不會蓋掉自己點的大分類');
+    a.click('catMgrTabExpense');
+    eq(activeChip(a, id), '全部');
+    eq(a.ev('selectedIcon("settingsIconPickerGrid")'), 'dinner');
+    a.click('btnOpenAddModal');
+    a.click('modalTypeIncome');
+    a.click('btnChangeCategoryInStep2');
+    eq(activeChip(a, 'inlineIconPickerGrid'), '收入', '記帳頁新增收入分類也先顯示收入');
+  });
+
   // ---------- 資料層調整 ----------
   test('資料｜儲存時記錄每筆的修改時間，備份會帶上帳本類型與修改時間', async () => {
     const a = await personalApp();
