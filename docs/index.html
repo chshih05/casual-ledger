@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>日常記帳</title>
+  <title>隨便記</title>
   <meta name="theme-color" content="#14161B" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
   
   <style>
@@ -115,7 +115,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
   <div class="w-full bg-[#1E2028] border-b border-borderSubtle px-3 py-2 text-xs text-textMuted flex flex-wrap items-center justify-between gap-2 max-w-md mx-auto sticky top-0 z-30">
     <div class="flex items-center gap-1.5">
       <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse"></span>
-      <span class="font-medium text-textMain">日常記帳</span>
+      <span class="font-medium text-textMain">隨便記</span>
     </div>
     <!-- 有新版本、但正在操作而沒有自動更新時才出現 -->
     <button id="btnTopUpdate" type="button" class="hidden px-3 py-1 rounded-lg bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover transition">有新版本・點此更新</button>
@@ -494,7 +494,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">f802aa827821</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">5d93ad229bb3</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -2863,7 +2863,7 @@ const LedgerSync = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = 'f802aa827821';
+  const APP_VERSION = '5d93ad229bb3';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

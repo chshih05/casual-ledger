@@ -4,7 +4,7 @@
 const VERSION = '__BUILD_VERSION__';
 const APP_CACHE = `ledger-app-${VERSION}`;
 const SDK_CACHE = 'ledger-firebase-sdk';
-const APP_FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
+const APP_FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {

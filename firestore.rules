@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// 日常記帳：Cloud Firestore 安全規則
+// 隨便記：Cloud Firestore 安全規則
 // - 資料放在 users/{登入帳號 uid}/entities/ 底下，只有該帳號本人能讀寫（在雲端伺服器檢查，不是只在畫面上隱藏）。
 // - 另外只允許清單中的 Gmail 使用這個專案，避免陌生人登入後使用你的免費額度。
 //
