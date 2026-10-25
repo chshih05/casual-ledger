@@ -28,6 +28,7 @@ JS_ORDER = [
     "js/40-views.js",
     "js/50-icon-picker.js",
     "js/55-sync-core.js",       # 同步核心：比對、衝突、補傳（不綁定雲端服務）
+    "js/58-store.js",           # 帳本儲存：IndexedDB（無法使用時退回 localStorage）
     "js/60-app.js",
     "js/62-budget.js",          # 每月預算
     "js/64-stats-compare.js",   # 統計比較與近 12 個月走勢

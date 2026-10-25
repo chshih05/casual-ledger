@@ -108,7 +108,7 @@ const LedgerSync = (() => {
   function createEngine() {
     return Core.createEngine({
       backend,
-      ledger: { get: ledgerForSync, apply: applyFromSync },
+      ledger: { get: ledgerForSync, apply: applyFromSync, flush: () => LedgerStore.flush() },
       metaStore: { load: loadMeta, save: saveMeta },
       bulkAck: () => bulkAck,
     });
@@ -119,11 +119,13 @@ const LedgerSync = (() => {
     return state;
   }
 
-  // 套用雲端變更前先用匯入備份的檢查規則驗證，確保帳本下次仍能正常開啟。
-  function applyFromSync(mutator) {
+  // 套用雲端變更前先用匯入備份的檢查規則驗證，確保帳本下次仍能正常開啟；
+  // 等帳本確實寫進裝置後才回報成功，同步狀態才會接著保存。
+  async function applyFromSync(mutator) {
     if (book !== 'personal') throw new Core.SyncError('book-changed', MESSAGES['book-changed']);
+    let ok;
     try {
-      return commit(next => {
+      ok = commit(next => {
         mutator(next);
         validateBackup(clone(next));
       }, { stamp: false, source: 'sync' });
@@ -132,6 +134,8 @@ const LedgerSync = (() => {
       console.warn('sync apply rejected', e);
       throw new Core.SyncError('invalid-remote', MESSAGES['invalid-remote']);
     }
+    if (!ok) return false;
+    try { await LedgerStore.flush(); return true; } catch { return false; }
   }
 
   function startBackend() {
@@ -512,7 +516,8 @@ const LedgerSync = (() => {
     rerender();
   }
 
-  window.addEventListener('DOMContentLoaded', init);
+  // 帳本從裝置讀出來之後才開始（見 58-store.js 的 ledgerReady）。
+  ledgerReady.then(init);
 
   // 本機測試專用：讓自動測試改用模擬雲端。正式網址上不提供。
   const testApi = isLocalHost ? {

@@ -1,6 +1,14 @@
 // Ledger stored in this browser. Cloud sync (55/70/80-*.js) only runs for the personal book after Google sign-in.
 const $ = id => document.getElementById(id);
 const clone = x => JSON.parse(JSON.stringify(x));
+// 儲存時的複製：紀錄可能有上萬筆，只複製陣列、紀錄物件和上一版共用（修改紀錄一律換成新物件，
+// 不在原物件上改）；其他資料量小，整份複製。修改時間表另外淺複製。
+function cloneForCommit(s) {
+  const {records,entityTimes,...rest}=s,next=clone(rest);
+  next.records=records.slice();
+  next.entityTimes={...entityTimes};
+  return next;
+}
 const MAX_AMOUNT = 999999999;
 const BOOK_PREFIX = 'minimal_expense_v3_';
 // Only the personal book remains; `book` keeps the existing storage key (minimal_expense_v3_personal).
@@ -63,9 +71,9 @@ function validateBackup(input) {
     cats.set(c.id,{id:c.id,type:c.type,name:c.name.trim(),icon:Object.hasOwn(ICONS,c.icon)||(typeof c.icon==='string'&&/^[\w-]{1,60}$/.test(c.icon))?c.icon:'other',order:c.order,...(c.type==='expense'&&LedgerSyncCore.validBudget(c.budget)?{budget:c.budget}:{})});
   }
   if (!['expense','income'].every(t=>[...cats.values()].some(c=>c.type===t))) throw new Error('必須保留支出及收入分類。');
-  const ids=new Set();
+  const ids=new Set(),okDates=new Set(),dateOk=d=>okDates.has(d)||(validDate(d)&&okDates.add(d));
   const records=src.records.map((r,i)=> {
-    if (!r || !safeString(r.id,100) || !/^[\w-]+$/.test(r.id) || ids.has(r.id) || !validDate(r.date) || cats.get(r.categoryId)?.type!==r.type || !Number.isSafeInteger(r.amount) || r.amount<=0 || r.amount>MAX_AMOUNT || !safeString(r.merchant,100) || !safeString(r.note,1000)) throw new Error(`第 ${i+1} 筆紀錄內容不完整、日期或金額無效。`);
+    if (!r || !safeString(r.id,100) || !/^[\w-]+$/.test(r.id) || ids.has(r.id) || !dateOk(r.date) || cats.get(r.categoryId)?.type!==r.type || !Number.isSafeInteger(r.amount) || r.amount<=0 || r.amount>MAX_AMOUNT || !safeString(r.merchant,100) || !safeString(r.note,1000)) throw new Error(`第 ${i+1} 筆紀錄內容不完整、日期或金額無效。`);
     ids.add(r.id);
     return {id:r.id,seq:Number.isSafeInteger(r.seq)?r.seq:i+1,type:r.type,date:r.date,categoryId:r.categoryId,amount:r.amount,merchant:r.merchant.trim(),note:r.note};
   });
@@ -81,8 +89,11 @@ function validateBackup(input) {
   }
   const merchants=[...new Set([...src.merchants.map(m=>m.trim()),...records.map(r=>r.merchant).filter(Boolean)])];
   const archived=Array.isArray(src.archivedMerchants)?src.archivedMerchants.filter(m=>merchants.includes(m)):[];
+  // 沒有標明類型的名稱：只出現在收入紀錄的算收入來源，其餘算店家（一次掃過全部紀錄）。
+  const usedAs=new Map();
+  for (const r of records) if (r.merchant) { const u=usedAs.get(r.merchant)||{expense:false,income:false}; u[r.type]=true; usedAs.set(r.merchant,u); }
   const merchantTypes=Object.create(null);
-  for (const m of merchants) merchantTypes[m]=src.merchantTypes?.[m]==='income'?'income':(records.some(r=>r.merchant===m&&r.type==='income')&&!records.some(r=>r.merchant===m&&r.type==='expense')?'income':'expense');
+  for (const m of merchants) { const u=usedAs.get(m); merchantTypes[m]=src.merchantTypes?.[m]==='income'||(u&&u.income&&!u.expense)?'income':'expense'; }
   return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',settingsPage:'',statsType:'expense',statsPeriod:'month',catMgrType:'expense',merchantMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,recurring,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true,monthlyBudget:LedgerSyncCore.validBudget(src.preferences?.monthlyBudget)?src.preferences.monthlyBudget:0},entityTimes:sanitizeEntityTimes(src.entityTimes)};
 }
 // Last-change time of each record, category, merchant and preference; used to pick the newer side in sync conflicts.
@@ -95,6 +106,8 @@ function sanitizeEntityTimes(raw) {
   return out;
 }
 function storageKey() { return BOOK_PREFIX+book; }
+// 舊的儲存方式：整本帳是 localStorage 裡的一段 JSON。現在只在搬進資料庫前讀取，
+// 以及瀏覽器無法使用資料庫時沿用（見 58-store.js）。
 function loadBook() {
   storageBlocked=false; loadIssue=''; persistedRaw=null;
   try {
@@ -119,15 +132,12 @@ function loadBook() {
 function showStorageError(message) { $('storageError').textContent=message; $('storageError').classList.remove('hidden'); updateSyncStatusUI(); }
 function commit(mutator, opts={}) {
   if (storageBlocked) { showStorageError(loadIssue || '原有資料無法讀取，已停止覆寫。'); return false; }
-  const next=clone(state); mutator(next);
+  LedgerSyncCore.snapshot(state);
+  const next=cloneForCommit(state); mutator(next);
   if (opts.stamp!==false) LedgerSyncCore.stampTimes(state,next,Date.now());
-  const persisted={...next,activeView:'home',previousView:'home'};
-  const raw=JSON.stringify(persisted);
-  try {
-    if (localStorage.getItem(storageKey())!==persistedRaw) throw new Error('另一個分頁已修改帳本。請先下載目前帳本，再重新開啟。');
-    localStorage.setItem(storageKey(),raw);
-  } catch(e) { showStorageError(e.message?.includes('另一個')?e.message:'儲存失敗，輸入內容仍保留在此頁。請重試，或到設定下載備份；尚未安全寫入的內容請勿關閉。'); return false; }
-  persistedRaw=raw; state=next; $('storageError').classList.add('hidden');
+  try { LedgerStore.save(state,next); }
+  catch(e) { showStorageError(e.message?.includes('另一個')?e.message:'儲存失敗，輸入內容仍保留在此頁。請重試，或到設定下載備份；尚未安全寫入的內容請勿關閉。'); return false; }
+  state=next; $('storageError').classList.add('hidden');
   LedgerSync.afterCommit(opts); updateSyncStatusUI(); return true;
 }
 function updateSyncStatusUI() {
@@ -346,7 +356,7 @@ function handleSaveRecord(keepOpenForNext=false) {
 function archiveMerchant(s,name) { if(!s.archivedMerchants.includes(name))s.archivedMerchants.push(name); }
 function renameMerchant(s,name,target) {
   const type=s.merchantTypes[name]||'expense';
-  s.records.forEach(r=>{if(r.merchant===name)r.merchant=target;});
+  s.records=s.records.map(r=>r.merchant===name?{...r,merchant:target}:r);
   (s.recurring||[]).forEach(r=>{if(r.merchant===name)r.merchant=target;});
   s.merchants=[...new Set(s.merchants.map(m=>m===name?target:m))];
   s.archivedMerchants=s.archivedMerchants.filter(m=>m!==name&&m!==target);
@@ -455,7 +465,7 @@ function renderSettings() {
     list.appendChild(row);
   });
   renderMerchantManager();
-  try{$('btnUndoImport').classList.toggle('hidden',!localStorage.getItem(storageKey()+'_before_import'));}catch{}
+  $('btnUndoImport').classList.toggle('hidden',!LedgerStore.hasSnapshot('before_import'));
   if(state.settingsPage==='data')renderCsvRanges();
   if(state.settingsPage==='budget')renderBudgetSettings();
   if(state.settingsPage==='recurring')renderRecurringSettings();
@@ -488,7 +498,8 @@ function downloadText(text,name,type='application/json') {
 }
 function exportBackup() {
   try {
-    const text=storageBlocked&&persistedRaw?persistedRaw:JSON.stringify(backupEnvelope(),null,2);
+    if(LedgerStore.unreadable())return showToast('目前讀不到帳本，無法下載備份。請完全關閉網頁後重新開啟。');
+    const text=storageBlocked&&LedgerStore.rawExport()?LedgerStore.rawExport():JSON.stringify(backupEnvelope(),null,2);
     downloadText(text,`記帳-備份-${today()}.json`);
     $('backupStatus').textContent='已送出備份下載，請確認檔案已存入下載資料夾。';
     try{localStorage.setItem(storageKey()+'_last_backup',String(Date.now()));}catch{}
@@ -609,14 +620,16 @@ function importSummary(imported,plan,origin) {
   lines.push('合併不會刪除目前的紀錄；匯入前的帳本會保留一份，可在設定還原。');
   return lines.join('\n');
 }
-function installImport(imported) {
+async function installImport(imported) {
   if(storageBlocked)return showToast('請先下載原始資料，保留後再處理損毀的帳本。'),false;
   try {
-    if(localStorage.getItem(storageKey())!==persistedRaw)throw new Error('帳本已被其他分頁修改，請重新開啟。');
+    if(!LedgerStore.isCurrent())throw new Error('帳本已被其他分頁修改，請重新開啟。');
     // Save the full current ledger before replacing it; a failed rollback write blocks import.
-    localStorage.setItem(storageKey()+'_before_import',JSON.stringify(state));
+    await LedgerStore.saveSnapshot('before_import',JSON.stringify(state));
   }catch(e){showStorageError('無法保存匯入前帳本，因此未進行匯入。');return false;}
   if(!commit(s=>Object.assign(s,clone(imported))))return false;
+  // 匯入的資料量可能很大，等確實寫進裝置再回報完成。
+  try{await LedgerStore.flush();}catch{return false;}
   modalState=null;lastDeletedRecord=null;$('undoBar').classList.add('hidden');searchQuery='';$('recordSearch').value='';renderAll();showToast('匯入完成，可在設定還原匯入前帳本');return true;
 }
 async function prepareImport(file) {
@@ -649,9 +662,11 @@ function handleKeypadInput(key) {
   else if(s.length<100)s=s==='0'?key:s+key;
   modalState.amountExpr=s;$('inputAmountExpr').value=s;updateCalcPreviewAndRecommendations();
 }
-window.addEventListener('DOMContentLoaded',()=>{
+window.addEventListener('DOMContentLoaded',async()=>{
   removeSampleBook();
-  state=loadBook();
+  // 帳本從資料庫讀出來之後才綁定按鈕與畫面；同步（80-sync-ui.js）也等到這時才開始。
+  try{state=await LedgerStore.open();}
+  catch(e){console.error('ledger open failed',e);storageBlocked=true;loadIssue='無法開啟帳本，請重新開啟網頁。';state=freshBook();}
   const on=(id,event,fn)=>$(id).addEventListener(event,fn);
   on('navBtnHome','click',()=>{discardForm();leaveSettingsPage();state.activeView='home';renderAll();});on('navBtnStats','click',()=>{discardForm();leaveSettingsPage();state.activeView='stats';renderAll();});on('navBtnSettings','click',()=>openSettingsPage(''));
   on('btnSyncBadge','click',()=>openSettingsPage('sync'));
@@ -703,8 +718,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   setupRecurringForm();
   on('btnExportJsonDemo','click',exportBackup);on('btnExportCsv','click',exportCsv);on('btnImportBackup','click',()=>$('backupFile').click());
   on('backupFile','change',e=>{prepareImport(e.target.files[0]);e.target.value='';});
-  on('btnUndoImport','click',()=>{
-    try{const raw=localStorage.getItem(storageKey()+'_before_import');if(!raw)return;const previous=validateBackup(JSON.parse(raw));previous.entityTimes={...(state.entityTimes||{})};openDialog({title:'還原匯入前帳本？',message:`將恢復 ${previous.records.length} 筆紀錄。目前帳本會成為下一份可還原版本。${LedgerSync.isLinked()?'\n這個變更也會同步到其他裝置。':''}`,onConfirm:()=>{LedgerSync.acknowledgeBulkChange(state.records.length);return installImport(previous);}});}catch(e){showToast('無法讀取還原資料：'+e.message);}
+  on('btnUndoImport','click',async()=>{
+    try{const raw=await LedgerStore.loadSnapshot('before_import');if(!raw)return;const previous=validateBackup(JSON.parse(raw));previous.entityTimes={...(state.entityTimes||{})};openDialog({title:'還原匯入前帳本？',message:`將恢復 ${previous.records.length} 筆紀錄。目前帳本會成為下一份可還原版本。${LedgerSync.isLinked()?'\n這個變更也會同步到其他裝置。':''}`,onConfirm:()=>{LedgerSync.acknowledgeBulkChange(state.records.length);return installImport(previous);}});}catch(e){showToast('無法讀取還原資料：'+e.message);}
   });
   on('dialogBtnCancel','click',closeDialog);
   document.addEventListener('keydown',e=>{
@@ -712,9 +727,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(e.key==='Escape'){if(modal?.id==='modalDialog')closeDialog();else if(modal)modal.classList.add('hidden');else if(state.activeView==='record')closeRecordPage();}
     if(e.key==='Tab'&&modal){const nodes=[...modal.querySelectorAll('button,input,textarea')].filter(x=>!x.hidden&&!x.classList.contains('hidden')&&!x.disabled);const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
   });
-  window.addEventListener('storage',e=>{if(e.key===storageKey()&&e.newValue!==persistedRaw)showStorageError('帳本已在另一個分頁變更。請先下載帳本備份，再重新開啟，避免覆蓋。');});
+  LedgerStore.watchOtherTabs(()=>showStorageError('帳本已在另一個分頁變更。請先下載帳本備份，再重新開啟，避免覆蓋。'));
   window.addEventListener('pagehide',()=>{if(state.activeView==='record'){discardForm();state.activeView=state.previousView||'home';renderAll();}});
   renderAll();if(loadIssue)showStorageError(loadIssue);
+  markLedgerReady();
+  ledgerReady.then(()=>{document.documentElement.dataset.ready='1';});
   scheduleRecurring();
 });
 
