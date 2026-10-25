@@ -27,6 +27,7 @@ JS_ORDER = [
     "js/30-icon-catalog.js",
     "js/40-views.js",
     "js/50-icon-picker.js",
+    "js/52-category-editor.js", # 分類編輯（新增與修改共用）
     "js/55-sync-core.js",       # 同步核心：比對、衝突、補傳（不綁定雲端服務）
     "js/58-store.js",           # 帳本儲存：IndexedDB（無法使用時退回 localStorage）
     "js/60-app.js",

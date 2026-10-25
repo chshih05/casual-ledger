@@ -124,11 +124,48 @@ select.rule-input { color-scheme:dark; }
 .icon-option[aria-pressed=true] { background:#A78BFA20; border-color:#B7A0FC; color:#D4C4FF; }
 .icon-empty { color:#9CA3AF; padding:24px 8px; font-size:14px; }
 #modalDialog > div { max-width:520px; max-height:90dvh; overflow-y:auto; }
-#dialogIconPicker .icon-results { max-height:34dvh; }
 #merchantChipsContainer button { min-height:42px; }
 #settingsCategoryList > div, #settingsMerchantList > div { flex-wrap:wrap; gap:6px; }
 .merchant-list-scroll { max-height:60vh; overflow-y:auto; padding-right:4px; }
 #settingsCategoryList button, #settingsMerchantList button { min-height:36px; }
+/* 明細：期間切換、全部時間的月份小計、記帳頁的「看這家店的紀錄」 */
+.drilldown-scope { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin:12px 16px 0; padding:4px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
+.drilldown-scope button { min-height:36px; border-radius:9px; font-size:13px; color:#9CA3AF; }
+.drilldown-scope button[aria-pressed=true] { background:#A78BFA; color:#14161B; font-weight:600; }
+.drilldown-month { display:flex; justify-content:space-between; gap:8px; padding:6px 2px 0; font-size:12px; color:#9CA3AF; font-weight:600; font-variant-numeric:tabular-nums; }
+.merchant-history-link { display:block; font-size:13px; color:#A78BFA; text-align:left; min-height:32px; }
+/* 分類編輯：新增與修改共用的畫面 */
+.cat-sheet { width:100%; max-width:520px; max-height:92dvh; display:flex; flex-direction:column; background:#1E2028; border:1px solid #2E323E; border-radius:24px 24px 0 0; overflow:hidden; }
+.cat-sheet-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:14px 16px; border-bottom:1px solid #2E323E; }
+.cat-sheet-body { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; padding:16px; display:flex; flex-direction:column; gap:12px; }
+.cat-sheet-body > * { min-width:0; flex-shrink:0; }
+.cat-sheet-foot { display:flex; align-items:center; gap:8px; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid #2E323E; background:#1E2028; }
+.cat-name-row { display:flex; align-items:flex-end; gap:12px; }
+.cat-preview { width:72px; height:72px; flex-shrink:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px; border-radius:14px; border:1px solid #B7A0FC; background:#A78BFA20; color:#D4C4FF; font-size:12px; text-align:center; }
+.cat-preview svg { width:25px; height:25px; }
+.cat-preview span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cat-preview.is-empty span { color:#9CA3AF; }
+.cat-name-field { flex:1; min-width:0; display:grid; gap:4px; font-size:13px; color:#9CA3AF; }
+.cat-name-input { width:100%; min-height:48px; padding:10px 12px; border-radius:12px; border:1px solid #3D4251; background:#191B22; color:#F3F4F6; font-size:16px; }
+.cat-name-input:focus { border-color:#A78BFA; }
+.cat-hint { font-size:12px; color:#9CA3AF; min-height:0; }
+.cat-hint:empty { display:none; }
+.cat-section-title { font-size:13px; color:#9CA3AF; margin-bottom:6px; }
+.cat-suggest-list { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+.cat-suggest-list::-webkit-scrollbar { display:none; }
+.cat-suggest { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; min-height:38px; padding:6px 12px; border-radius:999px; border:1px solid #3D4251; background:#191B22; color:#E5E7EB; font-size:13px; white-space:nowrap; }
+.cat-suggest svg { width:16px; height:16px; color:#A78BFA; }
+.cat-suggest[aria-pressed=true] { border-color:#A78BFA; background:#A78BFA20; color:#D4C4FF; }
+.cat-delete { padding:8px 4px; font-size:13px; color:#F87171; }
+#modalCategory .icon-results { max-height:38dvh; }
+.category-add-tile { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:8px 4px; border-radius:14px; border:1px dashed #4B5262; color:#A78BFA; background:transparent; min-height:70px; }
+.category-add-tile:hover, #step1CategoryGrid .category-add-tile:hover { border-color:#A78BFA; }
+#step1CategoryGrid .category-add-tile { border:1px dashed #4B5262; background:transparent; color:#A78BFA; }
+.category-add-row { width:100%; min-height:44px; border-radius:12px; border:1px dashed #4B5262; color:#A78BFA; font-size:14px; font-weight:600; }
+.category-add-row:hover { border-color:#A78BFA; }
+.category-row { cursor:pointer; }
+.category-row:hover { border-color:#4B5262; }
+@media (min-width: 640px) { .cat-sheet { border-radius:24px; } }
 /* 分類拖曳排序 */
 .drag-handle { display:flex; align-items:center; justify-content:center; width:32px; margin-left:-6px; color:#9CA3AF; cursor:grab; touch-action:none; border-radius:8px; }
 .drag-handle:hover { color:#F3F4F6; }
