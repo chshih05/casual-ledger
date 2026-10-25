@@ -290,6 +290,8 @@ const LedgerSync = (() => {
       phase = 'idle';
       refreshPending();
       rerender();
+      // 同步結束後檢查固定收支（其他裝置新增或修改的規則）；出錯也不影響同步。
+      try { afterLedgerSync(); } catch (e) { console.warn('recurring failed', e); }
     }
   }
 
@@ -321,10 +323,11 @@ const LedgerSync = (() => {
     }
     if (kind === 'cat') return `分類「${data.name}」`;
     if (kind === 'mer') return `${data.type === 'income' ? '收入來源' : '店家'}「${data.name}」${data.archived ? '（已停用）' : ''}`;
-    return '首頁顯示與記帳偏好';
+    if (Core.isRuleKey(key)) return `「${data.merchant || getCategoryById(data.categoryId).name}」${data.freq === 'year' ? '每年' : '每月'} ${data.type === 'income' ? '+' : ''}$${formatMoney(data.amount)}${data.paused ? '（暫停）' : ''}`;
+    return '首頁顯示、記帳偏好與預算';
   }
 
-  const kindLabel = key => ({ rec: '紀錄', cat: '分類', mer: '店家／來源', pref: '偏好設定' })[Core.splitKey(key)[0]] || '項目';
+  const kindLabel = key => Core.isRuleKey(key) ? '固定收支' : ({ rec: '紀錄', cat: '分類', mer: '店家／來源', pref: '偏好設定' })[Core.splitKey(key)[0]] || '項目';
 
   function useOtherVersion(index) {
     const c = loadMeta().conflicts[index];

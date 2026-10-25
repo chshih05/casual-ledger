@@ -11,6 +11,11 @@ const LedgerSyncCore = (() => {
   const HEADER_MODES = ['expense_only', 'expense_and_income', 'full_net'];
   const MAX_AMOUNT = 999999999;
   const MAX_CONFLICTS = 30;
+  // 同步格式版本：2 起有預算欄位與固定收支規則。舊版程式會略過或去掉這些資料，
+  // 所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
+  const FORMAT = 2;
+  // 固定收支規則沿用偏好設定的類別（pref:rule_…），雲端安全規則不需要修改。
+  const RULE_PREFIX = 'rule_';
 
   class SyncError extends Error {
     constructor(code, message, detail = {}) {
@@ -40,12 +45,33 @@ const LedgerSyncCore = (() => {
     return hash;
   }
 
+  // 每月預算：1～999,999,999 的整數；沒有設定時不寫入欄位，舊資料的雜湊因此不會改變。
+  const validBudget = v => Number.isSafeInteger(v) && v > 0 && v <= MAX_AMOUNT;
+
   const canon = {
     rec: r => ({ id: String(r.id), seq: Number(r.seq) || 0, type: r.type, date: r.date, categoryId: r.categoryId, amount: r.amount, merchant: r.merchant || '', note: r.note || '' }),
-    cat: c => ({ id: String(c.id), type: c.type, name: c.name, icon: c.icon, order: c.order }),
+    cat: c => {
+      const out = { id: String(c.id), type: c.type, name: c.name, icon: c.icon, order: c.order };
+      if (c.type === 'expense' && validBudget(c.budget)) out.budget = c.budget;
+      return out;
+    },
     mer: m => ({ name: m.name, type: m.type === 'income' ? 'income' : 'expense', archived: Boolean(m.archived) }),
-    pref: p => ({ homeHeaderMode: HEADER_MODES.includes(p.homeHeaderMode) ? p.homeHeaderMode : 'expense_only', enableSaveAndNext: p.enableSaveAndNext === true }),
+    pref: p => {
+      const out = { homeHeaderMode: HEADER_MODES.includes(p.homeHeaderMode) ? p.homeHeaderMode : 'expense_only', enableSaveAndNext: p.enableSaveAndNext === true };
+      if (validBudget(p.monthlyBudget)) out.monthlyBudget = p.monthlyBudget;
+      return out;
+    },
+    // 固定收支規則：next 是下一次要記的日期；day 是每月幾號（31 號遇到小月記在月底）。
+    rule: r => {
+      const out = { id: String(r.id), type: r.type, categoryId: r.categoryId, amount: r.amount, merchant: r.merchant || '', note: r.note || '',
+        freq: r.freq === 'year' ? 'year' : 'month', day: r.day, next: r.next };
+      if (r.end) out.end = r.end;
+      if (r.paused) out.paused = true;
+      return out;
+    },
   };
+  const isRuleKey = key => key.startsWith('pref:' + RULE_PREFIX);
+  const canonFor = key => isRuleKey(key) ? canon.rule : canon[splitKey(key)[0]];
 
   function splitKey(key) {
     const i = key.indexOf(':');
@@ -75,6 +101,7 @@ const LedgerSyncCore = (() => {
       put('mer:' + name, 'mer', canon.mer({ name, type: ownValue(s.merchantTypes, name), archived: archived.has(name) }));
     }
     put(PREF_KEY, 'pref', canon.pref(s.preferences || {}));
+    for (const r of s.recurring || []) put('pref:' + r.id, 'pref', canon.rule(r));
     return map;
   }
 
@@ -140,8 +167,11 @@ const LedgerSyncCore = (() => {
         if (m.archived && at < 0) s.archivedMerchants.push(id);
         if (!m.archived && at >= 0) s.archivedMerchants.splice(at, 1);
       }
+    } else if (kind === 'pref' && id.startsWith(RULE_PREFIX)) {
+      s.recurring = s.recurring || [];
+      upsertById(s.recurring, id, data && canon.rule(data));
     } else if (kind === 'pref' && data) {
-      s.preferences = Object.assign({}, s.preferences, canon.pref(data));
+      s.preferences = Object.assign({}, s.preferences, { monthlyBudget: 0 }, canon.pref(data));
     }
   }
 
@@ -214,13 +244,21 @@ const LedgerSyncCore = (() => {
     }
     if (kind === 'cat') {
       return d.id === id && isId(d.id) && isType(d.type) && isStr(d.name, 40) && d.name.trim() !== ''
-        && isStr(d.icon, 80) && Number.isFinite(d.order);
+        && isStr(d.icon, 80) && Number.isFinite(d.order) && (d.budget === undefined || validBudget(d.budget));
     }
     if (kind === 'mer') {
       return d.name === id && isStr(d.name, 100) && d.name.trim() !== '' && isType(d.type) && typeof d.archived === 'boolean';
     }
+    if (kind === 'pref' && typeof id === 'string' && id.startsWith(RULE_PREFIX)) {
+      return d.id === id && isId(d.id) && isType(d.type) && isId(d.categoryId)
+        && Number.isSafeInteger(d.amount) && d.amount > 0 && d.amount <= MAX_AMOUNT
+        && isStr(d.merchant, 100) && isStr(d.note, 1000) && (d.freq === 'month' || d.freq === 'year')
+        && Number.isInteger(d.day) && d.day >= 1 && d.day <= 31 && validDate(d.next)
+        && (d.end === undefined || validDate(d.end)) && (d.paused === undefined || d.paused === true);
+    }
     if (kind === 'pref') {
-      return id === 'main' && HEADER_MODES.includes(d.homeHeaderMode) && typeof d.enableSaveAndNext === 'boolean';
+      return id === 'main' && HEADER_MODES.includes(d.homeHeaderMode) && typeof d.enableSaveAndNext === 'boolean'
+        && (d.monthlyBudget === undefined || validBudget(d.monthlyBudget));
     }
     return false;
   }
@@ -235,8 +273,7 @@ const LedgerSyncCore = (() => {
 
   function remoteHash(doc) {
     if (doc.del) return TOMBSTONE;
-    const [kind] = splitKey(doc.k);
-    return hashString(JSON.stringify(canon[kind](doc.d)));
+    return hashString(JSON.stringify(canonFor(doc.k)(doc.d)));
   }
 
   // ---------- 同步狀態（每台裝置各自保存） ----------
@@ -249,13 +286,14 @@ const LedgerSyncCore = (() => {
 
   function freshMeta(deviceId) {
     return {
-      v: 1, deviceId, uid: null, email: '', cursor: null, shadow: {}, conflicts: [],
+      v: 1, format: FORMAT, deviceId, uid: null, email: '', cursor: null, shadow: {}, conflicts: [],
       lastSyncAt: 0, lastPullAt: 0, skipped: 0, bulkAck: null,
     };
   }
 
   function normalizeMeta(raw, deviceId) {
     const m = Object.assign(freshMeta(deviceId), raw && typeof raw === 'object' ? raw : {});
+    if (raw && typeof raw === 'object' && raw.format === undefined) m.format = 1; // 舊版程式留下的同步狀態
     if (!m.deviceId) m.deviceId = deviceId;
     if (!m.shadow || typeof m.shadow !== 'object') m.shadow = {};
     if (!Array.isArray(m.conflicts)) m.conflicts = [];
@@ -310,7 +348,8 @@ const LedgerSyncCore = (() => {
 
     // 套用雲端資料。兩邊都改過同一項目時，以「最後修改時間」較新的版本為準，
     // 另一個版本存入衝突紀錄，使用者可以改用。
-    function applyRemote(docs, meta) {
+    // recheck：換到新版程式後第一次同步，連已經讀過的版本也重新比對一次。
+    function applyRemote(docs, meta, recheck = false) {
       const { map, times } = localState();
       const changes = [];
       const conflicts = [];
@@ -325,13 +364,17 @@ const LedgerSyncCore = (() => {
       }
       for (const doc of latest.values()) {
         const sh = unpackShadow(meta.shadow[doc.k]);
-        if (sh && sh.r >= doc.rev) continue;
+        const seen = sh && sh.r >= doc.rev;
+        if (seen && !recheck) continue;
         const loc = map.get(doc.k);
         const localH = loc ? hashString(loc.json) : TOMBSTONE;
-        const baseH = sh ? sh.h : TOMBSTONE;
         const rH = remoteHash(doc);
+        // 已經讀過這個版本：重新比對時，只有「雲端在新格式下不同、本機從上次同步後沒改過」
+        // 才採用雲端（例如舊版程式讀到時去掉的預算欄位）。
+        if (seen && (localH !== sh.h || rH === sh.h)) continue;
+        const baseH = sh ? sh.h : TOMBSTONE;
         const [kind] = splitKey(doc.k);
-        const remoteData = doc.del ? null : canon[kind](doc.d);
+        const remoteData = doc.del ? null : canonFor(doc.k)(doc.d);
         if (kind === 'cat') categoryHints[doc.k] = doc.del ? (doc.d && validEntityData('cat', splitKey(doc.k)[1], doc.d) ? doc.d : loc && loc.data) : remoteData;
         meta.shadow[doc.k] = packShadow(rH, doc.rev);
         if (rH === localH) continue;
@@ -368,6 +411,8 @@ const LedgerSyncCore = (() => {
     }
 
     async function pullAll(meta) {
+      const recheck = meta.format !== FORMAT;
+      if (recheck) { meta.cursor = null; meta.skipped = 0; }
       const docs = [];
       let after = null, maxTs = meta.cursor, pages = 0;
       do {
@@ -378,9 +423,10 @@ const LedgerSyncCore = (() => {
         pages++;
       } while (after && pages < 1000);
       // 整批下載完成才套用並前進讀取位置；中途斷線就下次從原位置重新讀。
-      const result = applyRemote(docs, meta);
+      const result = applyRemote(docs, meta, recheck);
       meta.cursor = maxTs;
       meta.lastPullAt = now();
+      meta.format = FORMAT;
       return Object.assign({ pulled: docs.length }, result);
     }
 
@@ -465,9 +511,9 @@ const LedgerSyncCore = (() => {
   }
 
   return {
-    TOMBSTONE, PREF_KEY, DEMO_SEED_IDS, SyncError,
+    TOMBSTONE, PREF_KEY, DEMO_SEED_IDS, SyncError, FORMAT, RULE_PREFIX, isRuleKey, canonFor,
     hashString, entityMap, stampTimes, applyEntity, repairInvariants, validRemoteDoc, validEntityData,
-    isDemoSeedRecord, packShadow, unpackShadow, freshMeta, normalizeMeta, splitKey, canon, cmpTs,
+    isDemoSeedRecord, packShadow, unpackShadow, freshMeta, normalizeMeta, splitKey, canon, cmpTs, validBudget,
     computePending, createEngine,
   };
 })();

@@ -6,7 +6,7 @@ function createFakeCloud() {
   let clock = 0;
   const err = code => Object.assign(new Error(code), { code });
   const order = (a, b) => Core.cmpTs(a.ts, b.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  const hashOf = (key, data) => Core.hashString(JSON.stringify(Core.canon[Core.splitKey(key)[0]](data)));
+  const hashOf = (key, data) => Core.hashString(JSON.stringify(Core.canonFor(key)(data)));
 
   const cloud = {
     docs, offline: false, failNext: null, dropAckNext: false,
@@ -29,6 +29,8 @@ function createFakeCloud() {
       cloud.pushCalls++;
       if (cloud.offline) throw err('unavailable');
       if (cloud.failNext) { const code = cloud.failNext; cloud.failNext = null; throw err(code); }
+      // 和 firestore.rules 一樣：只接受四種類別，內容最多 12 個欄位（整批交易一起失敗）。
+      if (changes.some(c => !['rec', 'cat', 'mer', 'pref'].includes(c.kind) || Object.keys(c.data || {}).length > 12)) throw err('permission-denied');
       const ts = { s: ++clock, n: 0 };
       const results = [];
       for (const c of changes) {

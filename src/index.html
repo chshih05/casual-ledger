@@ -58,6 +58,13 @@
         </button>
       </div>
       <div id="headerTitleOnly" class="hidden text-base font-semibold text-textMain py-1">管理與設定</div>
+      <div id="settingsSubHeader" class="hidden flex items-center gap-2">
+        <button id="btnSettingsBack" type="button" class="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-bgCard border border-borderSubtle text-xs text-textMuted hover:text-textMain transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          <span>設定</span>
+        </button>
+        <span id="settingsPageTitle" class="text-base font-semibold text-textMain"></span>
+      </div>
 
       <!-- 獨立全頁記帳頂部列 (取代原本奇怪的彈窗) -->
       <div id="recordPageHeader" class="hidden flex-1 flex items-center justify-between pr-2">
@@ -83,6 +90,7 @@
 
     <!-- ==================== 視圖 1：首頁 ==================== -->
     <main id="viewHome" class="px-4 space-y-4 animate-fade">
+      <div class="space-y-4">
       <!-- 1. 本月支出總額卡片 -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 shadow-sm">
         <div class="flex items-center justify-between mb-1">
@@ -109,6 +117,16 @@
           </div>
         </div>
       </section>
+
+      <!-- 本月預算（有設定預算才顯示） -->
+      <section id="homeBudgetCard" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 id="homeBudgetTitle" class="text-xs text-textMuted font-medium">本月預算</h2>
+          <button id="btnHomeBudgetMore" type="button" class="text-xs text-accent">看全部預算 ›</button>
+        </div>
+        <div id="homeBudgetBody"></div>
+      </section>
+      </div>
 
       <!-- 2. 最近消費紀錄 (依日期分組；同一天內依新增先後由上往下排，新記的排在當天最後一筆) -->
       <section class="space-y-3">
@@ -266,17 +284,45 @@
         <button id="statsPeriodYear" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition">整年</button>
       </div>
 
-      <!-- 支出 / 收入 切換與總額 -->
-      <div class="bg-bgCard border border-borderSubtle rounded-2xl p-3.5 flex items-center justify-between">
-        <div class="inline-flex rounded-xl bg-bgInput p-1 border border-borderSubtle">
-          <button id="statsTabExpense" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition">支出統計</button>
-          <button id="statsTabIncome" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition">收入統計</button>
+      <!-- 支出 / 收入 切換與總額；下方和上月（整年時和去年）比較 -->
+      <div class="bg-bgCard border border-borderSubtle rounded-2xl p-3.5">
+        <div class="flex items-center justify-between">
+          <div class="inline-flex rounded-xl bg-bgInput p-1 border border-borderSubtle">
+            <button id="statsTabExpense" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-bgMain transition">支出統計</button>
+            <button id="statsTabIncome" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition">收入統計</button>
+          </div>
+          <div class="text-right">
+            <span id="statsTotalTitle" class="text-[11px] text-textMuted block">當月總支出</span>
+            <span id="statsTotalValue" class="text-lg font-bold num-tabular text-textMain">NT$ 0</span>
+          </div>
         </div>
-        <div class="text-right">
-          <span id="statsTotalTitle" class="text-[11px] text-textMuted block">當月總支出</span>
-          <span id="statsTotalValue" class="text-lg font-bold num-tabular text-textMain">NT$ 0</span>
+        <div id="statsCompareLine" class="stats-compare hidden">
+          <span id="statsCompareText" class="stats-compare-text"></span>
+          <span id="statsAverage" class="stats-average"></span>
         </div>
       </div>
+
+      <!-- 按月看支出時：預算使用情形 -->
+      <section id="statsBudgetSection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 id="statsBudgetTitle" class="text-sm font-semibold text-textMain">本月預算</h3>
+          <button id="btnStatsBudgetEdit" type="button" class="text-[11px] text-accent">調整預算</button>
+        </div>
+        <div id="statsBudgetList"></div>
+      </section>
+
+      <!-- 按月：近 12 個月走勢 -->
+      <section id="statsTrendSection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h3 id="statsTrendTitle" class="text-sm font-semibold text-textMain">近 12 個月支出</h3>
+          <span id="statsTrendAvg" class="text-[11px] text-textMuted num-tabular"></span>
+        </div>
+        <div class="trend-wrap">
+          <div id="statsTrendChart" class="trend-chart"></div>
+          <div id="statsTrendTip" class="trend-tip hidden"></div>
+        </div>
+        <p id="statsTrendRange" class="text-[11px] text-textMuted"></p>
+      </section>
 
       <!-- 各大分類占比與金額 -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
@@ -287,8 +333,18 @@
         <div id="statsCategoryList" class="space-y-2.5"></div>
       </section>
 
+      <!-- 各分類和上月（去年）比較，依差額大小排列 -->
+      <section id="statsCompareSection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h3 id="statsCompareTitle" class="text-sm font-semibold text-textMain">和上月比較</h3>
+          <span id="statsCompareHint" class="text-[11px] text-textMuted"></span>
+        </div>
+        <div id="statsCompareList" class="space-y-2"></div>
+        <button id="btnCompareMore" type="button" class="hidden text-xs text-accent">顯示全部</button>
+      </section>
+
       <!-- 各店家金額排行 -->
-      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+      <section id="statsMerchantSection" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-semibold text-textMain">店家累積金額</h3>
           <span class="text-[11px] text-textMuted">共用店家庫統計・點擊查看明細</span>
@@ -307,7 +363,42 @@
     </main>
 
     <!-- ==================== 視圖 3：管理與設定 ==================== -->
-    <main id="viewSettings" class="hidden px-4 space-y-4 animate-fade">
+    <main id="viewSettings" class="hidden px-4 animate-fade">
+      <!-- 設定第一頁：常用的同步與備份放在最上面，其他設定分頁 -->
+      <div id="settingsHome" class="space-y-4">
+        <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span id="settingsSyncDot" class="w-2 h-2 rounded-full bg-incomeGreen shrink-0"></span>
+              <h3 class="text-sm font-semibold text-textMain">雲端同步</h3>
+              <span id="settingsSyncText" class="text-xs text-textMuted">僅存本機</span>
+            </div>
+            <button id="btnSettingsSyncAction" type="button" class="action shrink-0">前往設定</button>
+          </div>
+          <p id="settingsSyncSummary" class="text-xs text-textMuted"></p>
+        </section>
+        <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-textMain">備份</h3>
+              <p id="settingsBackupAge" class="text-xs text-textMuted mt-0.5"></p>
+            </div>
+            <button id="btnSettingsBackup" type="button" class="action shrink-0">下載完整備份</button>
+          </div>
+        </section>
+        <nav class="settings-menu" aria-label="設定項目">
+          <button type="button" class="settings-menu-item" data-settings-page="general"><span><span class="settings-menu-title">記帳與首頁</span><span class="settings-menu-desc">首頁摘要、儲存並再記一筆</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="budget"><span><span class="settings-menu-title">預算</span><span class="settings-menu-desc">每月總預算、分類預算</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="recurring"><span><span class="settings-menu-title">固定收支</span><span class="settings-menu-desc">房租、訂閱、薪水到期自動記帳</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="categories"><span><span class="settings-menu-title">分類</span><span class="settings-menu-desc">拖曳排序、圖示、新增分類</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="merchants"><span><span class="settings-menu-title">店家與收入來源</span><span class="settings-menu-desc">常用名稱、改名、合併、停用</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="sync"><span><span class="settings-menu-title">雲端同步</span><span class="settings-menu-desc">Google 帳號、衝突紀錄</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="data"><span><span class="settings-menu-title">資料與備份</span><span class="settings-menu-desc">下載與匯入備份、匯出 CSV</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="about"><span><span class="settings-menu-title">關於此網頁</span><span class="settings-menu-desc">版本與更新</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+        </nav>
+      </div>
+
+      <div class="settings-page hidden space-y-4" data-page="general">
       <!-- 1. 首頁頂部摘要顯示方式設定 -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div>
@@ -358,12 +449,72 @@
         </div>
       </section>
 
+      </div>
+
+      <div class="settings-page hidden space-y-4" data-page="budget">
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div>
+          <h3 class="text-sm font-semibold text-textMain">每月總預算</h3>
+          <p class="text-xs text-textMuted mt-0.5">所有支出加起來的上限。首頁會顯示這個月還剩多少，記帳後快用完或超出時會提醒。</p>
+        </div>
+        <div class="budget-setting-row">
+          <span id="budgetTotalValue" class="num-tabular text-sm font-semibold">未設定</span>
+          <button id="btnEditTotalBudget" type="button" class="px-2 text-accent">設定</button>
+        </div>
+      </section>
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div>
+          <h3 class="text-sm font-semibold text-textMain">分類預算</h3>
+          <p class="text-xs text-textMuted mt-0.5">替容易超支的分類設上限，例如餐飲、娛樂；不用每個分類都設定。</p>
+        </div>
+        <div id="budgetCategoryList" class="space-y-2"></div>
+        <p id="budgetCategorySum" class="text-xs text-textMuted"></p>
+      </section>
+      </div>
+
+      <div class="settings-page hidden space-y-4" data-page="recurring">
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="rule-head">
+          <div>
+            <h3 class="text-sm font-semibold text-textMain">固定收支</h3>
+            <p class="text-xs text-textMuted mt-0.5">房租、訂閱、薪水這類固定的收支，到了那天會自動記一筆；記下的紀錄可以照常修改或刪除。</p>
+          </div>
+          <button id="btnAddRule" type="button" class="action shrink-0">新增</button>
+        </div>
+        <div id="ruleList" class="space-y-2"></div>
+      </section>
+      <section id="ruleEditor" class="hidden bg-bgCard border border-accent/40 rounded-2xl p-4 space-y-3">
+        <h3 id="ruleEditorTitle" class="text-sm font-semibold text-textMain">新增固定收支</h3>
+        <div role="group" aria-label="類型" class="grid grid-cols-2 rounded-xl bg-bgInput p-1 border border-borderSubtle">
+          <button id="ruleTypeExpense" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition">支出</button>
+          <button id="ruleTypeIncome" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition">收入</button>
+        </div>
+        <label class="rule-field"><span>分類</span><select id="ruleCategory" class="rule-input"></select></label>
+        <label class="rule-field"><span>金額</span><input id="ruleAmount" class="rule-input" inputmode="numeric" autocomplete="off" placeholder="例如 12000" /></label>
+        <label class="rule-field"><span id="ruleMerchantLabel">店家</span><input id="ruleMerchant" class="rule-input" list="ruleMerchantOptions" maxlength="100" autocomplete="off" placeholder="可留白" /></label>
+        <datalist id="ruleMerchantOptions"></datalist>
+        <label class="rule-field"><span>備註</span><input id="ruleNote" class="rule-input" maxlength="1000" autocomplete="off" placeholder="可留白" /></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="rule-field"><span>頻率</span><select id="ruleFreq" class="rule-input"><option value="month">每月</option><option value="year">每年</option></select></label>
+          <label class="rule-field"><span id="ruleStartLabel">第一次</span><input id="ruleStart" type="date" class="rule-input" /></label>
+        </div>
+        <label class="rule-field"><span>結束日期（可留白）</span><input id="ruleEnd" type="date" class="rule-input" /></label>
+        <p id="rulePreview" class="text-xs text-textMuted"></p>
+        <p id="ruleError" class="hidden text-xs text-dangerRed" role="alert"></p>
+        <div class="flex gap-2 justify-end">
+          <button id="btnRuleCancel" type="button" class="action">取消</button>
+          <button id="btnRuleSave" type="button" class="action rule-save">儲存</button>
+        </div>
+      </section>
+      </div>
+
+      <div class="settings-page hidden space-y-4" data-page="categories">
       <!-- 3. 管理固定分類順序 -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm font-semibold text-textMain">分類管理（固定順序）</h3>
-            <p class="text-xs text-textMuted mt-0.5">順序固定不隨頻率跳動；改名會同步更新紀錄，有帳目時禁止誤刪</p>
+            <h3 class="text-sm font-semibold text-textMain">分類管理</h3>
+            <p class="text-xs text-textMuted mt-0.5">按住左邊的把手拖曳調整順序；改名會同步更新紀錄，有帳目時禁止誤刪</p>
           </div>
           <div class="inline-flex rounded-lg bg-bgInput p-0.5 border border-borderSubtle text-xs shrink-0">
             <button id="catMgrTabExpense" type="button" class="px-2.5 py-1 rounded-md bg-accent text-bgMain font-medium">支出</button>
@@ -381,6 +532,9 @@
         </div>
       </section>
 
+      </div>
+
+      <div class="settings-page hidden space-y-4" data-page="merchants">
       <!-- 4. 店家與收入來源 -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div class="flex items-center justify-between gap-2">
@@ -402,6 +556,9 @@
         </div>
       </section>
 
+      </div>
+
+      <div class="settings-page hidden space-y-4" data-page="sync">
 <section id="syncSection" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
 <div class="flex items-center justify-between gap-2"><h3 class="text-sm font-semibold">雲端同步（Google 帳號）</h3><span id="syncChip" class="sync-chip">僅存本機</span></div>
 <p id="syncSummary" class="text-sm text-textMuted"></p>
@@ -411,6 +568,9 @@
 <div id="syncConflictList" class="hidden space-y-2"></div>
 </section>
 
+      </div>
+
+      <div class="settings-page hidden space-y-4" data-page="data">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
 <h3 class="text-sm font-semibold">資料保存與備份</h3>
 <p id="backupIntro" class="text-sm text-textMuted">資料存放於此瀏覽器，目前沒有雲端同步。</p>
@@ -420,7 +580,21 @@
 <p id="backupStatus" class="text-xs text-textMuted">備份包含已儲存紀錄、分類、店家與偏好。</p>
 <p id="backupAge" class="text-xs text-textMuted"></p>
 </section>
+<section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+<div>
+<h3 class="text-sm font-semibold">匯出 CSV</h3>
+<p class="text-xs text-textMuted mt-0.5">用 Excel、Google 試算表或 Numbers 開啟，方便自己整理；不能用來匯入或還原帳本。</p>
+</div>
+<div class="flex gap-2 flex-wrap">
+<select id="csvRange" class="action csv-range" aria-label="匯出範圍"></select>
+<button id="btnExportCsv" class="action">匯出 CSV</button>
+</div>
+<p id="csvStatus" class="text-xs text-textMuted">欄位：日期、類型、分類、金額、店家／收入來源、備註。</p>
+</section>
 
+      </div>
+
+      <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
 <p class="text-xs text-textMuted">網頁版本：<span id="appVersion">__BUILD_VERSION__</span></p>
@@ -428,6 +602,7 @@
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
 </section>
+      </div>
     </main>
 
   </div>
