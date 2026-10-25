@@ -135,6 +135,27 @@ const LedgerSyncCore = (() => {
     return next;
   }
 
+  // 修改帳本前先記下目前每個項目的內容，之後比對才不會受到修改途中共用物件的影響。
+  function snapshot(s) { cachedEntityMap(s); }
+
+  // 兩個版本的帳本之間改了哪些項目（內容或修改時間），給儲存層只寫入變更的部分。
+  // 回傳 [項目代號, 內容（已刪除為 null）, 修改時間（沒有則為 undefined）]。
+  function diffEntities(prev, next) {
+    const before = cachedEntityMap(prev), after = cachedEntityMap(next);
+    const ta = prev.entityTimes || {}, tb = next.entityTimes || {};
+    const out = [];
+    for (const [key, e] of after) {
+      const old = before.get(key);
+      if (!old || old.json !== e.json || ownValue(ta, key) !== ownValue(tb, key)) out.push([key, e.data, ownValue(tb, key)]);
+    }
+    for (const key of before.keys()) if (!after.has(key)) out.push([key, null, ownValue(tb, key)]);
+    // 已刪除項目只剩修改時間；時間變了也要記下來（衝突判斷與「刪掉的日期不再補記」會用到）。
+    for (const key of Object.keys(tb)) {
+      if (!after.has(key) && !before.has(key) && ownValue(ta, key) !== ownValue(tb, key)) out.push([key, null, ownValue(tb, key)]);
+    }
+    return out;
+  }
+
   // ---------- 套用單一項目到帳本 ----------
   function upsertById(list, id, data) {
     const index = list.findIndex(x => String(x.id) === id);
@@ -191,9 +212,9 @@ const LedgerSyncCore = (() => {
       return c;
     };
     const byId = new Map(s.categories.map(c => [String(c.id), c]));
-    for (const r of s.records) {
+    s.records.forEach((r, i) => {
       const c = byId.get(String(r.categoryId));
-      if (c && c.type === r.type) continue;
+      if (c && c.type === r.type) return;
       if (!c) {
         const hint = categoryHints['cat:' + r.categoryId];
         const restored = hint && hint.type === r.type
@@ -203,10 +224,11 @@ const LedgerSyncCore = (() => {
         byId.set(restored.id, restored);
         repaired.add('cat:' + restored.id);
       } else {
-        r.categoryId = fallback(r.type).id;
+        // 換成新物件，不改到上一版帳本共用的紀錄（見 60-app.js 的 cloneForCommit）。
+        s.records[i] = Object.assign({}, r, { categoryId: fallback(r.type).id });
         repaired.add('rec:' + r.id);
       }
-    }
+    });
     for (const type of ['expense', 'income']) {
       if (!s.categories.some(c => c.type === type)) fallback(type);
     }
@@ -309,7 +331,7 @@ const LedgerSyncCore = (() => {
 
   // 找出「本機內容」與「上次同步時的雲端內容」不同的項目，就是待上傳的變更（含刪除）。
   function computePending(s, meta, now = Date.now()) {
-    const map = entityMap(s);
+    const map = cachedEntityMap(s);
     const times = s.entityTimes || {};
     const keys = new Set([...map.keys(), ...Object.keys(meta.shadow || {})]);
     const out = [];
@@ -329,7 +351,9 @@ const LedgerSyncCore = (() => {
 
   // ---------- 同步引擎 ----------
   // backend：pull({cursor, after, limit}) → {docs, next, maxTs}；push(changes, {deviceId}) → results
-  // ledger：get() 取得目前帳本；apply(mutator) 寫入帳本（成功回傳 true）
+  // ledger：get() 取得目前帳本；apply(mutator) 寫入帳本（成功回傳 true，或確實存好後才完成的 Promise）；
+  //         flush()（可省略）等本機帳本確實寫入。同步狀態一定在帳本存好之後才保存，
+  //         否則網頁中途關掉時，下次會把沒存到的紀錄誤當成「在這台刪掉了」。
   // metaStore：load() / save(meta) 保存此裝置的同步狀態
   // bulkAck()：使用者剛確認過的大量刪除 {count, until}；由畫面層保存，避免同步途中被覆蓋。
   function createEngine({ backend, ledger, metaStore, now = () => Date.now(), pageSize = 300, chunkSize = 100,
@@ -349,7 +373,7 @@ const LedgerSyncCore = (() => {
     // 套用雲端資料。兩邊都改過同一項目時，以「最後修改時間」較新的版本為準，
     // 另一個版本存入衝突紀錄，使用者可以改用。
     // recheck：換到新版程式後第一次同步，連已經讀過的版本也重新比對一次。
-    function applyRemote(docs, meta, recheck = false) {
+    async function applyRemote(docs, meta, recheck = false) {
       const { map, times } = localState();
       const changes = [];
       const conflicts = [];
@@ -394,7 +418,7 @@ const LedgerSyncCore = (() => {
       }
       let repaired = [];
       if (changes.length) {
-        const ok = ledger.apply(next => {
+        const ok = await ledger.apply(next => {
           next.entityTimes = Object.assign({}, next.entityTimes || {});
           for (const c of changes) {
             applyEntity(next, c.key, c.data);
@@ -423,7 +447,7 @@ const LedgerSyncCore = (() => {
         pages++;
       } while (after && pages < 1000);
       // 整批下載完成才套用並前進讀取位置；中途斷線就下次從原位置重新讀。
-      const result = applyRemote(docs, meta, recheck);
+      const result = await applyRemote(docs, meta, recheck);
       meta.cursor = maxTs;
       meta.lastPullAt = now();
       meta.format = FORMAT;
@@ -442,6 +466,7 @@ const LedgerSyncCore = (() => {
 
     async function pushAll(meta) {
       let pushed = 0, held = 0, conflicts = 0;
+      if (ledger.flush) await ledger.flush(); // 先確定本機帳本已經存好，再上傳
       for (let round = 0; round < 4; round++) {
         const gate = holdBulkDeletes(pendingChanges(meta), meta);
         held = gate.held;
@@ -461,7 +486,7 @@ const LedgerSyncCore = (() => {
           metaStore.save(meta);
         }
         if (!conflictDocs.length) break;
-        conflicts += applyRemote(conflictDocs, meta).conflicts;
+        conflicts += (await applyRemote(conflictDocs, meta)).conflicts;
         metaStore.save(meta);
       }
       return { pushed, held, conflicts };
@@ -512,7 +537,7 @@ const LedgerSyncCore = (() => {
 
   return {
     TOMBSTONE, PREF_KEY, DEMO_SEED_IDS, SyncError, FORMAT, RULE_PREFIX, isRuleKey, canonFor,
-    hashString, entityMap, stampTimes, applyEntity, repairInvariants, validRemoteDoc, validEntityData,
+    hashString, entityMap, snapshot, stampTimes, diffEntities, applyEntity, repairInvariants, validRemoteDoc, validEntityData,
     isDemoSeedRecord, packShadow, unpackShadow, freshMeta, normalizeMeta, splitKey, canon, cmpTs, validBudget,
     computePending, createEngine,
   };

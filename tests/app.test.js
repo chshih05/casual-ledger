@@ -4,10 +4,17 @@
   const { test, assert, eq, sleep, waitFor } = T;
   const PREFIX = 'minimal_expense_v3_';
   const APP_URL = '../docs/index.html?nosw&test';
+  const DB_NAME = 'casual-ledger'; // 帳本資料庫（58-store.js）
   let frame = null;
 
-  function clearStorage() {
+  async function clearStorage() {
     for (const key of Object.keys(localStorage)) if (key.startsWith(PREFIX)) localStorage.removeItem(key);
+    // 舊的測試頁面關閉後才會放開資料庫，刪除會等到那時才完成。
+    await new Promise((resolve, reject) => {
+      const r = indexedDB.deleteDatabase(DB_NAME);
+      r.onsuccess = () => resolve();
+      r.onerror = () => reject(r.error);
+    });
   }
 
   function wrap(w) {
@@ -31,29 +38,33 @@
         return Boolean(el) && el.getClientRects().length > 0;
       },
       text: id => $(id).textContent.trim(),
-      stored: (book = 'personal') => JSON.parse(w.localStorage.getItem(PREFIX + book) || 'null'),
+      // 存在裝置上的帳本（等資料庫寫完再讀；還沒存過任何東西時是 null）。
+      stored: () => w.eval('LedgerStore.__test.read()'),
       badge: () => $('syncText').textContent.trim(),
       sync: () => w.eval('LedgerSync.__test'),
     };
     return a;
   }
 
-  async function openApp({ clear = true } = {}) {
-    if (clear) clearStorage();
-    if (frame) frame.remove();
+  // 網頁從資料庫讀出帳本、同步也準備好之後，會在 <html> 標上 data-ready。
+  const appReady = w => w.document.documentElement.dataset.ready === '1';
+
+  async function openApp({ clear = true, query = '' } = {}) {
+    if (frame) { frame.remove(); frame = null; }
+    if (clear) await clearStorage();
     frame = document.createElement('iframe');
     frame.title = '受測網頁';
     document.getElementById('stage').appendChild(frame);
-    await new Promise(resolve => { frame.onload = resolve; frame.src = `${APP_URL}&r=${Math.random()}`; });
+    await new Promise(resolve => { frame.onload = resolve; frame.src = `${APP_URL}${query}&r=${Math.random()}`; });
     const w = frame.contentWindow;
-    await waitFor(() => w.eval('typeof state === "object" && state !== null'));
+    await waitFor(() => appReady(w), { message: '網頁沒有完成載入' });
     return wrap(w);
   }
 
   async function reloadApp() {
     await new Promise(resolve => { frame.onload = resolve; frame.contentWindow.location.reload(); });
     const w = frame.contentWindow;
-    await waitFor(() => w.eval('typeof state === "object" && state !== null'));
+    await waitFor(() => appReady(w), { message: '網頁沒有完成載入' });
     return wrap(w);
   }
 
@@ -117,7 +128,7 @@
   });
 
   test('畫面｜舊的示例帳本資料會被清除，自己的帳本保留', async () => {
-    clearStorage();
+    await clearStorage();
     const personal = { records: [{ id: 'rec_keep_me', seq: 1, type: 'expense', date: '2026-10-01', categoryId: 'cat_lunch', amount: 90, merchant: '', note: '保留' }],
       categories: (await openApp()).ev('getInitialState().categories'), merchants: [] };
     localStorage.setItem(PREFIX + 'demo', JSON.stringify({ records: [], categories: personal.categories, merchants: ['麥當勞'] }));
@@ -166,7 +177,7 @@
     a.type('inputAmountExpr', '100');
     a.click('btnSaveRecord');
     eq(a.text('recordFormError'), '請先選擇分類。');
-    eq(a.stored(), null, '不應寫入帳本');
+    eq((await a.stored()), null, '不應寫入帳本');
   });
 
   test('畫面｜用數字鍵盤輸入 85＋35，儲存為 120 元', async () => {
@@ -178,7 +189,7 @@
     a.type('inputMerchantSearch', '麥當勞');
     a.type('inputRecordNote', '大麥克套餐');
     a.click('btnSaveRecord');
-    const saved = a.stored().records;
+    const saved = (await a.stored()).records;
     eq(saved.length, 1);
     eq([saved[0].amount, saved[0].merchant, saved[0].note], [120, '麥當勞', '大麥克套餐']);
     eq(a.text('toastBox'), '已儲存在此瀏覽器');
@@ -193,7 +204,7 @@
     a.type('inputRecordNote', '還沒儲存');
     a.click('btnCloseRecordModal');
     eq(a.ev('state.activeView'), 'home');
-    eq(a.stored(), null, '未儲存的內容不應寫入');
+    eq((await a.stored()), null, '未儲存的內容不應寫入');
     a.click('btnOpenAddModal');
     eq(a.$('inputAmountExpr').value, '');
     eq(a.$('inputRecordNote').value, '');
@@ -209,8 +220,8 @@
     a = await reloadApp();
     eq(a.ev('state.activeView'), 'home');
     assert(!a.visible('modalDialog'), '不應詢問是否恢復草稿');
-    eq(a.stored().records.length, 1, '只保留已儲存的紀錄');
-    assert(!JSON.stringify(a.stored()).includes('"draft"'), '不應保存草稿');
+    eq((await a.stored()).records.length, 1, '只保留已儲存的紀錄');
+    assert(!JSON.stringify((await a.stored())).includes('"draft"'), '不應保存草稿');
     a.click('btnOpenAddModal');
     eq(a.$('inputAmountExpr').value, '');
   });
@@ -222,7 +233,7 @@
     eq(a.$('inputAmountExpr').value, '150');
     a.type('inputAmountExpr', '999');
     a.click('btnCloseRecordModal');
-    eq(a.stored().records[0].amount, 150);
+    eq((await a.stored()).records[0].amount, 150);
     eq(a.ev('state.records[0].amount'), 150);
   });
 
@@ -240,7 +251,7 @@
     a.click('btnSaveAndNextRecord');
     eq(a.ev('state.activeView'), 'record', '應留在記帳頁');
     eq(a.$('inputAmountExpr').value, '');
-    eq(a.stored().records.length, 1);
+    eq((await a.stored()).records.length, 1);
   });
 
   test('畫面｜數字鍵盤可以收起與展開', async () => {
@@ -573,7 +584,7 @@
     eq(a.ev('getCategoryById("cat_breakfast").order'), 1, '還沒放開前不存檔');
     pointer(a, handle, 'pointerup', startY + middleY(rows[2]) - middleY(rows[0]) + 6);
     eq(a.ev('getCategoriesByType("expense").map(c => c.name)').slice(0, 4), ['午餐', '晚餐', '早餐', '飲料點心']);
-    eq(a.stored().categories.filter(c => c.type === 'expense').sort((x, y) => x.order - y.order).map(c => c.name).slice(0, 3), ['午餐', '晚餐', '早餐'], '重新整理後也保留');
+    eq((await a.stored()).categories.filter(c => c.type === 'expense').sort((x, y) => x.order - y.order).map(c => c.name).slice(0, 3), ['午餐', '晚餐', '早餐'], '重新整理後也保留');
     eq(a.ev('getCategoriesByType("income").map(c => c.order)'), [1, 2, 3], '收入分類的順序不受影響');
     assert(!a.$('settingsCategoryList').querySelector('.dragging'), '放開後恢復原狀');
     a.click('btnOpenAddModal');
@@ -661,8 +672,8 @@
     await confirmDialog(a, '3000');
     await waitFor(() => !a.visible('modalDialog'));
     eq(a.ev('getCategoryById("cat_lunch").budget'), 3000);
-    eq(a.stored().categories.find(c => c.id === 'cat_lunch').budget, 3000, '存進帳本');
-    eq(a.stored().preferences.monthlyBudget, 20000);
+    eq((await a.stored()).categories.find(c => c.id === 'cat_lunch').budget, 3000, '存進帳本');
+    eq((await a.stored()).preferences.monthlyBudget, 20000);
     eq(a.text('budgetCategorySum'), '分類預算合計 NT$ 3,000。');
     a.click(lunch());
     await confirmDialog(a, '12.5');
@@ -1056,6 +1067,177 @@
     eq(a.text('toastBox'), '這個範圍沒有紀錄。');
   });
 
+  // ---------- 儲存：IndexedDB ----------
+  const journal = () => JSON.parse(localStorage.getItem(PREFIX + 'personal_journal') || 'null');
+  const rowKeys = async a => (await a.ev('LedgerStore.__test.rows()')).map(r => r.k);
+  const legacyLedger = (a, extra = {}) => Object.assign({
+    records: [{ id: 'rec_old_1', seq: 1, type: 'expense', date: '2026-09-01', categoryId: 'cat_lunch', amount: 90, merchant: '便當店', note: '舊版' }],
+    categories: defaultCategories(a).map(c => c.id === 'cat_lunch' ? { ...c, name: '中餐', budget: 2000 } : c),
+    merchants: ['便當店'], archivedMerchants: [], merchantTypes: { 便當店: 'expense' },
+    preferences: { homeHeaderMode: 'full_net', enableSaveAndNext: true, monthlyBudget: 15000 },
+    recurring: [{ id: 'rule_old', type: 'expense', categoryId: 'cat_bills', amount: 500, merchant: '', note: '網路', freq: 'month', day: 9, next: '2099-01-09' }],
+    entityTimes: { 'rec:rec_old_1': 1700000000000, 'cat:cat_lunch': 1700000000001, 'rec:rec_gone': 1700000000002 },
+  }, extra);
+
+  test('儲存｜帳本存在資料庫，記一筆只寫入那一筆；原本的 localStorage 位置換成標記', async () => {
+    const a = await personalApp();
+    eq(a.ev('LedgerStore.mode()'), 'idb');
+    eq(JSON.parse(localStorage.getItem(PREFIX + 'personal')).store, 'indexeddb', '舊版網頁讀到標記會停止寫入，不會當成空帳本');
+    eq(await a.stored(), null, '還沒儲存任何東西');
+    addRecord(a, { amount: '120' });
+    const keys = await rowKeys(a);
+    assert(keys.includes('pref:main') && keys.includes('cat:cat_lunch'), '第一次儲存寫入整本帳');
+    a.ev('LedgerStore.__test.pause()');
+    addRecord(a, { amount: '35' });
+    const id = a.ev('state.records.find(r => r.amount === 35).id');
+    eq(journal().b.at(-1).c.map(c => c[0]), [`rec:${id}`], '只寫入新的那一筆');
+    assert(!(await rowKeys(a)).includes(`rec:${id}`), '暫停時還沒寫進資料庫');
+    await a.ev('LedgerStore.__test.resume()');
+    assert((await rowKeys(a)).includes(`rec:${id}`));
+    eq(journal().b, [], '寫進資料庫後清掉變更日誌');
+    eq((await a.stored()).records.map(r => r.amount).sort(), [120, 35]);
+  });
+
+  test('儲存｜寫進資料庫之前網頁被關掉：重新開啟時從變更日誌補寫，紀錄不會不見', async () => {
+    let a = await personalApp();
+    addRecord(a, { amount: '50' });
+    await a.ev('LedgerStore.flush()');
+    a.ev('LedgerStore.__test.pause()');
+    addRecord(a, { amount: '77', note: '關掉前記的' });
+    eq(journal().b.length, 1);
+    a = await reloadApp();
+    eq(a.ev('state.records.map(r => r.note).sort()'), ['', '關掉前記的']);
+    await a.ev('LedgerStore.flush()');
+    eq(journal().b, []);
+    eq((await a.stored()).records.length, 2);
+  });
+
+  test('儲存｜舊版存在 localStorage 的帳本會完整搬進資料庫（含修改時間、預算、固定收支、匯入前帳本）', async () => {
+    const first = await personalApp();
+    const old = legacyLedger(first);
+    await clearStorage();
+    localStorage.setItem(PREFIX + 'personal', JSON.stringify(old));
+    localStorage.setItem(PREFIX + 'personal_before_import', JSON.stringify({ ...old, records: [] }));
+    let a = await openApp({ clear: false });
+    eq(a.ev('LedgerStore.mode()'), 'idb');
+    eq(a.ev('state.records.map(r => r.id)'), ['rec_old_1']);
+    eq(a.ev('getCategoryById("cat_lunch")'), { id: 'cat_lunch', type: 'expense', name: '中餐', icon: 'lunch', order: 2, budget: 2000 });
+    eq(a.ev('state.preferences'), { homeHeaderMode: 'full_net', enableSaveAndNext: true, monthlyBudget: 15000 });
+    eq(a.ev('state.recurring.map(r => r.id)'), ['rule_old']);
+    const sorted = o => Object.fromEntries(Object.entries(o).sort());
+    eq(sorted(a.ev('state.entityTimes')), sorted(old.entityTimes), '修改時間（含已刪除項目）都保留，同步判斷新舊才正確');
+    eq(JSON.parse(localStorage.getItem(PREFIX + 'personal')).store, 'indexeddb');
+    eq(localStorage.getItem(PREFIX + 'personal_before_import'), null, '匯入前帳本也搬進資料庫');
+    assert(a.ev('LedgerStore.hasSnapshot("before_import")'));
+    a = await reloadApp();
+    eq(a.ev('state.records.map(r => r.id)'), ['rec_old_1'], '重新開啟從資料庫讀出');
+    eq(a.ev('getCategoryById("cat_lunch").name'), '中餐');
+    assert(a.ev('(() => { try { validateBackup(JSON.parse(localStorage.getItem("minimal_expense_v3_personal"))); return false; } catch { return true; } })()'),
+      '舊版程式讀到標記會判定無法讀取，停止寫入與同步');
+  });
+
+  test('儲存｜另一個分頁改過帳本時停止寫入，避免互相覆蓋', async () => {
+    const a = await personalApp();
+    addRecord(a, { amount: '10' });
+    localStorage.setItem(PREFIX + 'personal_journal', JSON.stringify({ rev: 'other-tab', b: [] }));
+    await waitFor(() => a.visible('storageError'), { message: '應提示帳本已在另一個分頁變更' });
+    assert(a.text('storageError').includes('另一個分頁'));
+    addRecord(a, { amount: '20' });
+    eq(a.text('recordFormError'), '尚未儲存成功。請查看上方提示並重試，輸入內容仍保留。');
+    eq((await a.stored()).records.map(r => r.amount), [10]);
+  });
+
+  test('儲存｜瀏覽器不能用資料庫時，沿用 localStorage 存整本帳', async () => {
+    let a = await openApp({ query: '&noidb' });
+    eq(a.ev('LedgerStore.mode()'), 'local');
+    addRecord(a, { amount: '66' });
+    eq((await a.stored()).records.map(r => r.amount), [66]);
+    eq(JSON.parse(localStorage.getItem(PREFIX + 'personal')).records.length, 1);
+    a = await openApp({ clear: false, query: '&noidb' });
+    eq(a.ev('state.records.map(r => r.amount)'), [66]);
+    a = await openApp({ clear: false });
+    eq(a.ev('LedgerStore.mode()'), 'idb', '之後可以用資料庫時自動搬過去');
+    eq(a.ev('state.records.map(r => r.amount)'), [66]);
+  });
+
+  test('儲存｜已經搬進資料庫、這次卻打不開時：停止寫入並提示，不會當成空帳本，也不能下載空的備份', async () => {
+    let a = await personalApp();
+    addRecord(a, { amount: '88' });
+    await a.ev('LedgerStore.flush()');
+    a = await openApp({ clear: false, query: '&noidb' });
+    assert(a.visible('storageError') && a.text('storageError').includes('無法開啟帳本資料庫'), a.text('storageError'));
+    let downloads = 0;
+    a.w.downloadText = () => { downloads++; };
+    a.ev('exportBackup()');
+    eq(downloads, 0);
+    eq(a.text('toastBox'), '目前讀不到帳本，無法下載備份。請完全關閉網頁後重新開啟。');
+    addRecord(a, { amount: '1' });
+    eq(a.ev('state.records.length'), 0, '不能寫入');
+    a = await openApp({ clear: false });
+    eq(a.ev('state.records.map(r => r.amount)'), [88], '能開啟時帳本都還在');
+  });
+
+  test('儲存｜資料庫已有帳本、localStorage 又出現舊格式帳本時：合併進資料庫，不刪任何紀錄', async () => {
+    let a = await personalApp();
+    addRecord(a, { amount: '500', note: '資料庫裡的' });
+    await a.ev('LedgerStore.flush()');
+    localStorage.setItem(PREFIX + 'personal', JSON.stringify(legacyLedger(a)));
+    a = await reloadApp();
+    eq(a.ev('state.records.map(r => r.note).sort()'), ['舊版', '資料庫裡的']);
+    eq(JSON.parse(localStorage.getItem(PREFIX + 'personal')).store, 'indexeddb');
+  });
+
+  test('儲存｜資料庫連線中斷（例如 iPhone 在背景太久）：自動重新連線再寫入，不用重新整理', async () => {
+    const a = await personalApp();
+    addRecord(a, { amount: '10' });
+    await a.ev('LedgerStore.flush()');
+    a.ev('LedgerStore.__test.breakConnection()');
+    addRecord(a, { amount: '20' });
+    await a.ev('LedgerStore.flush()');
+    assert(!a.visible('storageError'), a.text('storageError'));
+    eq((await a.stored()).records.map(r => r.amount).sort(), [10, 20]);
+    addRecord(a, { amount: '30' });
+    eq((await a.stored()).records.length, 3, '重新連線後照常儲存');
+  });
+
+  test('儲存｜重新連線也失敗時停止儲存並提示，畫面上的帳本仍可下載備份', async () => {
+    const a = await personalApp();
+    addRecord(a, { amount: '10' });
+    await a.ev('LedgerStore.flush()');
+    a.ev('LedgerStore.__test.breakConnection()');
+    a.ev('LedgerStore.__test.failNextOpen()');
+    addRecord(a, { amount: '20' });
+    let failed = false;
+    try { await a.ev('LedgerStore.flush()'); } catch { failed = true; }
+    assert(failed, '寫入應失敗');
+    assert(a.visible('storageError') && a.text('storageError').includes('無法寫入帳本資料庫'), a.text('storageError'));
+    addRecord(a, { amount: '30' });
+    eq(a.ev('state.records.length'), 2, '停止儲存後不再接受新的紀錄');
+    const downloads = [];
+    a.w.downloadText = text => downloads.push(text);
+    a.ev('exportBackup()');
+    eq(JSON.parse(downloads[0]).data.records.length, 2, '備份包含還沒寫進資料庫的那一筆');
+    const b = await reloadApp();
+    eq(b.ev('state.records.map(r => r.amount).sort()'), [10, 20], '變更日誌裡的那一筆，重新開啟後補寫回來');
+  });
+
+  test('儲存｜同步：雲端的變更確實寫進資料庫後才保存同步狀態', async () => {
+    const a = await personalApp();
+    const cloud = createFakeCloud();
+    await linkWithFakeCloud(a, cloud);
+    await waitFor(() => a.badge() === '已同步');
+    a.ev('LedgerStore.__test.pause()');
+    cloud.put('rec:rec_cloud', { id: 'rec_cloud', seq: 1, type: 'expense', date: a.ev('today()'), categoryId: 'cat_daily', amount: 320, merchant: '', note: '雲端來的' });
+    const running = a.sync().sync();
+    await sleep(150);
+    eq(a.ev('state.records.length'), 1, '畫面上已經有了');
+    assert(!a.sync().snapshot().meta.shadow['rec:rec_cloud'], '還沒寫進資料庫前，不能記成已同步');
+    await a.ev('LedgerStore.__test.resume()');
+    await running;
+    assert(a.sync().snapshot().meta.shadow['rec:rec_cloud'], '寫進資料庫後記成已同步');
+    eq((await a.stored()).records.map(r => r.id), ['rec_cloud']);
+  });
+
   // ---------- 資料層調整 ----------
   test('資料｜儲存時記錄每筆的修改時間，備份會帶上帳本類型與修改時間', async () => {
     const a = await personalApp();
@@ -1065,7 +1247,7 @@
     const env = a.ev('backupEnvelope()');
     eq(env.book, 'personal');
     assert(typeof env.data.entityTimes[`rec:${id}`] === 'number', '備份應包含修改時間');
-    eq(a.stored().entityTimes[`rec:${id}`], env.data.entityTimes[`rec:${id}`], '重新開啟後應保留修改時間');
+    eq((await a.stored()).entityTimes[`rec:${id}`], env.data.entityTimes[`rec:${id}`], '重新開啟後應保留修改時間');
   });
 
   test('資料｜未知的圖示代碼會保留（避免舊版裝置蓋掉新版圖示）', async () => {
@@ -1181,7 +1363,7 @@
     addRecord(a, { amount: '85+35', merchant: '八方雲集' });
     await waitFor(() => a.badge().startsWith('待同步'), { message: `狀態：${a.badge()}` });
     assert(a.$('homeRecordList').textContent.includes('待同步'), '紀錄旁應標示待同步');
-    eq(a.stored().records.length, 1, '已按儲存的紀錄必須保存在本機');
+    eq((await a.stored()).records.length, 1, '已按儲存的紀錄必須保存在本機');
     cloud.offline = false;
     a.w.dispatchEvent(new a.w.Event('online'));
     await waitFor(() => a.badge() === '已同步', { message: `狀態：${a.badge()}` });
@@ -1198,7 +1380,7 @@
     addRecord(a, { amount: '70' });
     await waitFor(() => a.badge().startsWith('待同步'));
     a = await reloadApp();
-    eq(a.stored().records.length, 1);
+    eq((await a.stored()).records.length, 1);
     cloud.offline = false;
     a.sync().useBackend(fakeBackendFactory(cloud, { signedIn: true }));
     await a.sync().start();
@@ -1245,7 +1427,7 @@
     await waitFor(() => a.badge() === '同步失敗', { message: `狀態：${a.badge()}` });
     openSettings(a, 'sync');
     assert(a.text('syncError').includes('雲端拒絕存取'), a.text('syncError'));
-    eq(a.stored().records.length, 1);
+    eq((await a.stored()).records.length, 1);
     a.click('btnSyncNow');
     await waitFor(() => a.badge() === '已同步', { message: '按立即同步後應恢復' });
   });

@@ -757,7 +757,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">3e94c4604aae</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">0f33bdf943fd</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1611,6 +1611,27 @@ const LedgerSyncCore = (() => {
     return next;
   }
 
+  // 修改帳本前先記下目前每個項目的內容，之後比對才不會受到修改途中共用物件的影響。
+  function snapshot(s) { cachedEntityMap(s); }
+
+  // 兩個版本的帳本之間改了哪些項目（內容或修改時間），給儲存層只寫入變更的部分。
+  // 回傳 [項目代號, 內容（已刪除為 null）, 修改時間（沒有則為 undefined）]。
+  function diffEntities(prev, next) {
+    const before = cachedEntityMap(prev), after = cachedEntityMap(next);
+    const ta = prev.entityTimes || {}, tb = next.entityTimes || {};
+    const out = [];
+    for (const [key, e] of after) {
+      const old = before.get(key);
+      if (!old || old.json !== e.json || ownValue(ta, key) !== ownValue(tb, key)) out.push([key, e.data, ownValue(tb, key)]);
+    }
+    for (const key of before.keys()) if (!after.has(key)) out.push([key, null, ownValue(tb, key)]);
+    // 已刪除項目只剩修改時間；時間變了也要記下來（衝突判斷與「刪掉的日期不再補記」會用到）。
+    for (const key of Object.keys(tb)) {
+      if (!after.has(key) && !before.has(key) && ownValue(ta, key) !== ownValue(tb, key)) out.push([key, null, ownValue(tb, key)]);
+    }
+    return out;
+  }
+
   // ---------- 套用單一項目到帳本 ----------
   function upsertById(list, id, data) {
     const index = list.findIndex(x => String(x.id) === id);
@@ -1667,9 +1688,9 @@ const LedgerSyncCore = (() => {
       return c;
     };
     const byId = new Map(s.categories.map(c => [String(c.id), c]));
-    for (const r of s.records) {
+    s.records.forEach((r, i) => {
       const c = byId.get(String(r.categoryId));
-      if (c && c.type === r.type) continue;
+      if (c && c.type === r.type) return;
       if (!c) {
         const hint = categoryHints['cat:' + r.categoryId];
         const restored = hint && hint.type === r.type
@@ -1679,10 +1700,11 @@ const LedgerSyncCore = (() => {
         byId.set(restored.id, restored);
         repaired.add('cat:' + restored.id);
       } else {
-        r.categoryId = fallback(r.type).id;
+        // 換成新物件，不改到上一版帳本共用的紀錄（見 60-app.js 的 cloneForCommit）。
+        s.records[i] = Object.assign({}, r, { categoryId: fallback(r.type).id });
         repaired.add('rec:' + r.id);
       }
-    }
+    });
     for (const type of ['expense', 'income']) {
       if (!s.categories.some(c => c.type === type)) fallback(type);
     }
@@ -1785,7 +1807,7 @@ const LedgerSyncCore = (() => {
 
   // 找出「本機內容」與「上次同步時的雲端內容」不同的項目，就是待上傳的變更（含刪除）。
   function computePending(s, meta, now = Date.now()) {
-    const map = entityMap(s);
+    const map = cachedEntityMap(s);
     const times = s.entityTimes || {};
     const keys = new Set([...map.keys(), ...Object.keys(meta.shadow || {})]);
     const out = [];
@@ -1805,7 +1827,9 @@ const LedgerSyncCore = (() => {
 
   // ---------- 同步引擎 ----------
   // backend：pull({cursor, after, limit}) → {docs, next, maxTs}；push(changes, {deviceId}) → results
-  // ledger：get() 取得目前帳本；apply(mutator) 寫入帳本（成功回傳 true）
+  // ledger：get() 取得目前帳本；apply(mutator) 寫入帳本（成功回傳 true，或確實存好後才完成的 Promise）；
+  //         flush()（可省略）等本機帳本確實寫入。同步狀態一定在帳本存好之後才保存，
+  //         否則網頁中途關掉時，下次會把沒存到的紀錄誤當成「在這台刪掉了」。
   // metaStore：load() / save(meta) 保存此裝置的同步狀態
   // bulkAck()：使用者剛確認過的大量刪除 {count, until}；由畫面層保存，避免同步途中被覆蓋。
   function createEngine({ backend, ledger, metaStore, now = () => Date.now(), pageSize = 300, chunkSize = 100,
@@ -1825,7 +1849,7 @@ const LedgerSyncCore = (() => {
     // 套用雲端資料。兩邊都改過同一項目時，以「最後修改時間」較新的版本為準，
     // 另一個版本存入衝突紀錄，使用者可以改用。
     // recheck：換到新版程式後第一次同步，連已經讀過的版本也重新比對一次。
-    function applyRemote(docs, meta, recheck = false) {
+    async function applyRemote(docs, meta, recheck = false) {
       const { map, times } = localState();
       const changes = [];
       const conflicts = [];
@@ -1870,7 +1894,7 @@ const LedgerSyncCore = (() => {
       }
       let repaired = [];
       if (changes.length) {
-        const ok = ledger.apply(next => {
+        const ok = await ledger.apply(next => {
           next.entityTimes = Object.assign({}, next.entityTimes || {});
           for (const c of changes) {
             applyEntity(next, c.key, c.data);
@@ -1899,7 +1923,7 @@ const LedgerSyncCore = (() => {
         pages++;
       } while (after && pages < 1000);
       // 整批下載完成才套用並前進讀取位置；中途斷線就下次從原位置重新讀。
-      const result = applyRemote(docs, meta, recheck);
+      const result = await applyRemote(docs, meta, recheck);
       meta.cursor = maxTs;
       meta.lastPullAt = now();
       meta.format = FORMAT;
@@ -1918,6 +1942,7 @@ const LedgerSyncCore = (() => {
 
     async function pushAll(meta) {
       let pushed = 0, held = 0, conflicts = 0;
+      if (ledger.flush) await ledger.flush(); // 先確定本機帳本已經存好，再上傳
       for (let round = 0; round < 4; round++) {
         const gate = holdBulkDeletes(pendingChanges(meta), meta);
         held = gate.held;
@@ -1937,7 +1962,7 @@ const LedgerSyncCore = (() => {
           metaStore.save(meta);
         }
         if (!conflictDocs.length) break;
-        conflicts += applyRemote(conflictDocs, meta).conflicts;
+        conflicts += (await applyRemote(conflictDocs, meta)).conflicts;
         metaStore.save(meta);
       }
       return { pushed, held, conflicts };
@@ -1988,14 +2013,365 @@ const LedgerSyncCore = (() => {
 
   return {
     TOMBSTONE, PREF_KEY, DEMO_SEED_IDS, SyncError, FORMAT, RULE_PREFIX, isRuleKey, canonFor,
-    hashString, entityMap, stampTimes, applyEntity, repairInvariants, validRemoteDoc, validEntityData,
+    hashString, entityMap, snapshot, stampTimes, diffEntities, applyEntity, repairInvariants, validRemoteDoc, validEntityData,
     isDemoSeedRecord, packShadow, unpackShadow, freshMeta, normalizeMeta, splitKey, canon, cmpTs, validBudget,
     computePending, createEngine,
+  };
+})();
+// 帳本儲存：存在瀏覽器內建的資料庫（IndexedDB），每筆紀錄、分類、店家、設定與固定收支各自一列，
+// 儲存時只寫入有變更的列，帳本再大，記一筆也只寫那一筆。
+// localStorage 只放一小段「變更日誌」：還沒寫進資料庫的變更（網頁在寫入途中被關掉時，下次開啟會補寫），
+// 以及帳本版本號（另一個分頁改過帳本時停止寫入，避免互相覆蓋）。
+// 瀏覽器無法使用 IndexedDB 時（例如部分無痕模式），沿用舊方式把整本帳存成 localStorage 裡的一段文字。
+let markLedgerReady;
+const ledgerReady = new Promise(resolve => { markLedgerReady = resolve; });
+
+const LedgerStore = (() => {
+  'use strict';
+  const DB_NAME = 'casual-ledger';
+  const DB_VERSION = 1;
+  const ROWS = 'entities';       // {k: 項目代號（例如 rec:…、cat:…）, d: 內容（已刪除為 null）, t: 修改時間}
+  const SNAPSHOTS = 'snapshots'; // {id, data}：匯入前帳本（JSON 文字）
+  const OPEN_TIMEOUT_MS = 8000;
+  const JOURNAL_LIMIT = 400000;  // 一次變更超過這個大小（例如匯入整本帳）就不放進日誌，改等資料庫寫完
+  const RETRY_MS = 1500;
+  // 舊的 localStorage 帳本搬進資料庫後，原位置改放這段標記：還沒更新的舊版網頁讀到時會停止寫入與同步，
+  // 不會把它當成空帳本（否則可能把雲端的紀錄當成「已刪除」）。
+  const MOVED = { store: 'indexeddb', note: '帳本已搬到瀏覽器資料庫（IndexedDB），請重新整理網頁以使用新版。' };
+  const testMode = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) && new URLSearchParams(location.search).has('test');
+  const keys = {
+    legacy: () => BOOK_PREFIX + book,
+    legacySnapshot: () => BOOK_PREFIX + book + '_before_import',
+    journal: () => BOOK_PREFIX + book + '_journal',
+  };
+
+  let mode = 'local';          // 'idb'：資料庫；'local'：舊方式（整本帳存在 localStorage）
+  let db = null;
+  let rev = '';                // 這個分頁最後寫入（或讀到）的帳本版本號
+  let journalOk = true;        // localStorage 可以寫入（不能寫時只靠資料庫）
+  let seeded = false;          // 資料庫裡已經有整本帳；還沒有時，第一次儲存寫入全部項目
+  let queue = [];              // 還沒寫進資料庫的變更 {id, c: [[k, d, t], …], journaled}
+  let flushing = null, failures = 0, closedByOther = false;
+  let pauseGate = null;        // 測試用：暫停寫入資料庫，模擬寫到一半
+  let failOpen = false;        // 測試用：下一次開啟資料庫失敗
+  let snapshotIds = new Set();
+  let rawRows = null;          // 讀不出來的內容，保留給「下載完整備份」
+  let unreadable = false;      // 開啟時讀不到資料庫：畫面上是空帳本，不能當成備份下載
+
+  const newRev = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const own = (obj, k) => (obj && Object.prototype.hasOwnProperty.call(obj, k) ? obj[k] : undefined);
+  const define = (obj, k, v) => Object.defineProperty(obj, k, { value: v, enumerable: true, writable: true, configurable: true });
+  function isMoved(raw) { try { return JSON.parse(raw)?.store === MOVED.store; } catch { return false; } }
+
+  // ---------- IndexedDB 基本操作 ----------
+  const request = r => new Promise((resolve, reject) => { r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+  const finished = tx => new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onabort = tx.onerror = () => reject(tx.error || new Error('資料庫交易中斷'));
+  });
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      if (testMode && new URLSearchParams(location.search).has('noidb')) return reject(new Error('測試：不使用資料庫'));
+      if (failOpen) { failOpen = false; return reject(new Error('測試：開啟資料庫失敗')); }
+      if (typeof indexedDB === 'undefined' || !indexedDB) return reject(new Error('瀏覽器不支援 IndexedDB'));
+      let settled = false;
+      const fail = e => { if (!settled) { settled = true; clearTimeout(timer); reject(e); } };
+      const timer = setTimeout(() => fail(new Error('開啟資料庫逾時')), OPEN_TIMEOUT_MS);
+      let r;
+      try { r = indexedDB.open(DB_NAME, DB_VERSION); } catch (e) { return fail(e); }
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        if (!d.objectStoreNames.contains(ROWS)) d.createObjectStore(ROWS, { keyPath: 'k' });
+        if (!d.objectStoreNames.contains(SNAPSHOTS)) d.createObjectStore(SNAPSHOTS, { keyPath: 'id' });
+      };
+      r.onsuccess = () => {
+        const d = r.result;
+        if (settled) { d.close(); return; }
+        settled = true; clearTimeout(timer);
+        // 另一個分頁要升級或刪除資料庫時，讓出連線，這一頁停止寫入。
+        d.onversionchange = () => { d.close(); if (db === d) { db = null; closedByOther = true; lost('帳本資料庫已在其他分頁更新，請重新開啟網頁。'); } };
+        resolve(d);
+      };
+      r.onerror = () => fail(r.error || new Error('無法開啟資料庫'));
+    });
+  }
+  const readAll = name => request(db.transaction(name, 'readonly').objectStore(name).getAll());
+
+  // ---------- 帳本 ↔ 資料列 ----------
+  function rowsFromState(s) {
+    const map = LedgerSyncCore.entityMap(s), times = s.entityTimes || {}, rows = [];
+    for (const [k, e] of map) rows.push([k, e.data, own(times, k)]);
+    for (const k of Object.keys(times)) if (!map.has(k)) rows.push([k, null, times[k]]);
+    return rows;
+  }
+  function stateFromRows(rows) {
+    const src = { records: [], categories: [], merchants: [], archivedMerchants: [], merchantTypes: {}, preferences: {}, recurring: [], entityTimes: {} };
+    for (const row of rows) {
+      if (typeof row.t === 'number') define(src.entityTimes, row.k, row.t);
+      const d = row.d;
+      if (!d) continue;
+      const kind = row.k.slice(0, row.k.indexOf(':'));
+      if (kind === 'rec') src.records.push(d);
+      else if (kind === 'cat') src.categories.push(d);
+      else if (kind === 'mer') { src.merchants.push(d.name); define(src.merchantTypes, d.name, d.type); if (d.archived) src.archivedMerchants.push(d.name); }
+      else if (row.k === LedgerSyncCore.PREF_KEY) src.preferences = d;
+      else if (LedgerSyncCore.isRuleKey(row.k)) src.recurring.push(d);
+    }
+    src.records.sort((a, b) => a.date.localeCompare(b.date) || (Number(a.seq) || 0) - (Number(b.seq) || 0));
+    return validateBackup(src);
+  }
+  // 兩本帳的內容與修改時間完全相同（搬家後讀回來比對用）。
+  function sameLedger(a, b) {
+    const text = s => JSON.stringify(rowsFromState(s).sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)));
+    return text(a) === text(b);
+  }
+  function putRows(store, changes) {
+    for (const [k, d, t] of changes) {
+      if (d === null && typeof t !== 'number') store.delete(k);
+      else store.put(typeof t === 'number' ? { k, d, t } : { k, d });
+    }
+  }
+  async function replaceAll(s) {
+    const tx = db.transaction(ROWS, 'readwrite'), store = tx.objectStore(ROWS);
+    store.clear();
+    putRows(store, rowsFromState(s));
+    await finished(tx);
+  }
+
+  // ---------- 變更日誌（localStorage） ----------
+  function readJournal(raw) {
+    try {
+      const j = JSON.parse(raw === undefined ? localStorage.getItem(keys.journal()) : raw);
+      return { rev: typeof j?.rev === 'string' ? j.rev : '', b: Array.isArray(j?.b) ? j.b : [] };
+    } catch { return { rev: '', b: [] }; }
+  }
+  function writeJournal(j) {
+    if (j.b.length || j.rev) localStorage.setItem(keys.journal(), JSON.stringify(j));
+    else localStorage.removeItem(keys.journal());
+  }
+  function forgetJournal(ids) {
+    if (!journalOk || !ids.length) return;
+    try { const j = readJournal(); j.b = j.b.filter(b => !ids.includes(b.id)); writeJournal(j); } catch {}
+  }
+
+  // ---------- 開啟 ----------
+  // 開啟時只記下問題，等畫面準備好再由 60-app.js 顯示；開啟之後發生的問題立刻顯示。
+  function blocked(message, readable = false) { storageBlocked = true; loadIssue = message; unreadable = !readable; return freshBook(); }
+  function lost(message) { storageBlocked = true; loadIssue = message; showStorageError(message); }
+  function checkLocalStorage() {
+    try { const k = BOOK_PREFIX + 'probe'; localStorage.setItem(k, '1'); localStorage.removeItem(k); return true; } catch { return false; }
+  }
+  async function open() {
+    rawRows = null; queue = []; seeded = false;
+    journalOk = checkLocalStorage();
+    let legacyRaw = null;
+    try { legacyRaw = localStorage.getItem(keys.legacy()); } catch {}
+    const moved = legacyRaw !== null && isMoved(legacyRaw);
+    try { db = await openDb(); }
+    catch (e) {
+      console.warn('IndexedDB unavailable', e);
+      db = null;
+      if (moved) return blocked('無法開啟帳本資料庫。請完全關閉網頁（或瀏覽器）後重新開啟；帳本仍在這台裝置上。');
+      mode = 'local';
+      return loadBook();
+    }
+    mode = 'idb';
+    try {
+      let rows = await readAll(ROWS);
+      snapshotIds = new Set((await readAll(SNAPSHOTS)).map(s => s.id));
+      if (legacyRaw !== null && !moved) {
+        // 舊版存在 localStorage 的帳本：搬進資料庫，讀回來比對無誤後，原位置才換成標記。
+        const legacy = loadBook();
+        if (storageBlocked) return useLegacy(legacy);
+        let expected = legacy;
+        // 不正常的情況（資料庫已經有另一本帳，例如只清掉了 localStorage）：以資料庫為主，
+        // 把舊帳本合併進來，不刪任何紀錄。
+        if (rows.length && !sameLedger(stateFromRows(rows), legacy)) expected = planImportMerge(stateFromRows(rows), legacy, importOrigin(null)).next;
+        if (!rows.length || expected !== legacy) await replaceAll(expected);
+        rows = await readAll(ROWS);
+        if (!sameLedger(stateFromRows(rows), expected)) throw new Error('搬移後讀回的帳本不符');
+        const snap = localStorage.getItem(keys.legacySnapshot());
+        if (snap) await putSnapshot('before_import', snap);
+        localStorage.setItem(keys.legacy(), JSON.stringify(MOVED));
+        localStorage.removeItem(keys.legacySnapshot());
+        persistedRaw = null;
+      } else if (journalOk && !moved) {
+        localStorage.setItem(keys.legacy(), JSON.stringify(MOVED));
+      }
+      // 補寫上次還沒寫進資料庫的變更。
+      const byKey = new Map(rows.map(r => [r.k, r]));
+      const journal = journalOk ? readJournal() : { rev: '', b: [] };
+      for (const batch of journal.b) {
+        for (const [k, d, t] of batch.c) {
+          if (d === null && typeof t !== 'number') byKey.delete(k);
+          else byKey.set(k, typeof t === 'number' ? { k, d, t } : { k, d });
+        }
+        queue.push({ id: batch.id, c: batch.c, journaled: true });
+      }
+      rev = journal.rev || newRev();
+      if (journalOk && !journal.rev) writeJournal({ rev, b: journal.b });
+      seeded = byKey.size > 0;
+      let state;
+      try { state = seeded ? stateFromRows([...byKey.values()]) : freshBook(); }
+      catch (e) {
+        console.warn('ledger rows invalid', e);
+        rawRows = JSON.stringify([...byKey.values()]);
+        return blocked('原有資料無法讀取，已停止覆寫。請匯出原始資料保留後，再匯入有效備份。', true);
+      }
+      if (queue.length) flush().catch(() => {});
+      askPersistent();
+      return state;
+    } catch (e) {
+      console.warn('IndexedDB load failed', e);
+      try { db.close(); } catch {}
+      db = null;
+      if (moved) return blocked('無法讀取帳本資料庫。請完全關閉網頁（或瀏覽器）後重新開啟；帳本仍在這台裝置上。');
+      return useLegacy(loadBook());
+    }
+  }
+  function useLegacy(state) {
+    if (db) { try { db.close(); } catch {} }
+    db = null; mode = 'local';
+    return state;
+  }
+  // 請瀏覽器把這個網站的資料視為重要、空間不足時不要自動清除（不支援或拒絕都沒關係）。
+  function askPersistent() {
+    try { navigator.storage?.persisted?.().then(p => { if (!p) navigator.storage.persist?.().catch(() => {}); }).catch(() => {}); } catch {}
+  }
+
+  // ---------- 儲存 ----------
+  // 由 commit() 呼叫，必須同步完成；失敗時丟出錯誤，帳本維持原狀。
+  function save(prev, next) {
+    if (mode === 'local') {
+      const raw = JSON.stringify({ ...next, activeView: 'home', previousView: 'home' });
+      if (localStorage.getItem(keys.legacy()) !== persistedRaw) throw new Error('另一個分頁已修改帳本。請先下載目前帳本，再重新開啟。');
+      localStorage.setItem(keys.legacy(), raw);
+      persistedRaw = raw;
+      return;
+    }
+    if (!db) throw new Error('帳本資料庫無法使用，請重新開啟網頁。');
+    const changes = seeded ? LedgerSyncCore.diffEntities(prev, next) : rowsFromState(next);
+    if (!changes.length) return;
+    const batch = { id: newRev(), c: changes, journaled: false };
+    if (journalOk) {
+      const j = readJournal();
+      if (j.rev !== rev) throw new Error('另一個分頁已修改帳本。請先下載目前帳本，再重新開啟。');
+      const nextRev = newRev(), entry = { id: batch.id, c: changes };
+      // 一般的變更很小，先寫進日誌再回報「已儲存」；大批變更（例如匯入）由呼叫端等資料庫寫完。
+      if (changes.length <= 2000 && JSON.stringify(entry).length <= JOURNAL_LIMIT) { writeJournal({ rev: nextRev, b: [...j.b, entry] }); batch.journaled = true; }
+      else writeJournal({ rev: nextRev, b: j.b });
+      rev = nextRev;
+    }
+    queue.push(batch);
+    seeded = true;
+    flush().catch(() => {});
+  }
+  // 等所有變更寫進資料庫；寫入失敗時回傳失敗的 Promise。
+  function flush() {
+    if (mode === 'local' || (!queue.length && !flushing)) return Promise.resolve();
+    if (!flushing) flushing = runFlush().finally(() => { flushing = null; });
+    return flushing;
+  }
+  // 寫入失敗時：重新連線資料庫後再試一次（iPhone 在背景太久，連線可能被中斷）；這段期間的儲存先排隊。
+  // 重試仍失敗（例如裝置空間不足）就停止儲存，避免畫面上的帳本和裝置上的不一致。
+  async function runFlush() {
+    while (queue.length) {
+      if (pauseGate) await pauseGate.promise;
+      const batches = queue.slice();
+      try {
+        if (!db) throw new Error('帳本資料庫無法使用');
+        const tx = db.transaction(ROWS, 'readwrite'), store = tx.objectStore(ROWS);
+        for (const b of batches) putRows(store, b.c);
+        await finished(tx);
+      } catch (e) {
+        console.warn('ledger write failed', e);
+        if (closedByOther || failures++ > 0) { writeStopped(); throw e; }
+        await new Promise(resolve => setTimeout(resolve, RETRY_MS));
+        try { const fresh = await openDb(); try { db?.close(); } catch {} db = fresh; }
+        catch (err) { writeStopped(); throw err; }
+        continue;
+      }
+      failures = 0;
+      queue = queue.filter(b => !batches.includes(b));
+      forgetJournal(batches.filter(b => b.journaled).map(b => b.id));
+    }
+  }
+  function writeStopped() {
+    if (!closedByOther) lost('無法寫入帳本資料庫（可能是裝置空間不足）。已停止儲存以保護資料，請先下載完整備份。');
+  }
+
+  // ---------- 匯入前帳本 ----------
+  async function putSnapshot(id, data) {
+    const tx = db.transaction(SNAPSHOTS, 'readwrite');
+    tx.objectStore(SNAPSHOTS).put({ id, data });
+    await finished(tx);
+    snapshotIds.add(id);
+  }
+  async function saveSnapshot(id, data) {
+    if (mode === 'local') { localStorage.setItem(keys.legacySnapshot(), data); return; }
+    if (!db) throw new Error('帳本資料庫無法使用');
+    await putSnapshot(id, data);
+  }
+  async function loadSnapshot(id) {
+    if (mode === 'local') return localStorage.getItem(keys.legacySnapshot());
+    if (!db) throw new Error('帳本資料庫無法使用');
+    const row = await request(db.transaction(SNAPSHOTS, 'readonly').objectStore(SNAPSHOTS).get(id));
+    return row ? row.data : null;
+  }
+  function hasSnapshot(id) {
+    if (mode === 'local') { try { return Boolean(localStorage.getItem(keys.legacySnapshot())); } catch { return false; } }
+    return snapshotIds.has(id);
+  }
+
+  // ---------- 另一個分頁 ----------
+  // 帳本在另一個分頁被修改時通知（這一頁的畫面已經過時，繼續寫入會互相覆蓋）。
+  function isCurrent() {
+    try {
+      if (mode === 'local') return localStorage.getItem(keys.legacy()) === persistedRaw;
+      return !journalOk || readJournal().rev === rev;
+    } catch { return false; }
+  }
+  function watchOtherTabs(onChange) {
+    window.addEventListener('storage', e => {
+      if (mode === 'local') { if (e.key === keys.legacy() && e.newValue !== persistedRaw) onChange(); return; }
+      if (e.key === keys.journal() && readJournal(e.newValue).rev !== rev) onChange();
+    });
+  }
+
+  // 本機測試專用：模擬寫入途中關掉網頁、讀出存在裝置上的帳本。正式網址上不提供。
+  const testApi = testMode ? {
+    pause() { if (!pauseGate) { let open; pauseGate = { promise: new Promise(r => { open = r; }), open }; } },
+    resume() { const gate = pauseGate; pauseGate = null; gate?.open(); return flush(); },
+    pending: () => queue.length,
+    // 模擬連線被中斷（例如 iPhone 在背景太久）與重新連線失敗。
+    breakConnection() { db.close(); },
+    failNextOpen() { failOpen = true; },
+    // 存在裝置上的帳本（還沒存過任何東西時是 null）；暫停寫入時讀到的是資料庫目前的內容。
+    async read() {
+      if (mode === 'local') { const raw = localStorage.getItem(keys.legacy()); return raw ? JSON.parse(raw) : null; }
+      if (!pauseGate) await flush();
+      const rows = await readAll(ROWS);
+      return rows.length ? stateFromRows(rows) : null;
+    },
+    rows: () => readAll(ROWS),
+  } : undefined;
+
+  return {
+    DB_NAME, open, save, flush, saveSnapshot, loadSnapshot, hasSnapshot, isCurrent, watchOtherTabs,
+    mode: () => mode, rawExport: () => (mode === 'local' ? persistedRaw : rawRows), unreadable: () => unreadable, __test: testApi,
   };
 })();
 // Ledger stored in this browser. Cloud sync (55/70/80-*.js) only runs for the personal book after Google sign-in.
 const $ = id => document.getElementById(id);
 const clone = x => JSON.parse(JSON.stringify(x));
+// 儲存時的複製：紀錄可能有上萬筆，只複製陣列、紀錄物件和上一版共用（修改紀錄一律換成新物件，
+// 不在原物件上改）；其他資料量小，整份複製。修改時間表另外淺複製。
+function cloneForCommit(s) {
+  const {records,entityTimes,...rest}=s,next=clone(rest);
+  next.records=records.slice();
+  next.entityTimes={...entityTimes};
+  return next;
+}
 const MAX_AMOUNT = 999999999;
 const BOOK_PREFIX = 'minimal_expense_v3_';
 // Only the personal book remains; `book` keeps the existing storage key (minimal_expense_v3_personal).
@@ -2058,9 +2434,9 @@ function validateBackup(input) {
     cats.set(c.id,{id:c.id,type:c.type,name:c.name.trim(),icon:Object.hasOwn(ICONS,c.icon)||(typeof c.icon==='string'&&/^[\w-]{1,60}$/.test(c.icon))?c.icon:'other',order:c.order,...(c.type==='expense'&&LedgerSyncCore.validBudget(c.budget)?{budget:c.budget}:{})});
   }
   if (!['expense','income'].every(t=>[...cats.values()].some(c=>c.type===t))) throw new Error('必須保留支出及收入分類。');
-  const ids=new Set();
+  const ids=new Set(),okDates=new Set(),dateOk=d=>okDates.has(d)||(validDate(d)&&okDates.add(d));
   const records=src.records.map((r,i)=> {
-    if (!r || !safeString(r.id,100) || !/^[\w-]+$/.test(r.id) || ids.has(r.id) || !validDate(r.date) || cats.get(r.categoryId)?.type!==r.type || !Number.isSafeInteger(r.amount) || r.amount<=0 || r.amount>MAX_AMOUNT || !safeString(r.merchant,100) || !safeString(r.note,1000)) throw new Error(`第 ${i+1} 筆紀錄內容不完整、日期或金額無效。`);
+    if (!r || !safeString(r.id,100) || !/^[\w-]+$/.test(r.id) || ids.has(r.id) || !dateOk(r.date) || cats.get(r.categoryId)?.type!==r.type || !Number.isSafeInteger(r.amount) || r.amount<=0 || r.amount>MAX_AMOUNT || !safeString(r.merchant,100) || !safeString(r.note,1000)) throw new Error(`第 ${i+1} 筆紀錄內容不完整、日期或金額無效。`);
     ids.add(r.id);
     return {id:r.id,seq:Number.isSafeInteger(r.seq)?r.seq:i+1,type:r.type,date:r.date,categoryId:r.categoryId,amount:r.amount,merchant:r.merchant.trim(),note:r.note};
   });
@@ -2076,8 +2452,11 @@ function validateBackup(input) {
   }
   const merchants=[...new Set([...src.merchants.map(m=>m.trim()),...records.map(r=>r.merchant).filter(Boolean)])];
   const archived=Array.isArray(src.archivedMerchants)?src.archivedMerchants.filter(m=>merchants.includes(m)):[];
+  // 沒有標明類型的名稱：只出現在收入紀錄的算收入來源，其餘算店家（一次掃過全部紀錄）。
+  const usedAs=new Map();
+  for (const r of records) if (r.merchant) { const u=usedAs.get(r.merchant)||{expense:false,income:false}; u[r.type]=true; usedAs.set(r.merchant,u); }
   const merchantTypes=Object.create(null);
-  for (const m of merchants) merchantTypes[m]=src.merchantTypes?.[m]==='income'?'income':(records.some(r=>r.merchant===m&&r.type==='income')&&!records.some(r=>r.merchant===m&&r.type==='expense')?'income':'expense');
+  for (const m of merchants) { const u=usedAs.get(m); merchantTypes[m]=src.merchantTypes?.[m]==='income'||(u&&u.income&&!u.expense)?'income':'expense'; }
   return {schemaVersion:3,currentMonth:today().slice(0,7),activeView:'home',previousView:'home',settingsPage:'',statsType:'expense',statsPeriod:'month',catMgrType:'expense',merchantMgrType:'expense',pendingSyncIds:[],isOfflineSim:false,categories:[...cats.values()],records,recurring,merchants,archivedMerchants:[...new Set(archived)],merchantTypes,preferences:{homeHeaderMode:['expense_only','expense_and_income','full_net'].includes(src.preferences?.homeHeaderMode)?src.preferences.homeHeaderMode:'expense_only',enableSaveAndNext:src.preferences?.enableSaveAndNext===true,monthlyBudget:LedgerSyncCore.validBudget(src.preferences?.monthlyBudget)?src.preferences.monthlyBudget:0},entityTimes:sanitizeEntityTimes(src.entityTimes)};
 }
 // Last-change time of each record, category, merchant and preference; used to pick the newer side in sync conflicts.
@@ -2090,6 +2469,8 @@ function sanitizeEntityTimes(raw) {
   return out;
 }
 function storageKey() { return BOOK_PREFIX+book; }
+// 舊的儲存方式：整本帳是 localStorage 裡的一段 JSON。現在只在搬進資料庫前讀取，
+// 以及瀏覽器無法使用資料庫時沿用（見 58-store.js）。
 function loadBook() {
   storageBlocked=false; loadIssue=''; persistedRaw=null;
   try {
@@ -2114,15 +2495,12 @@ function loadBook() {
 function showStorageError(message) { $('storageError').textContent=message; $('storageError').classList.remove('hidden'); updateSyncStatusUI(); }
 function commit(mutator, opts={}) {
   if (storageBlocked) { showStorageError(loadIssue || '原有資料無法讀取，已停止覆寫。'); return false; }
-  const next=clone(state); mutator(next);
+  LedgerSyncCore.snapshot(state);
+  const next=cloneForCommit(state); mutator(next);
   if (opts.stamp!==false) LedgerSyncCore.stampTimes(state,next,Date.now());
-  const persisted={...next,activeView:'home',previousView:'home'};
-  const raw=JSON.stringify(persisted);
-  try {
-    if (localStorage.getItem(storageKey())!==persistedRaw) throw new Error('另一個分頁已修改帳本。請先下載目前帳本，再重新開啟。');
-    localStorage.setItem(storageKey(),raw);
-  } catch(e) { showStorageError(e.message?.includes('另一個')?e.message:'儲存失敗，輸入內容仍保留在此頁。請重試，或到設定下載備份；尚未安全寫入的內容請勿關閉。'); return false; }
-  persistedRaw=raw; state=next; $('storageError').classList.add('hidden');
+  try { LedgerStore.save(state,next); }
+  catch(e) { showStorageError(e.message?.includes('另一個')?e.message:'儲存失敗，輸入內容仍保留在此頁。請重試，或到設定下載備份；尚未安全寫入的內容請勿關閉。'); return false; }
+  state=next; $('storageError').classList.add('hidden');
   LedgerSync.afterCommit(opts); updateSyncStatusUI(); return true;
 }
 function updateSyncStatusUI() {
@@ -2341,7 +2719,7 @@ function handleSaveRecord(keepOpenForNext=false) {
 function archiveMerchant(s,name) { if(!s.archivedMerchants.includes(name))s.archivedMerchants.push(name); }
 function renameMerchant(s,name,target) {
   const type=s.merchantTypes[name]||'expense';
-  s.records.forEach(r=>{if(r.merchant===name)r.merchant=target;});
+  s.records=s.records.map(r=>r.merchant===name?{...r,merchant:target}:r);
   (s.recurring||[]).forEach(r=>{if(r.merchant===name)r.merchant=target;});
   s.merchants=[...new Set(s.merchants.map(m=>m===name?target:m))];
   s.archivedMerchants=s.archivedMerchants.filter(m=>m!==name&&m!==target);
@@ -2450,7 +2828,7 @@ function renderSettings() {
     list.appendChild(row);
   });
   renderMerchantManager();
-  try{$('btnUndoImport').classList.toggle('hidden',!localStorage.getItem(storageKey()+'_before_import'));}catch{}
+  $('btnUndoImport').classList.toggle('hidden',!LedgerStore.hasSnapshot('before_import'));
   if(state.settingsPage==='data')renderCsvRanges();
   if(state.settingsPage==='budget')renderBudgetSettings();
   if(state.settingsPage==='recurring')renderRecurringSettings();
@@ -2483,7 +2861,8 @@ function downloadText(text,name,type='application/json') {
 }
 function exportBackup() {
   try {
-    const text=storageBlocked&&persistedRaw?persistedRaw:JSON.stringify(backupEnvelope(),null,2);
+    if(LedgerStore.unreadable())return showToast('目前讀不到帳本，無法下載備份。請完全關閉網頁後重新開啟。');
+    const text=storageBlocked&&LedgerStore.rawExport()?LedgerStore.rawExport():JSON.stringify(backupEnvelope(),null,2);
     downloadText(text,`記帳-備份-${today()}.json`);
     $('backupStatus').textContent='已送出備份下載，請確認檔案已存入下載資料夾。';
     try{localStorage.setItem(storageKey()+'_last_backup',String(Date.now()));}catch{}
@@ -2604,14 +2983,16 @@ function importSummary(imported,plan,origin) {
   lines.push('合併不會刪除目前的紀錄；匯入前的帳本會保留一份，可在設定還原。');
   return lines.join('\n');
 }
-function installImport(imported) {
+async function installImport(imported) {
   if(storageBlocked)return showToast('請先下載原始資料，保留後再處理損毀的帳本。'),false;
   try {
-    if(localStorage.getItem(storageKey())!==persistedRaw)throw new Error('帳本已被其他分頁修改，請重新開啟。');
+    if(!LedgerStore.isCurrent())throw new Error('帳本已被其他分頁修改，請重新開啟。');
     // Save the full current ledger before replacing it; a failed rollback write blocks import.
-    localStorage.setItem(storageKey()+'_before_import',JSON.stringify(state));
+    await LedgerStore.saveSnapshot('before_import',JSON.stringify(state));
   }catch(e){showStorageError('無法保存匯入前帳本，因此未進行匯入。');return false;}
   if(!commit(s=>Object.assign(s,clone(imported))))return false;
+  // 匯入的資料量可能很大，等確實寫進裝置再回報完成。
+  try{await LedgerStore.flush();}catch{return false;}
   modalState=null;lastDeletedRecord=null;$('undoBar').classList.add('hidden');searchQuery='';$('recordSearch').value='';renderAll();showToast('匯入完成，可在設定還原匯入前帳本');return true;
 }
 async function prepareImport(file) {
@@ -2644,9 +3025,11 @@ function handleKeypadInput(key) {
   else if(s.length<100)s=s==='0'?key:s+key;
   modalState.amountExpr=s;$('inputAmountExpr').value=s;updateCalcPreviewAndRecommendations();
 }
-window.addEventListener('DOMContentLoaded',()=>{
+window.addEventListener('DOMContentLoaded',async()=>{
   removeSampleBook();
-  state=loadBook();
+  // 帳本從資料庫讀出來之後才綁定按鈕與畫面；同步（80-sync-ui.js）也等到這時才開始。
+  try{state=await LedgerStore.open();}
+  catch(e){console.error('ledger open failed',e);storageBlocked=true;loadIssue='無法開啟帳本，請重新開啟網頁。';state=freshBook();}
   const on=(id,event,fn)=>$(id).addEventListener(event,fn);
   on('navBtnHome','click',()=>{discardForm();leaveSettingsPage();state.activeView='home';renderAll();});on('navBtnStats','click',()=>{discardForm();leaveSettingsPage();state.activeView='stats';renderAll();});on('navBtnSettings','click',()=>openSettingsPage(''));
   on('btnSyncBadge','click',()=>openSettingsPage('sync'));
@@ -2698,8 +3081,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   setupRecurringForm();
   on('btnExportJsonDemo','click',exportBackup);on('btnExportCsv','click',exportCsv);on('btnImportBackup','click',()=>$('backupFile').click());
   on('backupFile','change',e=>{prepareImport(e.target.files[0]);e.target.value='';});
-  on('btnUndoImport','click',()=>{
-    try{const raw=localStorage.getItem(storageKey()+'_before_import');if(!raw)return;const previous=validateBackup(JSON.parse(raw));previous.entityTimes={...(state.entityTimes||{})};openDialog({title:'還原匯入前帳本？',message:`將恢復 ${previous.records.length} 筆紀錄。目前帳本會成為下一份可還原版本。${LedgerSync.isLinked()?'\n這個變更也會同步到其他裝置。':''}`,onConfirm:()=>{LedgerSync.acknowledgeBulkChange(state.records.length);return installImport(previous);}});}catch(e){showToast('無法讀取還原資料：'+e.message);}
+  on('btnUndoImport','click',async()=>{
+    try{const raw=await LedgerStore.loadSnapshot('before_import');if(!raw)return;const previous=validateBackup(JSON.parse(raw));previous.entityTimes={...(state.entityTimes||{})};openDialog({title:'還原匯入前帳本？',message:`將恢復 ${previous.records.length} 筆紀錄。目前帳本會成為下一份可還原版本。${LedgerSync.isLinked()?'\n這個變更也會同步到其他裝置。':''}`,onConfirm:()=>{LedgerSync.acknowledgeBulkChange(state.records.length);return installImport(previous);}});}catch(e){showToast('無法讀取還原資料：'+e.message);}
   });
   on('dialogBtnCancel','click',closeDialog);
   document.addEventListener('keydown',e=>{
@@ -2707,9 +3090,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(e.key==='Escape'){if(modal?.id==='modalDialog')closeDialog();else if(modal)modal.classList.add('hidden');else if(state.activeView==='record')closeRecordPage();}
     if(e.key==='Tab'&&modal){const nodes=[...modal.querySelectorAll('button,input,textarea')].filter(x=>!x.hidden&&!x.classList.contains('hidden')&&!x.disabled);const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
   });
-  window.addEventListener('storage',e=>{if(e.key===storageKey()&&e.newValue!==persistedRaw)showStorageError('帳本已在另一個分頁變更。請先下載帳本備份，再重新開啟，避免覆蓋。');});
+  LedgerStore.watchOtherTabs(()=>showStorageError('帳本已在另一個分頁變更。請先下載帳本備份，再重新開啟，避免覆蓋。'));
   window.addEventListener('pagehide',()=>{if(state.activeView==='record'){discardForm();state.activeView=state.previousView||'home';renderAll();}});
   renderAll();if(loadIssue)showStorageError(loadIssue);
+  markLedgerReady();
+  ledgerReady.then(()=>{document.documentElement.dataset.ready='1';});
   scheduleRecurring();
 });
 
@@ -3401,7 +3786,7 @@ const LedgerSync = (() => {
   function createEngine() {
     return Core.createEngine({
       backend,
-      ledger: { get: ledgerForSync, apply: applyFromSync },
+      ledger: { get: ledgerForSync, apply: applyFromSync, flush: () => LedgerStore.flush() },
       metaStore: { load: loadMeta, save: saveMeta },
       bulkAck: () => bulkAck,
     });
@@ -3412,11 +3797,13 @@ const LedgerSync = (() => {
     return state;
   }
 
-  // 套用雲端變更前先用匯入備份的檢查規則驗證，確保帳本下次仍能正常開啟。
-  function applyFromSync(mutator) {
+  // 套用雲端變更前先用匯入備份的檢查規則驗證，確保帳本下次仍能正常開啟；
+  // 等帳本確實寫進裝置後才回報成功，同步狀態才會接著保存。
+  async function applyFromSync(mutator) {
     if (book !== 'personal') throw new Core.SyncError('book-changed', MESSAGES['book-changed']);
+    let ok;
     try {
-      return commit(next => {
+      ok = commit(next => {
         mutator(next);
         validateBackup(clone(next));
       }, { stamp: false, source: 'sync' });
@@ -3425,6 +3812,8 @@ const LedgerSync = (() => {
       console.warn('sync apply rejected', e);
       throw new Core.SyncError('invalid-remote', MESSAGES['invalid-remote']);
     }
+    if (!ok) return false;
+    try { await LedgerStore.flush(); return true; } catch { return false; }
   }
 
   function startBackend() {
@@ -3805,7 +4194,8 @@ const LedgerSync = (() => {
     rerender();
   }
 
-  window.addEventListener('DOMContentLoaded', init);
+  // 帳本從裝置讀出來之後才開始（見 58-store.js 的 ledgerReady）。
+  ledgerReady.then(init);
 
   // 本機測試專用：讓自動測試改用模擬雲端。正式網址上不提供。
   const testApi = isLocalHost ? {
@@ -3832,7 +4222,7 @@ const LedgerSync = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '3e94c4604aae';
+  const APP_VERSION = '0f33bdf943fd';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');
