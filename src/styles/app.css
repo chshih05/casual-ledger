@@ -34,6 +34,14 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .cloud-backup-row span { min-width:0; }
 .cloud-backup-actions { display:flex; gap:6px; }
 .cloud-backup-actions .action { min-height:36px; padding:6px 12px; font-size:13px; }
+/* 刪除資料：刪除所有紀錄、全部重置。紅色只用在會刪除資料的按鈕 */
+.erase-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
+.erase-title { font-size:14px; font-weight:600; color:#F3F4F6; }
+.erase-desc { margin-top:2px; font-size:12px; line-height:1.5; color:#9CA3AF; }
+.action-danger { background:#F8717114; border-color:#F8717155; color:#FCA5A5; font-weight:600; }
+.action-danger:hover { border-color:#F87171; }
+#dialogBtnConfirm.dialog-danger { background:#F87171; color:#14161B; }
+#dialogBtnConfirm.dialog-danger:hover { background:#FCA5A5; }
 #recordPageHeader { flex-wrap:wrap; gap:12px; }
 #mainTopHeader { flex-wrap:wrap; gap:8px; }
 #btnSyncBadge { font-size:12px; }

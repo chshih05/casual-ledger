@@ -473,22 +473,23 @@ function renderSettings() {
     list.appendChild(row);
   });
   renderMerchantManager();
-  $('btnUndoImport').classList.toggle('hidden',!LedgerStore.hasSnapshot('before_import'));
+  $('btnUndoImport').classList.toggle('hidden',!LedgerStore.hasSnapshot('before_import'));$('btnUndoImport').textContent=undoKind().button;
   if(state.settingsPage==='data'){renderCsvRanges();LedgerBackup.renderSection();}
   if(state.settingsPage==='budget')renderBudgetSettings();
   if(state.settingsPage==='recurring')renderRecurringSettings();
   $('btnAddCategory').textContent=`＋ 新增${state.catMgrType==='income'?'收入':'支出'}分類`;
 }
 let dialogReturnFocus=null;
-function openDialog({title,message,inputValue,inputMode='text',textareaValue,hideCancel=false,checkbox,confirmText='確認',onConfirm}) {
+// danger：刪除資料這類一次改掉很多的動作，確認鍵用紅色，一開始停在「取消」，直接按 Enter 不會刪除。
+function openDialog({title,message,inputValue,inputMode='text',textareaValue,hideCancel=false,checkbox,confirmText='確認',danger=false,onConfirm}) {
   dialogReturnFocus=document.activeElement;
   $('dialogTitle').textContent=title;$('dialogMessage').textContent=message||'';
   $('dialogInput').classList.toggle('hidden',inputValue===undefined);$('dialogInput').value=inputValue||'';$('dialogInput').inputMode=inputMode;
   $('dialogTextarea').classList.toggle('hidden',textareaValue===undefined);$('dialogTextarea').value=textareaValue||'';
   $('dialogCheckWrap').classList.toggle('hidden',!checkbox);$('dialogCheck').checked=Boolean(checkbox?.checked);$('dialogCheckLabel').textContent=checkbox?.label||'';
-  $('dialogBtnCancel').classList.toggle('hidden',hideCancel);$('dialogBtnConfirm').textContent=confirmText;
+  $('dialogBtnCancel').classList.toggle('hidden',hideCancel);$('dialogBtnConfirm').textContent=confirmText;$('dialogBtnConfirm').classList.toggle('dialog-danger',danger);
   $('dialogBtnConfirm').onclick=async()=>{if(onConfirm && await onConfirm($('dialogInput').value,$('dialogCheck').checked)===false)return;closeDialog();};
-  $('modalDialog').classList.remove('hidden');(inputValue!==undefined?$('dialogInput'):$('dialogBtnConfirm')).focus();
+  $('modalDialog').classList.remove('hidden');(inputValue!==undefined?$('dialogInput'):danger?$('dialogBtnCancel'):$('dialogBtnConfirm')).focus();
 }
 function closeDialog() {$('modalDialog').classList.add('hidden');dialogReturnFocus?.focus?.();}
 function backupEnvelope(s=state) { return {format:'daily-ledger',version:3,book,exportedAt:new Date().toISOString(),data:{...clone(s),activeView:'home',previousView:'home'}}; }
@@ -496,14 +497,16 @@ function downloadText(text,name,type='application/json') {
   const url=URL.createObjectURL(new Blob([text],{type:type+';charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
+// 回傳是否已送出下載（刪除資料前先下載備份時，下載失敗就不刪除）。
 function exportBackup() {
   try {
-    if(LedgerStore.unreadable())return showToast('目前讀不到帳本，無法下載備份。請完全關閉網頁後重新開啟。');
+    if(LedgerStore.unreadable())return showToast('目前讀不到帳本，無法下載備份。請完全關閉網頁後重新開啟。'),false;
     const text=storageBlocked&&LedgerStore.rawExport()?LedgerStore.rawExport():JSON.stringify(backupEnvelope(),null,2);
     downloadText(text,`記帳-備份-${today()}.json`);
     $('backupStatus').textContent='已送出備份下載，請確認檔案已存入下載資料夾。';
     try{localStorage.setItem(storageKey()+'_last_backup',String(Date.now()));}catch{}
-  }catch(e){showToast('無法下載，請重試或更換瀏覽器。');}
+    return true;
+  }catch(e){showToast('無法下載，請重試或更換瀏覽器。');return false;}
 }
 // CSV 給試算表看：日期由舊到新，同一天依記帳先後。文字開頭是 = + - @ 時前面加 '，避免試算表把它當成公式執行。
 const CSV_HEADER=['日期','類型','分類','金額','店家／收入來源','備註'];
@@ -620,17 +623,77 @@ function importSummary(imported,plan,origin) {
   lines.push('合併不會刪除目前的紀錄；匯入前的帳本會保留一份，可在設定還原。');
   return lines.join('\n');
 }
-async function installImport(imported) {
+// 匯入、還原、刪除所有紀錄、全部重置會一次改掉整本帳：改之前先把目前的帳本存一份（只留最近一份），存不了就不改。
+// 「資料與備份」的還原按鈕依存下的原因顯示。
+const UNDO_KINDS={import:{verb:'匯入',button:'還原匯入前帳本'},restore:{verb:'還原',button:'回到還原前帳本'},clear:{verb:'刪除',button:'還原刪除前帳本'},reset:{verb:'重置',button:'還原重置前帳本'}};
+const undoKind=()=>UNDO_KINDS[LedgerStore.snapshotReason('before_import')]||UNDO_KINDS.import;
+let replacingLedger=false;
+async function replaceLedger(mutator,{reason='import',done='匯入完成，可在設定還原匯入前帳本'}={}) {
   if(storageBlocked)return showToast('請先下載原始資料，保留後再處理損毀的帳本。'),false;
+  // 確認鍵連按兩下時只做一次，存下的那一份才不會被剛改好的帳本蓋掉。
+  if(replacingLedger)return false;
+  replacingLedger=true;
   try {
-    if(!LedgerStore.isCurrent())throw new Error('帳本已被其他分頁修改，請重新開啟。');
-    // Save the full current ledger before replacing it; a failed rollback write blocks import.
-    await LedgerStore.saveSnapshot('before_import',JSON.stringify(state));
-  }catch(e){showStorageError('無法保存匯入前帳本，因此未進行匯入。');return false;}
-  if(!commit(s=>Object.assign(s,clone(imported))))return false;
-  // 匯入的資料量可能很大，等確實寫進裝置再回報完成。
-  try{await LedgerStore.flush();}catch{return false;}
-  modalState=null;lastDeletedRecord=null;$('undoBar').classList.add('hidden');searchQuery='';$('recordSearch').value='';renderAll();showToast('匯入完成，可在設定還原匯入前帳本');return true;
+    const verb=UNDO_KINDS[reason].verb;
+    try {
+      if(!LedgerStore.isCurrent())throw new Error('帳本已被其他分頁修改，請重新開啟。');
+      // Save the full current ledger before replacing it; a failed rollback write blocks the change.
+      await LedgerStore.saveSnapshot('before_import',JSON.stringify(state),reason);
+    }catch(e){showStorageError(`無法保存${verb}前帳本，因此未進行${verb}。`);return false;}
+    if(!commit(mutator))return false;
+    // 資料量可能很大，等確實寫進裝置再回報完成。
+    try{await LedgerStore.flush();}catch{return false;}
+    modalState=null;lastDeletedRecord=null;$('undoBar').classList.add('hidden');searchQuery='';$('recordSearch').value='';renderAll();showToast(done);return true;
+  } finally { replacingLedger=false; }
+}
+function installImport(imported,opts) { return replaceLedger(s=>Object.assign(s,clone(imported)),opts); }
+// ---------- 刪除資料：刪除所有紀錄、全部重置 ----------
+// 和其他刪除一樣留下刪除時間：有連結雲端時同步到其他裝置，固定收支也不會補回刪掉的日期。
+// 使用者已經確認過，所以先告訴同步這是大量刪除，不會再停下來要求「確認刪除並同步」。
+function clearRecordsData(s) { s.records=[];s.currentMonth=today().slice(0,7); }
+// 全部重置：帳本內容換成第一次開啟時的樣子（預設分類與偏好，沒有紀錄、店家、固定收支）。
+function resetLedgerData(s) {
+  const fresh=freshBook();
+  for(const key of ['records','categories','merchants','archivedMerchants','merchantTypes','preferences','recurring'])s[key]=fresh[key];
+  s.currentMonth=fresh.currentMonth;
+}
+// 帳本內容和第一次開啟時一樣（不比較修改時間）：已經重置過，再重置只會把還原用的那一份換成空帳本。
+function isFreshLedger() {
+  const now=LedgerSyncCore.entityMap(state),fresh=LedgerSyncCore.entityMap(freshBook());
+  return now.size===fresh.size&&[...fresh].every(([key,e])=>now.get(key)?.json===e.json);
+}
+const SYNC_ERASE_NOTE='雲端每週的自動備份不受影響。';
+function confirmClearRecords() {
+  if(!state.records.length)return showToast('目前沒有紀錄。');
+  const count=state.records.length.toLocaleString('zh-TW');
+  openDialog({title:'刪除所有紀錄？',danger:true,confirmText:`刪除 ${count} 筆紀錄`,
+    message:[`會刪除全部 ${count} 筆收支紀錄。分類、店家與收入來源、預算、固定收支和設定都會保留。`,
+      LedgerSync.isLinked()?`有連結雲端同步，其他裝置的紀錄也會一併刪除；${SYNC_ERASE_NOTE}`:'',
+      '刪除前的帳本會保留一份，可以在這一頁按「還原刪除前帳本」找回。'].filter(Boolean).join('\n'),
+    checkbox:{label:'刪除前先下載完整備份（建議）',checked:true},
+    onConfirm:(_,backupFirst)=>{
+      const n=state.records.length;
+      if(!n)return showToast('目前沒有紀錄。');
+      if(backupFirst&&!exportBackup())return false;
+      LedgerSync.acknowledgeBulkChange(n);
+      return replaceLedger(clearRecordsData,{reason:'clear',done:`已刪除 ${n.toLocaleString('zh-TW')} 筆紀錄，可以按「還原刪除前帳本」找回`});
+    }});
+}
+function confirmResetLedger() {
+  if(isFreshLedger())return showToast('帳本已經是剛開始使用的樣子，不需要重置。');
+  const fmt=n=>n.toLocaleString('zh-TW'),{records,merchants,recurring=[]}=state;
+  const removed=[records.length&&`${fmt(records.length)} 筆紀錄`,merchants.length&&`${fmt(merchants.length)} 個店家與收入來源`,recurring.length&&`${fmt(recurring.length)} 項固定收支`].filter(Boolean);
+  openDialog({title:'全部重置？',danger:true,confirmText:'全部重置',
+    message:[`帳本會回到第一次使用時的樣子：${removed.length?`刪除全部 ${removed.join('、')}，`:''}分類、預算、首頁與記帳偏好都恢復預設。`,
+      LedgerSync.isLinked()?`有連結雲端同步，其他裝置也會一併重置；${SYNC_ERASE_NOTE}`:'',
+      '重置前的帳本會保留一份，可以在這一頁按「還原重置前帳本」找回。'].filter(Boolean).join('\n'),
+    checkbox:{label:'重置前先下載完整備份（建議）',checked:true},
+    onConfirm:(_,backupFirst)=>{
+      if(isFreshLedger())return showToast('帳本已經是剛開始使用的樣子，不需要重置。');
+      if(backupFirst&&!exportBackup())return false;
+      LedgerSync.acknowledgeBulkChange(state.records.length);
+      return replaceLedger(resetLedgerData,{reason:'reset',done:'已全部重置，可以按「還原重置前帳本」找回'});
+    }});
 }
 async function prepareImport(file) {
   if(!file)return;
@@ -733,8 +796,9 @@ window.addEventListener('DOMContentLoaded',async()=>{
   on('btnExportJsonDemo','click',exportBackup);on('btnExportCsv','click',exportCsv);on('btnImportBackup','click',()=>$('backupFile').click());
   on('backupFile','change',e=>{prepareImport(e.target.files[0]);e.target.value='';});
   on('btnUndoImport','click',async()=>{
-    try{const raw=await LedgerStore.loadSnapshot('before_import');if(!raw)return;const previous=validateBackup(JSON.parse(raw));previous.entityTimes={...(state.entityTimes||{})};openDialog({title:'還原匯入前帳本？',message:`將恢復 ${previous.records.length} 筆紀錄。目前帳本會成為下一份可還原版本。${LedgerSync.isLinked()?'\n這個變更也會同步到其他裝置。':''}`,onConfirm:()=>{LedgerSync.acknowledgeBulkChange(state.records.length);return installImport(previous);}});}catch(e){showToast('無法讀取還原資料：'+e.message);}
+    try{const raw=await LedgerStore.loadSnapshot('before_import');if(!raw)return;const previous=validateBackup(JSON.parse(raw));previous.entityTimes={...(state.entityTimes||{})};openDialog({title:`${undoKind().button}？`,message:`將恢復 ${previous.records.length} 筆紀錄。目前帳本會成為下一份可還原版本。${LedgerSync.isLinked()?'\n這個變更也會同步到其他裝置。':''}`,onConfirm:()=>{LedgerSync.acknowledgeBulkChange(state.records.length);return installImport(previous,{reason:'restore',done:'已還原，可在設定回到還原前帳本'});}});}catch(e){showToast('無法讀取還原資料：'+e.message);}
   });
+  on('btnClearRecords','click',confirmClearRecords);on('btnResetLedger','click',confirmResetLedger);
   on('dialogBtnCancel','click',closeDialog);
   document.addEventListener('keydown',e=>{
     const modal=['modalDialog','modalCategory','modalDrilldown'].map($).find(m=>!m.classList.contains('hidden'))||null;

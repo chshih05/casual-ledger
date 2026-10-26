@@ -1,7 +1,7 @@
 // Service Worker：把網頁本身與 Firebase 元件存在手機上，離線也能開啟。
 // 只處理讀取網頁檔案，不處理登入或資料庫連線；帳目資料由網頁自己存放。
 // 網頁每次開啟（或從其他 App 切回來）都會請瀏覽器重新下載這個檔案比對；內容不同就是有新版本。
-const VERSION = 'b8d0f5f780a9';
+const VERSION = '034e67247fb0';
 const APP_CACHE = `ledger-app-${VERSION}`;
 const SDK_CACHE = 'ledger-firebase-sdk';
 const APP_FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];

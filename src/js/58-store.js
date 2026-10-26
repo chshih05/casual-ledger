@@ -22,6 +22,7 @@ const LedgerStore = (() => {
   const keys = {
     legacy: () => BOOK_PREFIX + book,
     legacySnapshot: () => BOOK_PREFIX + book + '_before_import',
+    legacySnapshotReason: () => BOOK_PREFIX + book + '_before_import_reason',
     journal: () => BOOK_PREFIX + book + '_journal',
   };
 
@@ -34,7 +35,7 @@ const LedgerStore = (() => {
   let flushing = null, failures = 0, closedByOther = false;
   let pauseGate = null;        // 測試用：暫停寫入資料庫，模擬寫到一半
   let failOpen = false;        // 測試用：下一次開啟資料庫失敗
-  let snapshotIds = new Set();
+  let snapshots = new Map();     // 匯入前帳本：代號 → 存下的原因（例如 'reset'；舊版存的沒有原因）
   let rawRows = null;          // 讀不出來的內容，保留給「下載完整備份」
   let unreadable = false;      // 開啟時讀不到資料庫：畫面上是空帳本，不能當成備份下載
 
@@ -158,7 +159,7 @@ const LedgerStore = (() => {
     mode = 'idb';
     try {
       let rows = await readAll(ROWS);
-      snapshotIds = new Set((await readAll(SNAPSHOTS)).map(s => s.id));
+      snapshots = new Map((await readAll(SNAPSHOTS)).map(s => [s.id, s.reason || '']));
       if (legacyRaw !== null && !moved) {
         // 舊版存在 localStorage 的帳本：搬進資料庫，讀回來比對無誤後，原位置才換成標記。
         const legacy = loadBook();
@@ -171,9 +172,10 @@ const LedgerStore = (() => {
         rows = await readAll(ROWS);
         if (!sameLedger(stateFromRows(rows), expected)) throw new Error('搬移後讀回的帳本不符');
         const snap = localStorage.getItem(keys.legacySnapshot());
-        if (snap) await putSnapshot('before_import', snap);
+        if (snap) await putSnapshot('before_import', snap, localStorage.getItem(keys.legacySnapshotReason()) || '');
         localStorage.setItem(keys.legacy(), JSON.stringify(MOVED));
         localStorage.removeItem(keys.legacySnapshot());
+        localStorage.removeItem(keys.legacySnapshotReason());
         persistedRaw = null;
       } else if (journalOk && !moved) {
         localStorage.setItem(keys.legacy(), JSON.stringify(MOVED));
@@ -281,16 +283,21 @@ const LedgerStore = (() => {
   }
 
   // ---------- 匯入前帳本 ----------
-  async function putSnapshot(id, data) {
+  // 匯入、還原、刪除所有紀錄、全部重置之前的整本帳（只留最近一份）。reason 記下是哪一種，畫面依此顯示還原按鈕。
+  async function putSnapshot(id, data, reason = '') {
     const tx = db.transaction(SNAPSHOTS, 'readwrite');
-    tx.objectStore(SNAPSHOTS).put({ id, data });
+    tx.objectStore(SNAPSHOTS).put({ id, data, reason });
     await finished(tx);
-    snapshotIds.add(id);
+    snapshots.set(id, reason);
   }
-  async function saveSnapshot(id, data) {
-    if (mode === 'local') { localStorage.setItem(keys.legacySnapshot(), data); return; }
+  async function saveSnapshot(id, data, reason = '') {
+    if (mode === 'local') {
+      localStorage.setItem(keys.legacySnapshot(), data);
+      try { localStorage.setItem(keys.legacySnapshotReason(), reason); } catch {}
+      return;
+    }
     if (!db) throw new Error('帳本資料庫無法使用');
-    await putSnapshot(id, data);
+    await putSnapshot(id, data, reason);
   }
   async function loadSnapshot(id) {
     if (mode === 'local') return localStorage.getItem(keys.legacySnapshot());
@@ -300,7 +307,11 @@ const LedgerStore = (() => {
   }
   function hasSnapshot(id) {
     if (mode === 'local') { try { return Boolean(localStorage.getItem(keys.legacySnapshot())); } catch { return false; } }
-    return snapshotIds.has(id);
+    return snapshots.has(id);
+  }
+  function snapshotReason(id) {
+    if (mode === 'local') { try { return localStorage.getItem(keys.legacySnapshotReason()) || ''; } catch { return ''; } }
+    return snapshots.get(id) || '';
   }
 
   // ---------- 另一個分頁 ----------
@@ -337,7 +348,7 @@ const LedgerStore = (() => {
   } : undefined;
 
   return {
-    DB_NAME, open, save, flush, saveSnapshot, loadSnapshot, hasSnapshot, isCurrent, watchOtherTabs,
+    DB_NAME, open, save, flush, saveSnapshot, loadSnapshot, hasSnapshot, snapshotReason, isCurrent, watchOtherTabs,
     mode: () => mode, rawExport: () => (mode === 'local' ? persistedRaw : rawRows), unreadable: () => unreadable, __test: testApi,
   };
 })();

@@ -398,7 +398,7 @@
           <button type="button" class="settings-menu-item" data-settings-page="categories"><span><span class="settings-menu-title">分類</span><span class="settings-menu-desc">拖曳排序、圖示、新增分類</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="merchants"><span><span class="settings-menu-title">店家與收入來源</span><span class="settings-menu-desc">常用名稱、改名、合併、停用</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="sync"><span><span class="settings-menu-title">雲端同步</span><span class="settings-menu-desc">Google 帳號、衝突紀錄</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
-          <button type="button" class="settings-menu-item" data-settings-page="data"><span><span class="settings-menu-title">資料與備份</span><span class="settings-menu-desc">下載與匯入備份、雲端備份、匯出 CSV</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="data"><span><span class="settings-menu-title">資料與備份</span><span class="settings-menu-desc">下載與匯入備份、雲端備份、匯出 CSV、刪除資料</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="about"><span><span class="settings-menu-title">關於此網頁</span><span class="settings-menu-desc">版本與更新</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
         </nav>
       </div>
@@ -598,6 +598,21 @@
 <button id="btnExportCsv" class="action">匯出 CSV</button>
 </div>
 <p id="csvStatus" class="text-xs text-textMuted">欄位：日期、類型、分類、金額、店家／收入來源、備註。</p>
+</section>
+<!-- 刪除資料：刪除所有紀錄、全部重置（見 60-app.js）；刪除前的帳本和匯入一樣保留一份，可以在上方還原 -->
+<section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+<div>
+<h3 class="text-sm font-semibold">刪除資料</h3>
+<p class="text-xs text-textMuted mt-0.5">確認時會建議先下載完整備份；刪除前的帳本也會在這台裝置保留一份，可以在上方「資料保存與備份」還原。</p>
+</div>
+<div class="erase-row">
+<div class="min-w-0"><div class="erase-title">刪除所有紀錄</div><div class="erase-desc">只刪除收支紀錄；分類、店家、預算、固定收支和設定都保留。</div></div>
+<button id="btnClearRecords" type="button" class="action action-danger shrink-0" aria-label="刪除所有紀錄">刪除</button>
+</div>
+<div class="erase-row">
+<div class="min-w-0"><div class="erase-title">全部重置</div><div class="erase-desc">回到第一次使用的樣子：紀錄、店家、固定收支都刪除，分類、預算和設定恢復預設。</div></div>
+<button id="btnResetLedger" type="button" class="action action-danger shrink-0" aria-label="全部重置">重置</button>
+</div>
 </section>
 
       </div>

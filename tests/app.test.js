@@ -1562,6 +1562,7 @@
     eq(a.ev('state.records.map(r => r.id)'), ['rec_only']);
     openSettings(a, 'data');
     assert(a.visible('btnUndoImport'), '應可還原');
+    eq(a.text('btnUndoImport'), '還原匯入前帳本');
     a.click('btnUndoImport');
     await waitFor(() => a.visible('modalDialog'));
     a.click('dialogBtnConfirm');
@@ -1574,6 +1575,162 @@
     const message = await importBackup(a, legacy);
     assert(message.includes('新增 1 筆紀錄'), message);
     eq(a.ev('state.records[0].id'), 'rec_1700000000000', '時間戳記代碼不是示例資料');
+  });
+
+  // ---------- 刪除資料：刪除所有紀錄、全部重置 ----------
+  const RENT_RULE = { id: 'rule_rent', type: 'expense', categoryId: 'cat_bills', amount: 12000, merchant: '房東', note: '', freq: 'month', day: 1, next: '2099-01-01' };
+  const keptParts = a => a.ev('({ categories: state.categories, merchants: state.merchants, archived: state.archivedMerchants, preferences: state.preferences, recurring: state.recurring })');
+  const byId = list => list.slice().sort((x, y) => x.id.localeCompare(y.id));
+  // 在「資料與備份」按刪除（或重置），不下載備份直接確認。
+  async function eraseFromSettings(a, button) {
+    a.click(button);
+    await waitFor(() => a.visible('modalDialog'), { message: '確認視窗沒有出現' });
+    const message = a.text('dialogMessage');
+    a.$('dialogCheck').checked = false;
+    a.click('dialogBtnConfirm');
+    await waitFor(() => !a.visible('modalDialog'), { message: '確認後對話框沒有關閉' });
+    return message;
+  }
+
+  test('刪除資料｜刪除所有紀錄：只刪紀錄，分類、店家、預算、固定收支和設定都保留；先下載備份，之後可以還原', async () => {
+    const a = await personalApp();
+    addRecord(a, { amount: '120', merchant: '麥當勞' });
+    addRecord(a, { amount: '52000', merchant: '公司薪轉', type: 'income' });
+    a.ev(`commit(s => { s.preferences.monthlyBudget = 20000; s.preferences.homeHeaderMode = 'full_net'; s.categories.find(c => c.id === 'cat_lunch').budget = 3000; s.recurring.push(${JSON.stringify(RENT_RULE)}); })`);
+    const kept = keptParts(a);
+    const downloads = [];
+    a.w.downloadText = (text, name) => downloads.push({ text, name });
+    openSettings(a, 'data');
+    a.click('btnClearRecords');
+    await waitFor(() => a.visible('modalDialog'));
+    assert(a.text('dialogMessage').includes('會刪除全部 2 筆收支紀錄。分類、店家與收入來源、預算、固定收支和設定都會保留。'), a.text('dialogMessage'));
+    assert(!a.text('dialogMessage').includes('其他裝置'), '沒有連結雲端時不提其他裝置');
+    assert(a.$('dialogCheck').checked, '預設勾選先下載備份');
+    eq(a.text('dialogBtnConfirm'), '刪除 2 筆紀錄');
+    assert(a.$('dialogBtnConfirm').classList.contains('dialog-danger'), '確認鍵用紅色');
+    eq(a.d.activeElement.id, 'dialogBtnCancel', '一開始停在「取消」，直接按 Enter 不會刪除');
+    a.click('dialogBtnConfirm');
+    await waitFor(() => !a.visible('modalDialog'), { message: '確認後對話框沒有關閉' });
+    eq(a.ev('state.records.length'), 0);
+    eq(downloads.length, 1, '刪除前先下載備份');
+    eq(JSON.parse(downloads[0].text).data.records.length, 2, '下載的是刪除前的帳本');
+    eq(keptParts(a), kept, '分類、店家、預算、固定收支和設定都保留');
+    eq((await a.stored()).records.length, 0, '裝置上的帳本也刪除了');
+    eq(a.text('toastBox'), '已刪除 2 筆紀錄，可以按「還原刪除前帳本」找回');
+    eq(a.text('btnUndoImport'), '還原刪除前帳本');
+    a.click('btnClearRecords');
+    assert(!a.visible('modalDialog'), '沒有紀錄時不再詢問，還原用的那一份不會被空帳本蓋掉');
+    eq(a.text('toastBox'), '目前沒有紀錄。');
+    a.click('btnUndoImport');
+    await waitFor(() => a.visible('modalDialog'));
+    eq(a.text('dialogTitle'), '還原刪除前帳本？');
+    assert(!a.$('dialogBtnConfirm').classList.contains('dialog-danger'), '其他對話框的確認鍵不是紅色');
+    a.click('dialogBtnConfirm');
+    await waitFor(() => a.ev('state.records.length') === 2, { message: '應還原刪除的 2 筆紀錄' });
+    eq(a.text('toastBox'), '已還原，可在設定回到還原前帳本');
+    const b = await reloadApp();
+    eq(b.ev('state.records.length'), 2, '重新開啟仍是還原後的帳本');
+    openSettings(b, 'data');
+    eq(b.text('btnUndoImport'), '回到還原前帳本', '還原之後可以再回到還原前（刪除後）的帳本');
+  });
+
+  test('刪除資料｜下載備份失敗時不刪除', async () => {
+    const a = await personalApp();
+    addRecord(a, { amount: '120' });
+    a.w.downloadText = () => { throw new Error('download blocked'); };
+    openSettings(a, 'data');
+    a.click('btnClearRecords');
+    await waitFor(() => a.visible('modalDialog'));
+    a.click('dialogBtnConfirm');
+    await sleep(100);
+    assert(a.visible('modalDialog'), '對話框留著，可以取消勾選後再試');
+    eq(a.text('toastBox'), '無法下載，請重試或更換瀏覽器。');
+    eq(a.ev('state.records.length'), 1);
+    assert(!a.ev('LedgerStore.hasSnapshot("before_import")'), '沒有刪除，也沒有存還原用的帳本');
+  });
+
+  test('刪除資料｜全部重置：回到第一次使用的樣子；已經是初始狀態時不再重置；重置前的帳本可以還原', async () => {
+    const a = await personalApp();
+    addRecord(a, { amount: '120', merchant: '麥當勞' });
+    a.ev(`commit(s => {
+      s.categories.push({ id: 'cat_pet', type: 'expense', name: '寵物', icon: 'other', order: 11 });
+      s.categories.find(c => c.id === 'cat_lunch').name = '中餐';
+      s.preferences.monthlyBudget = 20000; s.preferences.enableSaveAndNext = true;
+      s.merchants.push('全聯'); s.merchantTypes['全聯'] = 'expense'; s.archivedMerchants.push('全聯');
+      s.recurring.push(${JSON.stringify(RENT_RULE)});
+    })`);
+    const fresh = a.ev('freshBook()');
+    openSettings(a, 'data');
+    a.click('btnResetLedger');
+    await waitFor(() => a.visible('modalDialog'));
+    eq(a.text('dialogMessage').split('\n')[0], '帳本會回到第一次使用時的樣子：刪除全部 1 筆紀錄、2 個店家與收入來源、1 項固定收支，分類、預算、首頁與記帳偏好都恢復預設。');
+    eq(a.text('dialogBtnConfirm'), '全部重置');
+    assert(a.$('dialogBtnConfirm').classList.contains('dialog-danger'), '確認鍵用紅色');
+    a.$('dialogCheck').checked = false;
+    a.click('dialogBtnConfirm');
+    await waitFor(() => !a.visible('modalDialog'), { message: '確認後對話框沒有關閉' });
+    eq(a.ev('[state.records, state.merchants, state.archivedMerchants, state.recurring]'), [[], [], [], []]);
+    eq(a.ev('state.categories'), fresh.categories, '分類恢復預設：自訂的刪除、改過的名稱恢復');
+    eq(a.ev('state.preferences'), fresh.preferences, '預算、首頁與記帳偏好恢復預設');
+    const stored = await a.stored();
+    eq([stored.records, stored.merchants, stored.recurring, byId(stored.categories), stored.preferences], [[], [], [], byId(fresh.categories), fresh.preferences], '裝置上的帳本也重置了');
+    eq(a.text('toastBox'), '已全部重置，可以按「還原重置前帳本」找回');
+    eq(a.text('btnUndoImport'), '還原重置前帳本');
+    a.click('btnResetLedger');
+    assert(!a.visible('modalDialog'), '已經是初始狀態時不再詢問，還原用的那一份不會被蓋掉');
+    eq(a.text('toastBox'), '帳本已經是剛開始使用的樣子，不需要重置。');
+    a.click('btnUndoImport');
+    await waitFor(() => a.visible('modalDialog'));
+    eq(a.text('dialogTitle'), '還原重置前帳本？');
+    a.click('dialogBtnConfirm');
+    await waitFor(() => a.ev('state.records.length') === 1, { message: '應還原重置前的帳本' });
+    eq(a.ev('[getCategoryById("cat_lunch").name, getCategoryById("cat_pet").name, state.preferences.monthlyBudget, state.merchants, state.archivedMerchants, state.recurring.map(r => r.id)]'),
+      ['中餐', '寵物', 20000, ['麥當勞', '全聯'], ['全聯'], ['rule_rent']]);
+  });
+
+  test('刪除資料｜有連結雲端時：刪除所有紀錄與全部重置會同步到雲端，不會再停下來確認大量刪除', async () => {
+    const a = await personalApp();
+    const cloud = createFakeCloud();
+    const records = Array.from({ length: 25 }, (_, i) => ({ id: `rec_many_${i}`, seq: i + 1, type: 'expense', date: '2026-10-10', categoryId: 'cat_lunch', amount: 100 + i, merchant: '全聯', note: '' }));
+    await importBackup(a, { records, categories: defaultCategories(a), merchants: ['全聯'] });
+    await linkWithFakeCloud(a, cloud);
+    await waitFor(() => a.visible('modalDialog'));
+    a.$('dialogCheck').checked = false;
+    a.click('dialogBtnConfirm');
+    await waitFor(() => cloud.live('rec').length === 25 && a.badge() === '已同步', { message: `狀態：${a.badge()}` });
+    openSettings(a, 'data');
+    const clearMessage = await eraseFromSettings(a, 'btnClearRecords');
+    assert(clearMessage.includes('其他裝置的紀錄也會一併刪除；雲端每週的自動備份不受影響。'), clearMessage);
+    await waitFor(() => cloud.live('rec').length === 0 && a.badge() === '已同步', { message: `雲端還有 ${cloud.live('rec').length} 筆，狀態：${a.badge()}` });
+    eq(cloud.live('mer').map(d => d.d.name), ['全聯'], '店家保留');
+    a.ev(`commit(s => { s.categories.push({ id: 'cat_pet', type: 'expense', name: '寵物', icon: 'other', order: 11 }); s.preferences.monthlyBudget = 5000; })`);
+    await waitFor(() => cloud.live('cat').some(d => d.k === 'cat:cat_pet') && a.badge() === '已同步', { message: `狀態：${a.badge()}` });
+    const resetMessage = await eraseFromSettings(a, 'btnResetLedger');
+    assert(resetMessage.includes('其他裝置也會一併重置；雲端每週的自動備份不受影響。'), resetMessage);
+    await waitFor(() => !cloud.live('cat').some(d => d.k === 'cat:cat_pet') && !cloud.live('mer').length && a.badge() === '已同步', { message: `狀態：${a.badge()}` });
+    eq(cloud.docs.get('pref:main').d, { homeHeaderMode: 'expense_only', enableSaveAndNext: false }, '預算等設定恢復預設，也同步到雲端');
+    eq(cloud.live('cat').length, 13, '雲端只剩預設分類');
+  });
+
+  test('刪除資料｜瀏覽器不能用資料庫時也能刪除與還原；搬進資料庫後還原按鈕的名稱不變', async () => {
+    let a = await openApp({ query: '&noidb' });
+    eq(a.ev('LedgerStore.mode()'), 'local');
+    addRecord(a, { amount: '66' });
+    openSettings(a, 'data');
+    await eraseFromSettings(a, 'btnClearRecords');
+    eq(JSON.parse(localStorage.getItem(PREFIX + 'personal')).records.length, 0);
+    a = await openApp({ clear: false, query: '&noidb' });
+    openSettings(a, 'data');
+    eq(a.text('btnUndoImport'), '還原刪除前帳本');
+    a = await openApp({ clear: false });
+    eq(a.ev('LedgerStore.mode()'), 'idb');
+    openSettings(a, 'data');
+    eq(a.text('btnUndoImport'), '還原刪除前帳本', '搬進資料庫時一起帶過去');
+    eq(localStorage.getItem(PREFIX + 'personal_before_import_reason'), null);
+    a.click('btnUndoImport');
+    await waitFor(() => a.visible('modalDialog'));
+    a.click('dialogBtnConfirm');
+    await waitFor(() => a.ev('state.records.map(r => r.amount)')[0] === 66, { message: '應還原刪除的紀錄' });
   });
 
   // ---------- 同步（模擬雲端） ----------
