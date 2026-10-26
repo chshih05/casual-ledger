@@ -49,7 +49,18 @@
   // 網頁從資料庫讀出帳本、同步也準備好之後，會在 <html> 標上 data-ready。
   const appReady = w => w.document.documentElement.dataset.ready === '1';
 
+  // 換下一個受測網頁前，先收回這一頁加的瀏覽紀錄（68-back-nav.js），測試頁的瀏覽紀錄才不會越積越多：
+  // Chrome 一個分頁最多保留 50 筆，滿了會先刪掉沒有真人操作過的舊紀錄，之後按返回可能直接退出測試頁。
+  async function rewindHistory() {
+    const w = frame && frame.contentWindow;
+    const depth = () => { try { return Number(w.history.state && w.history.state.ledgerLayer) || 0; } catch { return 0; } };
+    if (!w || !depth()) return;
+    w.history.go(-depth());
+    await waitFor(() => depth() === 0, { timeout: 2000 }).catch(() => {});
+  }
+
   async function openApp({ clear = true, query = '' } = {}) {
+    await rewindHistory();
     if (frame) { frame.remove(); frame = null; }
     if (clear) await clearStorage();
     frame = document.createElement('iframe');
@@ -106,6 +117,15 @@
   function openSettings(a, page) {
     a.click('navBtnSettings');
     if (page) a.click(a.d.querySelector(`[data-settings-page="${page}"]`));
+  }
+
+  // 目前停在第幾層的瀏覽紀錄（68-back-nav.js 加的；網頁原本那一筆是 0）。
+  const layerDepth = a => Number(a.w.history.state && a.w.history.state.ledgerLayer) || 0;
+  // 模擬 Android 返回手勢：真人不會在同一瞬間點完就按返回，先等開著的畫面都有對應的瀏覽紀錄。
+  async function goBack(a, until, message) {
+    await waitFor(() => layerDepth(a) === a.ev('LedgerBack.openCount()'), { message: '瀏覽紀錄沒有跟上開著的畫面' });
+    a.w.history.back();
+    await waitFor(until, { message });
   }
 
   async function linkWithFakeCloud(a, cloud, options = {}) {
@@ -292,8 +312,7 @@
     const a = await personalApp();
     openSettings(a, 'merchants');
     assert(a.visible('settingsMerchantList'));
-    a.w.history.back();
-    await waitFor(() => a.visible('settingsHome'), { message: '返回後應回到設定第一頁' });
+    await goBack(a, () => a.visible('settingsHome'), '返回後應回到設定第一頁');
     eq(a.ev('state.activeView'), 'settings', '仍停在設定，不會離開網頁');
   });
 
@@ -1661,5 +1680,224 @@
     await waitFor(() => a.visible('modalDialog'));
     a.click('dialogBtnConfirm');
     await waitFor(() => cloud.live('rec').length === 2, { message: '確認後應同步刪除' });
+  });
+
+  test('同步畫面｜建立同步連線時，即使登入狀態在途中就回報，也只建立一次連線', async () => {
+    const a = await personalApp();
+    const factory = fakeBackendFactory(createFakeCloud());
+    let created = 0;
+    // 模擬雲端在建立連線的當下（還沒回傳）就回報登入狀態；以前會讓畫面一再要求建立連線，直到 Maximum call stack size exceeded。
+    a.sync().useBackend(async opts => { created++; return factory(opts); });
+    openSettings(a, 'sync');
+    await waitFor(() => a.visible('btnSyncSignIn'), { message: '沒有出現登入按鈕' });
+    await sleep(50);
+    eq(created, 1, '只建立一次連線');
+    assert(!a.visible('syncError'), a.text('syncError'));
+  });
+
+  // ---------- 記帳頁：儲存列、日期 ----------
+  test('畫面｜記帳頁的「儲存紀錄」固定在畫面底部，不用往下捲就按得到', async () => {
+    const a = await personalApp();
+    a.click('btnOpenAddModal');
+    await sleep(250); // 等淡入動畫結束
+    assert(a.d.documentElement.scrollHeight > a.w.innerHeight, '記帳頁比畫面長（測試的前提）');
+    const bottom = () => a.$('recordSaveBar').getBoundingClientRect().bottom;
+    assert(Math.abs(bottom() - a.w.innerHeight) <= 1, `儲存列應貼齊畫面底部：${bottom()} / ${a.w.innerHeight}`);
+    a.w.scrollTo(0, 300);
+    assert(Math.abs(bottom() - a.w.innerHeight) <= 1, '往下捲之後仍在畫面底部');
+  });
+
+  test('日期｜今天、昨天點一下就選好；其他日期顯示日期與星期，修改舊紀錄時也看得出來', async () => {
+    const a = await personalApp();
+    const pressed = () => ['btnDateToday', 'btnDateYesterday', 'btnDateToggle'].filter(id => a.$(id).getAttribute('aria-pressed') === 'true');
+    a.click('btnOpenAddModal');
+    eq(pressed(), ['btnDateToday'], '預設是今天');
+    eq(a.text('btnDateToggle'), '其他日期 ▾');
+    a.click('btnDateYesterday');
+    eq(pressed(), ['btnDateYesterday']);
+    a.click(a.$('step1CategoryGrid').querySelectorAll('button')[0]);
+    a.type('inputAmountExpr', '60');
+    a.click('btnSaveRecord');
+    eq(a.ev('state.records[0].date'), a.ev('daysAgo(1)'), '存成昨天');
+    a.click('btnOpenAddModal');
+    a.click('btnDateToggle');
+    assert(a.visible('inputRecordDate'), '其他日期：顯示日期欄位');
+    const input = a.$('inputRecordDate');
+    input.value = '2020-03-05';
+    input.dispatchEvent(new a.w.Event('change', { bubbles: true }));
+    eq(pressed(), ['btnDateToggle']);
+    eq(a.text('btnDateToggle'), '3/5（四）▾', '顯示選好的日期與星期');
+    a.click('btnDateToday');
+    assert(!a.visible('inputRecordDate'), '選今天後收起日期欄位');
+    eq([pressed(), a.ev('modalState.date')], [['btnDateToday'], a.ev('today()')]);
+    a.click('btnCloseRecordModal');
+    a.ev(`commit(s => s.records.push({ id: 'rec_old', seq: 1, type: 'expense', date: '2020-03-05', categoryId: 'cat_lunch', amount: 80, merchant: '', note: '' }))`);
+    a.ev(`openEditRecordModal('rec_old')`);
+    eq([pressed(), a.text('btnDateToggle')], [['btnDateToggle'], '3/5（四）▾'], '修改舊紀錄時顯示原本的日期');
+  });
+
+  test('搜尋｜顯示找到幾筆與合計，支出、收入分開算；沒有搜尋或找不到時不顯示', async () => {
+    const a = await personalApp();
+    addRecord(a, { amount: '120', merchant: '星巴克' });
+    addRecord(a, { amount: '85', merchant: '星巴克' });
+    addRecord(a, { amount: '50', merchant: '全家' });
+    addRecord(a, { amount: '300', merchant: '星巴克', type: 'income' });
+    assert(!a.visible('searchSummary'), '沒有搜尋時不顯示');
+    a.type('recordSearch', '星巴克');
+    const month = Number(a.ev('state.currentMonth').slice(5));
+    eq(a.text('searchSummary'), `${month} 月找到 3 筆・支出合計 NT$ 205・收入合計 NT$ 300`);
+    a.type('recordSearch', '找不到的店');
+    assert(!a.visible('searchSummary'), '找不到時只顯示「沒有符合的紀錄」');
+    a.click('searchAllMonths');
+    a.type('recordSearch', '全家');
+    eq(a.text('searchSummary'), '全部月份找到 1 筆・支出合計 NT$ 50');
+  });
+
+  test('捷徑｜主畫面圖示長按的「記一筆支出／收入」直接打開記帳頁，網址恢復原樣', async () => {
+    let a = await openApp({ query: '&new=income' });
+    eq([a.ev('state.activeView'), a.ev('modalState.type'), a.text('merchantFieldLabel')], ['record', 'income', '收入來源']);
+    assert(!new URLSearchParams(a.w.location.search).has('new'), `網址應恢復原樣：${a.w.location.search}`);
+    a.click('btnCloseRecordModal');
+    eq(a.ev('state.activeView'), 'home');
+    a = await openApp({ clear: false, query: '&new=expense' });
+    eq([a.ev('state.activeView'), a.ev('modalState.type')], ['record', 'expense']);
+    const manifest = await (await fetch(`../docs/manifest.webmanifest?r=${Math.random()}`)).json();
+    eq(manifest.shortcuts.map(s => [s.name, s.url]), [['記一筆支出', './?new=expense'], ['記一筆收入', './?new=income']]);
+    for (const s of manifest.shortcuts) eq((await fetch(`../docs/${s.icons[0].src}`)).status, 200, `${s.icons[0].src} 應存在`);
+  });
+
+  // ---------- 返回手勢 ----------
+  test('返回手勢｜記帳頁按返回回到原本的頁面，沒儲存的內容捨棄；按畫面上的「返回」也會收回瀏覽紀錄', async () => {
+    const a = await personalApp();
+    a.click('navBtnStats');
+    a.click('btnOpenAddModal');
+    a.click(a.$('step1CategoryGrid').querySelectorAll('button')[0]);
+    a.type('inputAmountExpr', '88');
+    await goBack(a, () => a.ev('state.activeView') === 'stats', '返回後應回到統計頁');
+    eq(a.ev('modalState'), null, '沒儲存的內容捨棄');
+    eq(await a.stored(), null, '沒有寫入任何紀錄');
+    a.click('btnOpenAddModal');
+    await waitFor(() => layerDepth(a) === 1, { message: '打開記帳頁應加一筆瀏覽紀錄' });
+    a.click('btnCloseRecordModal');
+    await waitFor(() => layerDepth(a) === 0, { message: '按「返回」關閉後應收回瀏覽紀錄' });
+    eq(a.ev('state.activeView'), 'stats');
+  });
+
+  test('返回手勢｜明細、分類編輯、對話框按返回只關掉最上層', async () => {
+    const { a } = await historyApp();
+    a.click('btnOpenAddModal');
+    a.click(a.$('step1CategoryGrid').querySelectorAll('button')[1]);
+    a.type('inputAmountExpr', '55');
+    a.type('inputMerchantSearch', '全家');
+    a.click('btnMerchantHistory');
+    await goBack(a, () => !a.visible('modalDrilldown'), '返回先關掉明細');
+    eq([a.ev('state.activeView'), a.ev('modalState.amountExpr')], ['record', '55'], '還在記帳頁，正在記的內容還在');
+    a.click([...a.$('step1CategoryGrid').querySelectorAll('button')].at(-1));
+    assert(a.visible('modalCategory'));
+    await goBack(a, () => !a.visible('modalCategory'), '返回關掉分類編輯');
+    eq(a.ev('state.activeView'), 'record');
+    await goBack(a, () => a.ev('state.activeView') === 'home', '再按返回回到首頁');
+    openSettings(a, 'merchants');
+    const row = [...a.$('settingsMerchantList').children].find(r => r.textContent.includes('全家'));
+    a.click([...row.querySelectorAll('button')].find(b => b.textContent === '改名'));
+    assert(a.visible('modalDialog'));
+    await goBack(a, () => !a.visible('modalDialog'), '返回關掉對話框');
+    assert(a.visible('settingsMerchantList'), '還在店家分頁');
+    eq(a.ev('state.merchants.includes("全家")'), true, '對話框沒有確認，名稱不變');
+    await goBack(a, () => a.visible('settingsHome'), '再按返回回到設定第一頁');
+  });
+
+  test('返回手勢｜從統計明細點紀錄進入修改，按返回回到統計頁', async () => {
+    const { a } = await historyApp();
+    a.click('navBtnStats');
+    a.click(a.$('statsCategoryList').querySelector('button'));
+    assert(a.visible('modalDrilldown'));
+    a.click(a.$('drilldownList').querySelector('button'));
+    eq(a.ev('state.activeView'), 'record');
+    assert(!a.visible('modalDrilldown'));
+    await goBack(a, () => a.ev('state.activeView') === 'stats', '返回後應回到統計頁');
+    await sleep(100);
+    eq([a.ev('state.activeView'), layerDepth(a)], ['stats', 0], '不會多退一頁');
+  });
+
+  // ---------- 備份提醒與雲端自動備份 ----------
+  const lunch = (id, date, amount = 100) => ({ id, seq: 1, type: 'expense', date, categoryId: 'cat_lunch', amount, merchant: '', note: '' });
+
+  test('備份提醒｜還沒備份又記了 30 筆時首頁提醒；下載後消失，按「稍後提醒」7 天內不再出現', async () => {
+    const a = await personalApp();
+    const today = a.ev('today()');
+    await importBackup(a, { records: Array.from({ length: 29 }, (_, i) => lunch(`rec_r${i}`, today)), categories: defaultCategories(a), merchants: [] });
+    assert(!a.visible('backupReminder'), '29 筆還不提醒');
+    addRecord(a, { amount: '30' });
+    assert(a.visible('backupReminder'), '30 筆時提醒');
+    assert(a.text('backupReminderText').startsWith('還沒有下載過備份，帳本已經有 30 筆紀錄'), a.text('backupReminderText'));
+    a.click('btnReminderBackup');
+    assert(!a.visible('backupReminder'), '下載後不再提醒');
+    a.w.localStorage.setItem('minimal_expense_v3_personal_last_backup', String(Date.now() - 31 * 86400000));
+    a.ev(`commit(s => { s.records = s.records.map(r => ({ ...r, note: '改過' })); })`);
+    a.click('navBtnHome');
+    assert(a.visible('backupReminder'), '超過 30 天、之後又改了 30 筆時再提醒');
+    assert(a.text('backupReminderText').startsWith('上次備份是 31 天前，之後新增或修改了 30 筆'), a.text('backupReminderText'));
+    a.click('btnReminderLater');
+    assert(!a.visible('backupReminder'), '稍後提醒');
+    eq(Math.round((Number(a.w.localStorage.getItem('minimal_expense_v3_personal_backup_snooze')) - Date.now()) / 86400000), 7);
+    openSettings(a, 'data');
+    assert(a.text('cloudBackupStatus').startsWith('連結 Google 雲端同步後'), a.text('cloudBackupStatus'));
+    assert(!a.visible('btnCloudBackupList'), '沒有連結雲端時不能查看雲端備份');
+  });
+
+  test('雲端備份｜同步後每週自動存一份完整備份（同一週不重複），可以列出並還原', async () => {
+    const a = await personalApp();
+    const cloud = createFakeCloud();
+    await linkWithFakeCloud(a, cloud);
+    await waitFor(() => a.badge() === '已同步');
+    eq(cloud.backups.size, 0, '還沒有紀錄時不備份');
+    a.click('navBtnHome');
+    addRecord(a, { amount: '120', merchant: '全家' });
+    addRecord(a, { amount: '60', merchant: '7-11' });
+    await waitFor(() => cloud.backups.size === 1, { timeout: 8000, message: '同步後應存一份雲端備份' });
+    const week = a.ev('LedgerBackup.weekId()');
+    const saved = cloud.backups.get(week);
+    assert(saved, `應以這一週（${week}）為代號`);
+    eq([saved.meta.records, saved.meta.enc, saved.meta.parts], [2, 'gzip', 1]);
+    const backup = JSON.parse(await a.ev('LedgerBackup.unpack')(saved.meta.enc, saved.parts));
+    eq([backup.format, backup.data.records.map(r => r.amount).sort((x, y) => x - y)], ['daily-ledger', [60, 120]], '內容是完整備份');
+    addRecord(a, { amount: '30' });
+    await waitFor(() => cloud.live('rec').length === 3 && a.badge() === '已同步', { message: `狀態：${a.badge()}` });
+    await sleep(100);
+    eq(cloud.backupWrites, 1, '同一週只存一份');
+    openSettings(a, 'data');
+    assert(a.text('cloudBackupStatus').includes('最近一次') && a.text('cloudBackupStatus').includes('2 筆紀錄'), a.text('cloudBackupStatus'));
+    assert(a.text('settingsBackupAge').includes('雲端備份：'), `設定第一頁也顯示雲端備份日期：${a.text('settingsBackupAge')}`);
+    a.click('btnCloudBackupList');
+    await waitFor(() => a.$('cloudBackupList').querySelectorAll('.cloud-backup-row').length === 1, { message: '應列出雲端備份' });
+    a.ev(`commit(s => { s.records = s.records.filter(r => r.amount === 30); })`);
+    a.click([...a.$('cloudBackupList').querySelectorAll('button')].find(b => b.textContent === '還原'));
+    await waitFor(() => a.visible('modalDialog'), { message: '應出現還原確認' });
+    assert(a.text('dialogTitle').startsWith('從雲端備份還原'), a.text('dialogTitle'));
+    assert(a.text('dialogMessage').includes('新增 2 筆紀錄'), a.text('dialogMessage'));
+    a.click('dialogBtnConfirm');
+    await waitFor(() => a.ev('state.records.length') === 3, { message: '還原後應有 3 筆' });
+  });
+
+  test('雲端備份｜安全規則還沒更新時：設定頁說明要更新規則，同步不受影響；規則更新後查看清單就會補存', async () => {
+    const a = await personalApp();
+    const cloud = createFakeCloud();
+    cloud.backupDenied = true;
+    addRecord(a, { amount: '50' });
+    await linkWithFakeCloud(a, cloud);
+    await waitFor(() => a.visible('modalDialog'), { message: '應詢問是否連結' });
+    a.$('dialogCheck').checked = false;
+    a.click('dialogBtnConfirm');
+    await waitFor(() => cloud.live('rec').length === 1 && a.badge() === '已同步', { message: `狀態：${a.badge()}` });
+    const info = () => JSON.parse(a.w.localStorage.getItem('minimal_expense_v3_personal_cloud_backup') || 'null');
+    await waitFor(() => info() && info().error === 'rules', { message: '應記下安全規則的錯誤' });
+    eq(a.badge(), '已同步', '備份失敗不影響同步');
+    openSettings(a, 'data');
+    assert(a.visible('cloudBackupError') && a.text('cloudBackupError').includes('安全規則'), a.text('cloudBackupError'));
+    cloud.backupDenied = false;
+    a.click('btnCloudBackupList');
+    await waitFor(() => cloud.backups.size === 1, { message: '規則更新後應馬上補存這一週的備份' });
+    await waitFor(() => !a.visible('cloudBackupError'), { message: '補存後不再顯示錯誤' });
   });
 })();

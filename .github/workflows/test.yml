@@ -1,0 +1,32 @@
+# 每次推送到 main 或開 Pull Request 時自動檢查（公開儲存庫免費）：
+# 1. docs/ 是否已經用最新的 src/ 重新建置（忘了執行 python tools/build.py 時會失敗）
+# 2. 畫面用到的樣式名稱是否都存在
+# 3. 在無頭 Chrome 跑全部自動測試
+name: 自動測試
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: 檢查 docs/ 已重新建置
+        run: |
+          python tools/build.py
+          if ! git diff --quiet -- docs || [ -n "$(git status --porcelain -- docs)" ]; then
+            echo "docs/ 和 src/ 不一致：請先執行 python tools/build.py，再把 docs/ 一起提交。"
+            git status --short -- docs
+            exit 1
+          fi
+      - name: 檢查樣式名稱
+        run: python tools/check_classes.py
+      - name: 瀏覽器自動測試
+        run: python tools/run_tests.py --no-build

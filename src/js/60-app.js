@@ -156,26 +156,13 @@ function updateSyncStatusUI() {
   $('settingsBackupAge').textContent=$('backupAge').textContent;
 }
 const canSyncNow=()=>LedgerSync.isLinked()&&!$('btnSyncNow').classList.contains('hidden');
-// 設定分頁：進入時加一筆瀏覽紀錄，Android 返回手勢會回到設定第一頁，而不是離開網頁。
-let settingsHistory=false,skipNextPop=false;
+// 設定分頁：Android 返回手勢回到設定第一頁，由 68-back-nav.js 統一處理。
 function openSettingsPage(page='') {
   discardForm();
-  if(!page)leaveSettingsPage();
-  else if(!settingsHistory){try{history.pushState({ledgerSettings:page},'');settingsHistory=true;}catch{}}
   state.activeView='settings';state.settingsPage=page;
   renderAll();window.scrollTo({top:0});
 }
-// 離開設定分頁時收回剛才加的瀏覽紀錄，之後按返回才不會停在原地。
-function leaveSettingsPage() {
-  if(settingsHistory){settingsHistory=false;skipNextPop=true;try{history.back();}catch{skipNextPop=false;}}
-  state.settingsPage='';
-}
-function onSettingsPopState() {
-  if(skipNextPop){skipNextPop=false;return;}
-  if(!settingsHistory)return;
-  settingsHistory=false;
-  if(state.activeView==='settings'&&state.settingsPage){state.settingsPage='';renderAll();window.scrollTo({top:0});}
-}
+function leaveSettingsPage() { state.settingsPage=''; }
 function showToast(msg,ms=2800) {
   $('toastBox').textContent=msg; $('toastBox').classList.remove('hidden');
   clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>$('toastBox').classList.add('hidden'),ms);
@@ -201,9 +188,9 @@ function discardForm() {
   closeCategoryEditor();
 }
 function emptyForm(type='expense',date=today()) { return {editingRecordId:null,type,categoryId:'',date,amountExpr:'',selectedMerchant:'',note:''}; }
-function openNewRecordModal() {
+function openNewRecordModal(type='expense') {
   state.previousView=state.activeView==='record'?'home':state.activeView;
-  modalState=emptyForm();
+  modalState=emptyForm(type);
   state.activeView='record'; keypadOpen=true;
   renderAll();renderRecordModal();window.scrollTo({top:0});
 }
@@ -221,6 +208,19 @@ function setKeypad(open) {
   keypadOpen=open; $('builtInKeypad').classList.toggle('hidden',!open);
   $('btnToggleKeypad').textContent=open?'收起數字鍵盤':'展開數字鍵盤';
   $('btnToggleKeypad').setAttribute('aria-expanded',String(open));
+}
+// 日期：「今天」「昨天」點一下就選好；其他日期用日曆選，選好後按鈕顯示日期與星期。
+const WEEKDAY_NAMES='日一二三四五六';
+function daysAgo(n,now=new Date()) { return today(new Date(now.getFullYear(),now.getMonth(),now.getDate()-n)); }
+function renderDateChips() {
+  const date=modalState.date,isToday=date===today(),isYesterday=date===daysAgo(1),other=!isToday&&!isYesterday&&validDate(date);
+  [['btnDateToday',isToday],['btnDateYesterday',isYesterday],['btnDateToggle',other]].forEach(([id,on])=>$(id).setAttribute('aria-pressed',String(on)));
+  const [,m,d]=date.split('-').map(Number);
+  $('btnDateToggle').textContent=other?`${m}/${d}（${WEEKDAY_NAMES[new Date(date+'T00:00:00').getDay()]}）▾`:'其他日期 ▾';
+}
+function pickRecordDate(date) {
+  modalState.date=date;$('inputRecordDate').value=date;$('inputRecordDate').hidden=true;
+  renderDateChips();
 }
 function renderRecordModal() {
   const d=modalState,isEdit=Boolean(d.editingRecordId),cat=state.categories.find(c=>c.id===d.categoryId);
@@ -247,7 +247,7 @@ function renderRecordModal() {
   $('step2DetailSection').classList.remove('hidden');
   $('inputAmountExpr').value=d.amountExpr;$('inputMerchantSearch').value=d.selectedMerchant;$('inputRecordNote').value=d.note;
   $('inputRecordDate').value=d.date; $('inputRecordDate').hidden=true;
-  $('btnDateToggle').textContent=(d.date===today()?'今天':d.date)+' ▾';
+  renderDateChips();
   $('merchantFieldLabel').textContent=d.type==='income'?'收入來源':'店家';
   $('inputMerchantSearch').placeholder=d.type==='income'?'搜尋或輸入收入來源':'搜尋或輸入店家名稱';
   $('inputRecordNote').placeholder=d.type==='income'?'例如：十月份薪資':'例如：大麥克套餐、衛生紙';
@@ -465,7 +465,7 @@ function renderSettings() {
   });
   renderMerchantManager();
   $('btnUndoImport').classList.toggle('hidden',!LedgerStore.hasSnapshot('before_import'));
-  if(state.settingsPage==='data')renderCsvRanges();
+  if(state.settingsPage==='data'){renderCsvRanges();LedgerBackup.renderSection();}
   if(state.settingsPage==='budget')renderBudgetSettings();
   if(state.settingsPage==='recurring')renderRecurringSettings();
   $('btnAddCategory').textContent=`＋ 新增${state.catMgrType==='income'?'收入':'支出'}分類`;
@@ -626,17 +626,20 @@ async function installImport(imported) {
 async function prepareImport(file) {
   if(!file)return;
   if(file.size>20*1024*1024)return showToast('備份檔案不可超過 20 MB。');
-  try {
-    const raw=JSON.parse(await file.text()),imported=validateBackup(raw),origin=importOrigin(raw),merge=planImportMerge(state,imported,origin),linked=LedgerSync.isLinked();
-    openDialog({title:'確認匯入備份',message:importSummary(imported,merge.plan,origin),confirmText:'匯入',
-      checkbox:{label:`改為完全取代目前帳本（備份中沒有的紀錄會被刪除${linked?'，其他裝置也會一併刪除':''}）`,checked:false},
-      onConfirm:(_,replace)=>{
-        if(!replace)return installImport(merge.next);
-        const next=planImportReplace(state,imported,origin);
-        LedgerSync.acknowledgeBulkChange(state.records.length);
-        return installImport(next);
-      }});
-  }catch(e){showToast('未匯入：'+e.message);}
+  try { prepareImportText(await file.text()); }
+  catch(e){showToast('未匯入：'+e.message);}
+}
+// 備份內容（下載的檔案或雲端備份）先列出會怎麼合併，確認後才匯入；格式不符時丟出錯誤。
+function prepareImportText(text,{title='確認匯入備份'}={}) {
+  const raw=JSON.parse(text),imported=validateBackup(raw),origin=importOrigin(raw),merge=planImportMerge(state,imported,origin),linked=LedgerSync.isLinked();
+  openDialog({title,message:importSummary(imported,merge.plan,origin),confirmText:'匯入',
+    checkbox:{label:`改為完全取代目前帳本（備份中沒有的紀錄會被刪除${linked?'，其他裝置也會一併刪除':''}）`,checked:false},
+    onConfirm:(_,replace)=>{
+      if(!replace)return installImport(merge.next);
+      const next=planImportReplace(state,imported,origin);
+      LedgerSync.acknowledgeBulkChange(state.records.length);
+      return installImport(next);
+    }});
 }
 function removeRecord() {
   const rec=state.records.find(r=>r.id===modalState?.editingRecordId);if(!rec)return;
@@ -653,6 +656,15 @@ function handleKeypadInput(key) {
   else if(s.length<100)s=s==='0'?key:s+key;
   modalState.amountExpr=s;$('inputAmountExpr').value=s;updateCalcPreviewAndRecommendations();
 }
+// 主畫面圖示長按的捷徑（manifest.webmanifest 的 shortcuts）：網址帶 ?new=expense 或 ?new=income 時直接打開記帳頁。
+// 打開後把網址改回原樣，重新整理時不會再打開一次。
+function openFromShortcut() {
+  const params=new URLSearchParams(location.search),type=params.get('new');
+  if(type!=='expense'&&type!=='income')return;
+  params.delete('new');
+  try{const query=params.toString();history.replaceState(history.state,'',location.pathname+(query?'?'+query:'')+location.hash);}catch{}
+  if(!storageBlocked)openNewRecordModal(type);
+}
 window.addEventListener('DOMContentLoaded',async()=>{
   removeSampleBook();
   // 帳本從資料庫讀出來之後才綁定按鈕與畫面；同步（80-sync-ui.js）也等到這時才開始。
@@ -665,12 +677,12 @@ window.addEventListener('DOMContentLoaded',async()=>{
   on('btnSettingsBack','click',()=>openSettingsPage(''));
   on('btnSettingsSyncAction','click',()=>{if(canSyncNow())$('btnSyncNow').click();else openSettingsPage('sync');});
   on('btnSettingsBackup','click',()=>{exportBackup();updateSyncStatusUI();});
-  window.addEventListener('popstate',onSettingsPopState);
+  LedgerBack.init();
   setupCategoryDrag();
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
   on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
-  on('btnOpenAddModal','click',openNewRecordModal);
+  on('btnOpenAddModal','click',()=>openNewRecordModal());
   on('btnCloseRecordModal','click',closeRecordPage);
   ['expense','income'].forEach(t=>on(t==='expense'?'modalTypeExpense':'modalTypeIncome','click',()=>{
     if(modalState.type===t)return;
@@ -688,13 +700,15 @@ window.addEventListener('DOMContentLoaded',async()=>{
   on('btnMerchantHistory','click',()=>{const name=$('inputMerchantSearch').value.trim();if(name)openMerchantHistory(name,{readOnly:true,type:modalState.type});});
   on('btnClearMerchant','click',()=>{modalState.selectedMerchant='';$('inputMerchantSearch').value='';updateCalcPreviewAndRecommendations();});
   on('inputRecordNote','input',e=>{modalState.note=e.target.value;});
-  on('btnDateToggle','click',()=>{$('inputRecordDate').hidden=!$('inputRecordDate').hidden;if(!$('inputRecordDate').hidden)$('inputRecordDate').focus();});
-  on('inputRecordDate','change',e=>{modalState.date=e.target.value;$('btnDateToggle').textContent=(modalState.date===today()?'今天':modalState.date||'選擇日期')+' ▾';});
+  on('btnDateToday','click',()=>pickRecordDate(today()));on('btnDateYesterday','click',()=>pickRecordDate(daysAgo(1)));
+  // 其他日期：打開日曆（不支援時至少把日期欄位顯示出來）。
+  on('btnDateToggle','click',()=>{const input=$('inputRecordDate');input.hidden=!input.hidden;if(input.hidden)return;input.focus();try{input.showPicker();}catch{}});
+  on('inputRecordDate','change',e=>{modalState.date=e.target.value;renderDateChips();});
   on('btnSaveRecord','click',()=>handleSaveRecord(false));on('btnSaveAndNextRecord','click',()=>handleSaveRecord(true));on('btnDeleteRecordInModal','click',removeRecord);
   on('btnUndoDelete','click',()=>{if(!lastDeletedRecord)return;const r=lastDeletedRecord;if(!commit(s=>{if(!s.records.some(x=>x.id===r.id))s.records.push(r);} ))return;lastDeletedRecord=null;$('undoBar').classList.add('hidden');renderAll();showToast('已復原紀錄');});
   ['expense','income'].forEach(t=>{on(t==='expense'?'statsTabExpense':'statsTabIncome','click',()=>{state.statsType=t;renderAll();});on(t==='expense'?'catMgrTabExpense':'catMgrTabIncome','click',()=>{state.catMgrType=t;renderSettings();});});
   ['month','year'].forEach(p=>on(p==='month'?'statsPeriodMonth':'statsPeriodYear','click',()=>{state.statsPeriod=p;renderAll();}));
-  on('btnCloseDrilldown','click',()=>$('modalDrilldown').classList.add('hidden'));
+  on('btnCloseDrilldown','click',closeDrilldown);
   document.querySelectorAll('.setting-header-btn').forEach(b=>b.onclick=()=>{if(commit(s=>s.preferences.homeHeaderMode=b.dataset.mode))renderAll();});
   on('toggleSaveAndNext','click',()=>{if(commit(s=>s.preferences.enableSaveAndNext=!s.preferences.enableSaveAndNext))renderSettings();});
   on('btnManageAddMerchant','click',()=>{const name=$('inputManageNewMerchant').value.trim();if(!name||name.length>100||state.merchants.includes(name))return showToast('請輸入尚未存在的名稱（最多 100 字）。');const type=state.merchantMgrType==='income'?'income':'expense';if(commit(s=>{s.merchants.push(name);Object.defineProperty(s.merchantTypes,name,{value:type,enumerable:true,writable:true,configurable:true});})){$('inputManageNewMerchant').value='';renderSettings();showToast(`已新增「${name}」`);}});
@@ -721,6 +735,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   LedgerStore.watchOtherTabs(()=>showStorageError('帳本已在另一個分頁變更。請先下載帳本備份，再重新開啟，避免覆蓋。'));
   window.addEventListener('pagehide',()=>{if(state.activeView==='record'){discardForm();state.activeView=state.previousView||'home';renderAll();}});
   renderAll();if(loadIssue)showStorageError(loadIssue);
+  openFromShortcut();
   markLedgerReady();
   ledgerReady.then(()=>{document.documentElement.dataset.ready='1';});
   scheduleRecurring();

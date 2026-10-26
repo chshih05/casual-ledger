@@ -157,6 +157,8 @@
       }
 
       document.getElementById('homeRecordCount').textContent = `共 ${monthRecords.length} 筆`;
+      renderSearchSummary(monthRecords);
+      LedgerBackup.renderReminder();
       const listEl = document.getElementById('homeRecordList');
       listEl.innerHTML = '';
 
@@ -238,6 +240,19 @@
           openEditRecordModal(btn.getAttribute('data-record-id'));
         });
       });
+    }
+    // 搜尋時列出找到幾筆與合計（支出、收入分開算），例如查「星巴克」這個月或全部月份花了多少。
+    function renderSearchSummary(records) {
+      const el = document.getElementById('searchSummary');
+      const show = Boolean(searchQuery.trim()) && records.length > 0;
+      el.classList.toggle('hidden', !show);
+      if (!show) return;
+      const sumOf = type => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
+      const expense = sumOf('expense'), income = sumOf('income');
+      const parts = [`${searchAcrossMonths ? '全部月份' : `${Number(state.currentMonth.slice(5))} 月`}找到 ${records.length} 筆`];
+      if (expense) parts.push(`支出合計 NT$ ${formatMoney(expense)}`);
+      if (income) parts.push(`收入合計 NT$ ${formatMoney(income)}`);
+      el.textContent = parts.join('・');
     }
     function renderStats() {
       const yearMode = isYearStats();
@@ -386,6 +401,9 @@
       document.getElementById('modalDrilldown').classList.remove('hidden');
       document.getElementById('drilldownList').scrollTop = 0;
     }
+    function closeDrilldown() {
+      document.getElementById('modalDrilldown').classList.add('hidden');
+    }
     function openMerchantHistory(name, opts = {}) {
       openDrilldownModal('merchant', name, name, Object.assign({ scope: 'all' }, opts));
     }
@@ -457,7 +475,7 @@
           <div class="text-sm font-bold num-tabular text-textMain">NT$ ${formatMoney(rec.amount)}</div>
         `;
         if (!d.readOnly) row.addEventListener('click', () => {
-          document.getElementById('modalDrilldown').classList.add('hidden');
+          closeDrilldown();
           openEditRecordModal(rec.id);
         });
         listEl.appendChild(row);

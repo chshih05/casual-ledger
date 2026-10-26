@@ -34,8 +34,10 @@ JS_ORDER = [
     "js/62-budget.js",          # 每月預算
     "js/64-stats-compare.js",   # 統計比較與近 12 個月走勢
     "js/66-recurring.js",       # 固定收支（到期自動記帳）
+    "js/68-back-nav.js",        # Android 返回手勢：關掉最上層的畫面
     "js/70-sync-firebase.js",   # Firebase 登入與資料庫連線
     "js/80-sync-ui.js",         # 同步流程與畫面
+    "js/85-backup.js",          # 備份提醒與雲端自動備份
     "js/90-pwa.js",             # 離線載入與版本更新
 ]
 

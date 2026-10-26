@@ -142,7 +142,10 @@ const LedgerSync = (() => {
     if (backend) return Promise.resolve(backend);
     if (backendPromise) return backendPromise;
     const factory = testFactory || (opts => LedgerFirebase.create(config, opts));
-    backendPromise = factory({ onAuth })
+    // 先記下「正在連線」再建立連線：登入狀態可能在建立途中就回報（onAuth → 重畫畫面），
+    // 這時畫面看到 backendPromise 已經有值，才不會再要求建立一次而無限重複。
+    backendPromise = Promise.resolve()
+      .then(() => factory({ onAuth }))
       .then(b => {
         backend = b;
         engine = createEngine();
@@ -286,6 +289,8 @@ const LedgerSync = (() => {
         retryDelay = 0;
         heldDeletes = result.heldDeletes;
         if (result.conflicts) showToast(`有 ${result.conflicts} 項在不同裝置都改過，已保留較新的版本，可在設定查看`);
+        // 同步完成後檢查這一週的雲端備份；備份失敗不影響同步。
+        LedgerBackup.afterSync().catch(e => console.warn('cloud backup failed', e));
       }
     } catch (e) {
       lastError = toError(e);
@@ -481,7 +486,8 @@ const LedgerSync = (() => {
     let last = 0;
     try { last = Number(localStorage.getItem(storageKey() + '_last_backup')) || 0; } catch {}
     const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
-    el('backupAge').textContent = days === null ? '此裝置尚未下載過備份。' : `此裝置上次下載備份：${days === 0 ? '今天' : `${days} 天前`}。`;
+    el('backupAge').textContent = (days === null ? '此裝置尚未下載過備份。' : `此裝置上次下載備份：${days === 0 ? '今天' : `${days} 天前`}。`)
+      + LedgerBackup.cloudSummary();
   }
 
   function savedMessage() {
@@ -536,5 +542,9 @@ const LedgerSync = (() => {
   return {
     badge, renderPanel, afterCommit, savedMessage, acknowledgeBulkChange,
     isLinked, isPending: key => pendingSet.has(key), __test: testApi,
+    // 雲端自動備份（85-backup.js）用：連結的帳號，以及已登入同一個帳號、可以讀寫雲端時的連線。
+    linkedUid: () => (isLinked() ? info().uid : null),
+    readyBackend: () => (canSync() ? backend : null),
+    heldDeletes: () => heldDeletes,
   };
 })();

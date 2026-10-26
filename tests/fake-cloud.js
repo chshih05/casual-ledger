@@ -11,6 +11,8 @@ function createFakeCloud() {
   const cloud = {
     docs, offline: false, failNext: null, dropAckNext: false,
     pullCalls: 0, pushCalls: 0, reads: 0, writes: 0,
+    // 雲端自動備份（users/{uid}/backups）：backupDenied 模擬安全規則還沒更新。
+    backups: new Map(), backupDenied: false, backupWrites: 0,
 
     async pull({ cursor, after, limit }) {
       cloud.pullCalls++;
@@ -73,6 +75,32 @@ function createFakeCloud() {
     live(kind) {
       return [...docs.values()].filter(d => !d.del && (!kind || d.kind === kind));
     },
+
+    // 和 firestore.rules 一樣：備份只能新增，同一週已經有了就拒絕，不會蓋掉。
+    backupCheck() {
+      if (cloud.offline) throw err('unavailable');
+      if (cloud.backupDenied) throw err('permission-denied');
+    },
+    async getBackup(id) {
+      cloud.backupCheck();
+      const b = cloud.backups.get(id);
+      return b ? structuredClone(b.meta) : null;
+    },
+    async saveBackup(id, meta, parts) {
+      cloud.backupCheck();
+      if (cloud.backups.has(id) || parts.length < 1 || parts.length > 10 || parts.some(p => p.length > 900000)) throw err('permission-denied');
+      cloud.backups.set(id, { meta: { id, at: Date.now(), ...structuredClone(meta), parts: parts.length }, parts: parts.map(p => p.slice()) });
+      cloud.backupWrites++;
+    },
+    async listBackups(limit) {
+      cloud.backupCheck();
+      return [...cloud.backups.values()].map(b => structuredClone(b.meta)).sort((a, b) => b.at - a.at).slice(0, limit);
+    },
+    async loadBackup(id) {
+      cloud.backupCheck();
+      const b = cloud.backups.get(id);
+      return b ? b.parts.map(p => p.slice()) : [];
+    },
   };
   return cloud;
 }
@@ -89,6 +117,10 @@ function fakeBackendFactory(cloud, { user = { uid: 'u1', email: 'me@example.com'
       async signOut() { current = null; onAuth(null); },
       pull: options => cloud.pull(options),
       push: (changes, options) => cloud.push(changes, options),
+      getBackup: id => cloud.getBackup(id),
+      saveBackup: (id, meta, parts) => cloud.saveBackup(id, meta, parts),
+      listBackups: limit => cloud.listBackups(limit),
+      loadBackup: id => cloud.loadBackup(id),
     };
   };
 }

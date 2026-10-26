@@ -126,6 +126,18 @@
         </div>
         <div id="homeBudgetBody"></div>
       </section>
+
+      <!-- 備份提醒：很久沒備份、又記了不少筆時才出現（見 85-backup.js） -->
+      <section id="backupReminder" class="hidden backup-reminder" aria-labelledby="backupReminderTitle">
+        <div>
+          <h2 id="backupReminderTitle" class="backup-reminder-title">記得備份帳本</h2>
+          <p id="backupReminderText" class="backup-reminder-text"></p>
+        </div>
+        <div class="backup-reminder-actions">
+          <button id="btnReminderLater" type="button" class="backup-reminder-later">稍後提醒</button>
+          <button id="btnReminderBackup" type="button" class="backup-reminder-main">下載備份</button>
+        </div>
+      </section>
       </div>
 
       <!-- 2. 最近消費紀錄 (依日期分組；同一天內依新增先後由上往下排，新記的排在當天最後一筆) -->
@@ -140,6 +152,7 @@
         <div class="flex gap-2 flex-wrap">
 <input id="recordSearch" type="search" aria-label="搜尋紀錄" placeholder="搜尋店家、備註或分類" class="search-input" />
 <label class="text-xs flex items-center gap-2"><input id="searchAllMonths" type="checkbox" />跨月搜尋</label></div>
+<p id="searchSummary" class="hidden search-summary" role="status"></p>
 <div id="homeRecordList" class="space-y-3"></div>
       </section>
     </main>
@@ -230,16 +243,22 @@
           <div id="merchantChipsContainer" class="flex flex-wrap gap-1.5 pt-0.5"></div>
         </div>
 
-        <!-- 備註與消費日期（同卡片並列，省去跳頁空間） -->
+        <!-- 備註與消費日期（同一張卡片，省去跳頁空間） -->
         <div id="singleNoteBox" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div class="sm:col-span-2">
+          <div class="grid grid-cols-1 gap-2.5">
+            <div>
               <label for="inputRecordNote" class="block text-xs font-medium text-textMuted mb-1">備註（選填）</label>
               <input id="inputRecordNote" type="text" maxlength="1000" placeholder="例如：大麥克套餐、買衛生紙..." class="w-full bg-bgInput border border-borderSubtle rounded-xl px-3.5 py-2 text-sm text-textMain focus:outline-none focus:border-accent" />
             </div>
             <div>
-              <label for="inputRecordDate" class="block text-xs font-medium text-textMuted mb-1">日期</label>
-              <button id="btnDateToggle" type="button" class="date-toggle">今天 ▾</button><input id="inputRecordDate" hidden type="date" class="w-full px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-sm text-textMain focus:outline-none focus:border-accent num-tabular" />
+              <span id="recordDateLabel" class="block text-xs font-medium text-textMuted mb-1">日期</span>
+              <!-- 今天、昨天點一下就選好；其他日期打開日曆 -->
+              <div class="date-chips" role="group" aria-labelledby="recordDateLabel">
+                <button id="btnDateToday" type="button" class="date-chip" aria-pressed="true">今天</button>
+                <button id="btnDateYesterday" type="button" class="date-chip" aria-pressed="false">昨天</button>
+                <button id="btnDateToggle" type="button" class="date-chip" aria-pressed="false">其他日期 ▾</button>
+              </div>
+              <input id="inputRecordDate" hidden type="date" aria-labelledby="recordDateLabel" class="w-full px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-sm text-textMain focus:outline-none focus:border-accent num-tabular" />
             </div>
           </div>
         </div>
@@ -379,7 +398,7 @@
           <button type="button" class="settings-menu-item" data-settings-page="categories"><span><span class="settings-menu-title">分類</span><span class="settings-menu-desc">拖曳排序、圖示、新增分類</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="merchants"><span><span class="settings-menu-title">店家與收入來源</span><span class="settings-menu-desc">常用名稱、改名、合併、停用</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="sync"><span><span class="settings-menu-title">雲端同步</span><span class="settings-menu-desc">Google 帳號、衝突紀錄</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
-          <button type="button" class="settings-menu-item" data-settings-page="data"><span><span class="settings-menu-title">資料與備份</span><span class="settings-menu-desc">下載與匯入備份、匯出 CSV</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="data"><span><span class="settings-menu-title">資料與備份</span><span class="settings-menu-desc">下載與匯入備份、雲端備份、匯出 CSV</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="about"><span><span class="settings-menu-title">關於此網頁</span><span class="settings-menu-desc">版本與更新</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
         </nav>
       </div>
@@ -558,6 +577,16 @@
 <input id="backupFile" type="file" accept=".json,application/json" hidden />
 <p id="backupStatus" class="text-xs text-textMuted">備份包含已儲存紀錄、分類、店家與偏好。</p>
 <p id="backupAge" class="text-xs text-textMuted"></p>
+</section>
+<!-- 雲端自動備份：有連結 Google 雲端同步時每週一份（見 85-backup.js） -->
+<section id="cloudBackupSection" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+<div>
+<h3 class="text-sm font-semibold">雲端自動備份</h3>
+<p id="cloudBackupStatus" class="text-xs text-textMuted mt-0.5"></p>
+</div>
+<p id="cloudBackupError" class="hidden sync-error" role="alert"></p>
+<div class="flex gap-2 flex-wrap"><button id="btnCloudBackupList" type="button" class="action hidden">查看雲端備份</button></div>
+<div id="cloudBackupList" class="hidden space-y-2" aria-live="polite"></div>
 </section>
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
 <div>

@@ -12,5 +12,25 @@
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "記一筆支出",
+      "short_name": "記支出",
+      "url": "./?new=expense",
+      "icons": [
+        { "src": "shortcut-expense.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+        { "src": "shortcut-expense.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" }
+      ]
+    },
+    {
+      "name": "記一筆收入",
+      "short_name": "記收入",
+      "url": "./?new=income",
+      "icons": [
+        { "src": "shortcut-income.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+        { "src": "shortcut-income.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" }
+      ]
+    }
   ]
 }

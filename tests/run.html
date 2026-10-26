@@ -14,11 +14,17 @@
 </head>
 <body>
   <h1>記帳網頁自動測試</h1>
-  <p>先執行 <code>python tools/build.py</code>，再用本機網址開啟此頁。網址加上 <code>?only=關鍵字</code> 可只跑部分測試。</p>
+  <p>先執行 <code>python tools/build.py</code>，再用本機網址開啟此頁。網址加上 <code>?only=關鍵字</code> 可只跑部分測試。
+    也可以直接執行 <code>python tools/run_tests.py</code>，在背景的瀏覽器跑完並把結果印在終端機。</p>
   <p id="summary">準備中…</p>
   <ol id="results"></ol>
   <div id="stage"></div>
   <script>
+    const params = new URLSearchParams(location.search);
+    // 由 tools/run_tests.py 開啟時（網址帶 report），把結果送回給它印在終端機。
+    const report = results => params.has('report')
+      ? fetch('/__report', { method: 'POST', body: JSON.stringify(results) }).catch(() => {})
+      : Promise.resolve();
     (async () => {
       // 測試會清除本機測試網址的帳本資料，所以只允許在 localhost 執行。
       if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
@@ -39,10 +45,14 @@
           document.body.appendChild(script);
         });
       }
-      await T.run(new URLSearchParams(location.search).get('only') || '');
+      const results = await T.run(params.get('only') || '');
       // 測試結束後清掉測試網址上留下的帳本與同步資料。
       for (const key of Object.keys(localStorage)) if (key.startsWith('minimal_expense_v3_')) localStorage.removeItem(key);
-    })().catch(e => { document.getElementById('summary').textContent = '測試無法執行：' + e.message; });
+      await report(results);
+    })().catch(e => {
+      document.getElementById('summary').textContent = '測試無法執行：' + e.message;
+      report({ done: false, passed: 0, failed: 1, results: [{ name: '測試無法執行', ok: false, ms: 0, error: e.message }] });
+    });
   </script>
 </body>
 </html>

@@ -7,6 +7,7 @@ const LedgerFirebase = (() => {
   const SDK_VERSION = '12.19.0';
   const SDK_BASE = `https://www.gstatic.com/firebasejs/${SDK_VERSION}/`;
   const NETWORK_TIMEOUT_MS = 25000;
+  const BACKUP_TIMEOUT_MS = 60000; // 雲端備份一次上傳或下載整本帳，手機網路慢時需要久一點
   let sdkPromise = null;
 
   function loadSdk() {
@@ -87,9 +88,16 @@ const LedgerFirebase = (() => {
       });
     });
 
-    const entities = () => {
+    const signedInUid = () => {
       if (!user) throw Object.assign(new Error('not signed in'), { code: 'unauthenticated' });
-      return F.collection(db, 'users', user.uid, 'entities');
+      return user.uid;
+    };
+    const entities = () => F.collection(db, 'users', signedInUid(), 'entities');
+    // 雲端自動備份（見 85-backup.js）：users/{uid}/backups/{週代號}，內容分段存在底下的 parts。
+    const backups = () => F.collection(db, 'users', signedInUid(), 'backups');
+    const backupMeta = snap => {
+      const d = snap.data();
+      return { id: snap.id, at: d.at ? d.at.toMillis() : d.t, t: d.t, records: d.records, size: d.size, parts: d.parts, enc: d.enc };
     };
 
     return {
@@ -154,6 +162,33 @@ const LedgerFirebase = (() => {
           });
           return results;
         }));
+      },
+
+      async getBackup(id) {
+        const snap = await withTimeout(F.getDoc(F.doc(backups(), id)));
+        return snap.exists() ? backupMeta(snap) : null;
+      },
+
+      // 內容與說明一次寫入（全部成功或全部失敗），不會留下只寫了一半的備份。
+      // 安全規則只允許新增：同一週已經有備份時會被拒絕，不會蓋掉。
+      async saveBackup(id, meta, parts) {
+        const ref = F.doc(backups(), id), batch = F.writeBatch(db);
+        parts.forEach((bytes, i) => batch.set(F.doc(ref, 'parts', String(i)), { i, data: F.Bytes.fromUint8Array(bytes) }));
+        batch.set(ref, {
+          v: 1, at: F.serverTimestamp(), t: meta.t, records: meta.records, size: meta.size,
+          parts: parts.length, enc: meta.enc, dev: meta.dev, app: meta.app,
+        });
+        await withTimeout(batch.commit(), BACKUP_TIMEOUT_MS);
+      },
+
+      async listBackups(limit) {
+        const snap = await withTimeout(F.getDocs(F.query(backups(), F.orderBy('at', 'desc'), F.limit(limit))));
+        return snap.docs.map(backupMeta);
+      },
+
+      async loadBackup(id) {
+        const snap = await withTimeout(F.getDocs(F.collection(F.doc(backups(), id), 'parts')), BACKUP_TIMEOUT_MS);
+        return snap.docs.map(d => d.data()).sort((a, b) => a.i - b.i).map(p => p.data.toUint8Array());
       },
     };
   }

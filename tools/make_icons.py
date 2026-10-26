@@ -1,14 +1,17 @@
 """產生網站圖示（加到手機主畫面時使用）。只用 Python 標準函式庫。
 
-用法：python tools/make_icons.py
-輸出到 src/static/：icon.svg、icon-192.png、icon-512.png、icon-maskable-512.png、apple-touch-icon.png
-圖樣：紫色漸層底，一張收據，鉛筆剛隨手寫下一筆金額（對應「隨便記」）。
+用法：python tools/make_icons.py              產生全部圖示
+      python tools/make_icons.py shortcuts    只產生長按主畫面圖示的捷徑圖示
+輸出到 src/static/：icon.svg、icon-192.png、icon-512.png、icon-maskable-512.png、apple-touch-icon.png，
+以及捷徑用的 shortcut-expense.png（記一筆支出）、shortcut-income.png（記一筆收入）。
+圖樣：紫色漸層底，一張收據，鉛筆剛隨手寫下一筆金額（對應「隨便記」）；捷徑是同樣的底色加上白色的 − 或 ＋。
 畫法：每個圖形都用「到邊緣的距離」描述（負數代表在圖形內），邊緣依距離算出半透明，
 不需要繪圖套件也有平滑的邊緣；陰影是把這個距離做成柔和的漸層。SVG 與 PNG 用同一組座標。
 """
 import math
 import pathlib
 import struct
+import sys
 import zlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -234,6 +237,27 @@ def render(variant, size):
     return b"".join(rows)
 
 
+def shortcut(symbol, size):
+    """捷徑圖示：漸層底填滿整張（Android 會裁成圓形），中間白色的 −（支出）或 ＋（收入），留在可裁切的安全範圍內。"""
+    reach, half = 100, 24   # 線條從中心往外的長度、線條半寬（以 512 為基準）
+    segs = edges_of([(256 - reach, 256), (256 + reach, 256)], closed=False)
+    if symbol == "+":
+        segs += edges_of([(256, 256 - reach), (256, 256 + reach)], closed=False)
+    unit = 512 / size
+    rows = []
+    for j in range(size):
+        gy = (j + 0.5) * unit
+        row = bytearray([0])
+        for i in range(size):
+            gx = (i + 0.5) * unit
+            t = (gx + gy) / 1024
+            base = [BG_TOP[k] + (BG_BOTTOM[k] - BG_TOP[k]) * t for k in range(3)]
+            cover = min(max(0.5 - sd_stroke(gx, gy, segs, half) / unit, 0.0), 1.0)
+            row += bytes(round(base[k] + (WHITE[k] - base[k]) * cover) for k in range(3)) + b"\xff"
+        rows.append(bytes(row))
+    return b"".join(rows)
+
+
 def write_png(path, size, raw):
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
@@ -268,14 +292,18 @@ def svg(variant):
     return "".join(parts)
 
 
-def main():
+def main(argv):
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "icon.svg").write_text(svg("any"), encoding="utf-8", newline="\n")
-    for name, variant, size in [("icon-192.png", "any", 192), ("icon-512.png", "any", 512),
-                                ("icon-maskable-512.png", "maskable", 512), ("apple-touch-icon.png", "apple", 180)]:
-        write_png(OUT / name, size, render(variant, size))
+    if "shortcuts" not in argv:
+        (OUT / "icon.svg").write_text(svg("any"), encoding="utf-8", newline="\n")
+        for name, variant, size in [("icon-192.png", "any", 192), ("icon-512.png", "any", 512),
+                                    ("icon-maskable-512.png", "maskable", 512), ("apple-touch-icon.png", "apple", 180)]:
+            write_png(OUT / name, size, render(variant, size))
+            print("已產生", name)
+    for name, symbol in [("shortcut-expense.png", "-"), ("shortcut-income.png", "+")]:
+        write_png(OUT / name, 192, shortcut(symbol, 192))
         print("已產生", name)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

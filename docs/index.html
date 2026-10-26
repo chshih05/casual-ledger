@@ -38,10 +38,32 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .text-xs, [class*="text-[11px]"], [class*="text-[10px]"] { font-size: 0.8125rem; }
 .text-textDim { color: #9CA3AF; }
 .search-input { flex: 1; min-width: 180px; padding: 12px; border: 1px solid #2E323E; background:#191B22; border-radius: 12px; font-size:14px; }
-.action, .date-toggle { padding: 10px 14px; border-radius:12px; border:1px solid #3D4251; background:#262934; font-size:14px; min-height:44px; }
+.action { padding: 10px 14px; border-radius:12px; border:1px solid #3D4251; background:#262934; font-size:14px; min-height:44px; }
 .storage-error { position:sticky; top:0; width:100%; max-width:960px; padding:12px; z-index:60; background:#532c2c; color:#fff; }
 .save-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:448px; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); background:#191B22f5; border-top:1px solid #2E323E; z-index:30; }
 #modalRecord { padding-bottom:100px; }
+/* 記帳頁只淡入、不位移：外層有位移（transform）時，底部的儲存列會跟著頁面捲動，而不是固定在畫面底部 */
+#modalRecord.animate-fade { animation-name:fadeInOnly; }
+@keyframes fadeInOnly { from { opacity:0; } to { opacity:1; } }
+/* 記帳頁的日期：今天、昨天、其他日期 */
+.date-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.date-chip { min-height:40px; padding:8px 14px; border-radius:12px; border:1px solid #3D4251; background:#262934; color:#D1D5DB; font-size:14px; font-variant-numeric:tabular-nums; }
+.date-chip[aria-pressed=true] { background:#A78BFA; border-color:#A78BFA; color:#14161B; font-weight:600; }
+#inputRecordDate { margin-top:8px; }
+/* 首頁搜尋結果的筆數與合計 */
+.search-summary { padding:0 2px; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
+/* 首頁的備份提醒 */
+.backup-reminder { display:grid; gap:10px; padding:14px 16px; border-radius:16px; background:#1E2028; border:1px solid #A78BFA66; }
+.backup-reminder-title { font-size:14px; font-weight:600; color:#F3F4F6; }
+.backup-reminder-text { margin-top:2px; font-size:13px; line-height:1.5; color:#9CA3AF; }
+.backup-reminder-actions { display:flex; justify-content:flex-end; gap:8px; }
+.backup-reminder-later { min-height:40px; padding:8px 12px; border-radius:12px; font-size:13px; color:#9CA3AF; }
+.backup-reminder-main { min-height:40px; padding:8px 16px; border-radius:12px; background:#A78BFA; color:#14161B; font-size:13px; font-weight:700; }
+/* 雲端自動備份清單 */
+.cloud-backup-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 10px; padding:10px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
+.cloud-backup-row span { min-width:0; }
+.cloud-backup-actions { display:flex; gap:6px; }
+.cloud-backup-actions .action { min-height:36px; padding:6px 12px; font-size:13px; }
 #recordPageHeader { flex-wrap:wrap; gap:12px; }
 #mainTopHeader { flex-wrap:wrap; gap:8px; }
 #btnSyncBadge { font-size:12px; }
@@ -318,6 +340,18 @@ select.rule-input { color-scheme:dark; }
         </div>
         <div id="homeBudgetBody"></div>
       </section>
+
+      <!-- 備份提醒：很久沒備份、又記了不少筆時才出現（見 85-backup.js） -->
+      <section id="backupReminder" class="hidden backup-reminder" aria-labelledby="backupReminderTitle">
+        <div>
+          <h2 id="backupReminderTitle" class="backup-reminder-title">記得備份帳本</h2>
+          <p id="backupReminderText" class="backup-reminder-text"></p>
+        </div>
+        <div class="backup-reminder-actions">
+          <button id="btnReminderLater" type="button" class="backup-reminder-later">稍後提醒</button>
+          <button id="btnReminderBackup" type="button" class="backup-reminder-main">下載備份</button>
+        </div>
+      </section>
       </div>
 
       <!-- 2. 最近消費紀錄 (依日期分組；同一天內依新增先後由上往下排，新記的排在當天最後一筆) -->
@@ -332,6 +366,7 @@ select.rule-input { color-scheme:dark; }
         <div class="flex gap-2 flex-wrap">
 <input id="recordSearch" type="search" aria-label="搜尋紀錄" placeholder="搜尋店家、備註或分類" class="search-input" />
 <label class="text-xs flex items-center gap-2"><input id="searchAllMonths" type="checkbox" />跨月搜尋</label></div>
+<p id="searchSummary" class="hidden search-summary" role="status"></p>
 <div id="homeRecordList" class="space-y-3"></div>
       </section>
     </main>
@@ -422,16 +457,22 @@ select.rule-input { color-scheme:dark; }
           <div id="merchantChipsContainer" class="flex flex-wrap gap-1.5 pt-0.5"></div>
         </div>
 
-        <!-- 備註與消費日期（同卡片並列，省去跳頁空間） -->
+        <!-- 備註與消費日期（同一張卡片，省去跳頁空間） -->
         <div id="singleNoteBox" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div class="sm:col-span-2">
+          <div class="grid grid-cols-1 gap-2.5">
+            <div>
               <label for="inputRecordNote" class="block text-xs font-medium text-textMuted mb-1">備註（選填）</label>
               <input id="inputRecordNote" type="text" maxlength="1000" placeholder="例如：大麥克套餐、買衛生紙..." class="w-full bg-bgInput border border-borderSubtle rounded-xl px-3.5 py-2 text-sm text-textMain focus:outline-none focus:border-accent" />
             </div>
             <div>
-              <label for="inputRecordDate" class="block text-xs font-medium text-textMuted mb-1">日期</label>
-              <button id="btnDateToggle" type="button" class="date-toggle">今天 ▾</button><input id="inputRecordDate" hidden type="date" class="w-full px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-sm text-textMain focus:outline-none focus:border-accent num-tabular" />
+              <span id="recordDateLabel" class="block text-xs font-medium text-textMuted mb-1">日期</span>
+              <!-- 今天、昨天點一下就選好；其他日期打開日曆 -->
+              <div class="date-chips" role="group" aria-labelledby="recordDateLabel">
+                <button id="btnDateToday" type="button" class="date-chip" aria-pressed="true">今天</button>
+                <button id="btnDateYesterday" type="button" class="date-chip" aria-pressed="false">昨天</button>
+                <button id="btnDateToggle" type="button" class="date-chip" aria-pressed="false">其他日期 ▾</button>
+              </div>
+              <input id="inputRecordDate" hidden type="date" aria-labelledby="recordDateLabel" class="w-full px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-sm text-textMain focus:outline-none focus:border-accent num-tabular" />
             </div>
           </div>
         </div>
@@ -571,7 +612,7 @@ select.rule-input { color-scheme:dark; }
           <button type="button" class="settings-menu-item" data-settings-page="categories"><span><span class="settings-menu-title">分類</span><span class="settings-menu-desc">拖曳排序、圖示、新增分類</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="merchants"><span><span class="settings-menu-title">店家與收入來源</span><span class="settings-menu-desc">常用名稱、改名、合併、停用</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="sync"><span><span class="settings-menu-title">雲端同步</span><span class="settings-menu-desc">Google 帳號、衝突紀錄</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
-          <button type="button" class="settings-menu-item" data-settings-page="data"><span><span class="settings-menu-title">資料與備份</span><span class="settings-menu-desc">下載與匯入備份、匯出 CSV</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="data"><span><span class="settings-menu-title">資料與備份</span><span class="settings-menu-desc">下載與匯入備份、雲端備份、匯出 CSV</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="about"><span><span class="settings-menu-title">關於此網頁</span><span class="settings-menu-desc">版本與更新</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
         </nav>
       </div>
@@ -751,6 +792,16 @@ select.rule-input { color-scheme:dark; }
 <p id="backupStatus" class="text-xs text-textMuted">備份包含已儲存紀錄、分類、店家與偏好。</p>
 <p id="backupAge" class="text-xs text-textMuted"></p>
 </section>
+<!-- 雲端自動備份：有連結 Google 雲端同步時每週一份（見 85-backup.js） -->
+<section id="cloudBackupSection" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+<div>
+<h3 class="text-sm font-semibold">雲端自動備份</h3>
+<p id="cloudBackupStatus" class="text-xs text-textMuted mt-0.5"></p>
+</div>
+<p id="cloudBackupError" class="hidden sync-error" role="alert"></p>
+<div class="flex gap-2 flex-wrap"><button id="btnCloudBackupList" type="button" class="action hidden">查看雲端備份</button></div>
+<div id="cloudBackupList" class="hidden space-y-2" aria-live="polite"></div>
+</section>
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
 <div>
 <h3 class="text-sm font-semibold">匯出 CSV</h3>
@@ -768,7 +819,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">60c686a63b39</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">4784ad52c8ad</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1158,6 +1209,8 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       }
 
       document.getElementById('homeRecordCount').textContent = `共 ${monthRecords.length} 筆`;
+      renderSearchSummary(monthRecords);
+      LedgerBackup.renderReminder();
       const listEl = document.getElementById('homeRecordList');
       listEl.innerHTML = '';
 
@@ -1239,6 +1292,19 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           openEditRecordModal(btn.getAttribute('data-record-id'));
         });
       });
+    }
+    // 搜尋時列出找到幾筆與合計（支出、收入分開算），例如查「星巴克」這個月或全部月份花了多少。
+    function renderSearchSummary(records) {
+      const el = document.getElementById('searchSummary');
+      const show = Boolean(searchQuery.trim()) && records.length > 0;
+      el.classList.toggle('hidden', !show);
+      if (!show) return;
+      const sumOf = type => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
+      const expense = sumOf('expense'), income = sumOf('income');
+      const parts = [`${searchAcrossMonths ? '全部月份' : `${Number(state.currentMonth.slice(5))} 月`}找到 ${records.length} 筆`];
+      if (expense) parts.push(`支出合計 NT$ ${formatMoney(expense)}`);
+      if (income) parts.push(`收入合計 NT$ ${formatMoney(income)}`);
+      el.textContent = parts.join('・');
     }
     function renderStats() {
       const yearMode = isYearStats();
@@ -1387,6 +1453,9 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       document.getElementById('modalDrilldown').classList.remove('hidden');
       document.getElementById('drilldownList').scrollTop = 0;
     }
+    function closeDrilldown() {
+      document.getElementById('modalDrilldown').classList.add('hidden');
+    }
     function openMerchantHistory(name, opts = {}) {
       openDrilldownModal('merchant', name, name, Object.assign({ scope: 'all' }, opts));
     }
@@ -1458,7 +1527,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           <div class="text-sm font-bold num-tabular text-textMain">NT$ ${formatMoney(rec.amount)}</div>
         `;
         if (!d.readOnly) row.addEventListener('click', () => {
-          document.getElementById('modalDrilldown').classList.add('hidden');
+          closeDrilldown();
           openEditRecordModal(rec.id);
         });
         listEl.appendChild(row);
@@ -2739,26 +2808,13 @@ function updateSyncStatusUI() {
   $('settingsBackupAge').textContent=$('backupAge').textContent;
 }
 const canSyncNow=()=>LedgerSync.isLinked()&&!$('btnSyncNow').classList.contains('hidden');
-// 設定分頁：進入時加一筆瀏覽紀錄，Android 返回手勢會回到設定第一頁，而不是離開網頁。
-let settingsHistory=false,skipNextPop=false;
+// 設定分頁：Android 返回手勢回到設定第一頁，由 68-back-nav.js 統一處理。
 function openSettingsPage(page='') {
   discardForm();
-  if(!page)leaveSettingsPage();
-  else if(!settingsHistory){try{history.pushState({ledgerSettings:page},'');settingsHistory=true;}catch{}}
   state.activeView='settings';state.settingsPage=page;
   renderAll();window.scrollTo({top:0});
 }
-// 離開設定分頁時收回剛才加的瀏覽紀錄，之後按返回才不會停在原地。
-function leaveSettingsPage() {
-  if(settingsHistory){settingsHistory=false;skipNextPop=true;try{history.back();}catch{skipNextPop=false;}}
-  state.settingsPage='';
-}
-function onSettingsPopState() {
-  if(skipNextPop){skipNextPop=false;return;}
-  if(!settingsHistory)return;
-  settingsHistory=false;
-  if(state.activeView==='settings'&&state.settingsPage){state.settingsPage='';renderAll();window.scrollTo({top:0});}
-}
+function leaveSettingsPage() { state.settingsPage=''; }
 function showToast(msg,ms=2800) {
   $('toastBox').textContent=msg; $('toastBox').classList.remove('hidden');
   clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>$('toastBox').classList.add('hidden'),ms);
@@ -2784,9 +2840,9 @@ function discardForm() {
   closeCategoryEditor();
 }
 function emptyForm(type='expense',date=today()) { return {editingRecordId:null,type,categoryId:'',date,amountExpr:'',selectedMerchant:'',note:''}; }
-function openNewRecordModal() {
+function openNewRecordModal(type='expense') {
   state.previousView=state.activeView==='record'?'home':state.activeView;
-  modalState=emptyForm();
+  modalState=emptyForm(type);
   state.activeView='record'; keypadOpen=true;
   renderAll();renderRecordModal();window.scrollTo({top:0});
 }
@@ -2804,6 +2860,19 @@ function setKeypad(open) {
   keypadOpen=open; $('builtInKeypad').classList.toggle('hidden',!open);
   $('btnToggleKeypad').textContent=open?'收起數字鍵盤':'展開數字鍵盤';
   $('btnToggleKeypad').setAttribute('aria-expanded',String(open));
+}
+// 日期：「今天」「昨天」點一下就選好；其他日期用日曆選，選好後按鈕顯示日期與星期。
+const WEEKDAY_NAMES='日一二三四五六';
+function daysAgo(n,now=new Date()) { return today(new Date(now.getFullYear(),now.getMonth(),now.getDate()-n)); }
+function renderDateChips() {
+  const date=modalState.date,isToday=date===today(),isYesterday=date===daysAgo(1),other=!isToday&&!isYesterday&&validDate(date);
+  [['btnDateToday',isToday],['btnDateYesterday',isYesterday],['btnDateToggle',other]].forEach(([id,on])=>$(id).setAttribute('aria-pressed',String(on)));
+  const [,m,d]=date.split('-').map(Number);
+  $('btnDateToggle').textContent=other?`${m}/${d}（${WEEKDAY_NAMES[new Date(date+'T00:00:00').getDay()]}）▾`:'其他日期 ▾';
+}
+function pickRecordDate(date) {
+  modalState.date=date;$('inputRecordDate').value=date;$('inputRecordDate').hidden=true;
+  renderDateChips();
 }
 function renderRecordModal() {
   const d=modalState,isEdit=Boolean(d.editingRecordId),cat=state.categories.find(c=>c.id===d.categoryId);
@@ -2830,7 +2899,7 @@ function renderRecordModal() {
   $('step2DetailSection').classList.remove('hidden');
   $('inputAmountExpr').value=d.amountExpr;$('inputMerchantSearch').value=d.selectedMerchant;$('inputRecordNote').value=d.note;
   $('inputRecordDate').value=d.date; $('inputRecordDate').hidden=true;
-  $('btnDateToggle').textContent=(d.date===today()?'今天':d.date)+' ▾';
+  renderDateChips();
   $('merchantFieldLabel').textContent=d.type==='income'?'收入來源':'店家';
   $('inputMerchantSearch').placeholder=d.type==='income'?'搜尋或輸入收入來源':'搜尋或輸入店家名稱';
   $('inputRecordNote').placeholder=d.type==='income'?'例如：十月份薪資':'例如：大麥克套餐、衛生紙';
@@ -3048,7 +3117,7 @@ function renderSettings() {
   });
   renderMerchantManager();
   $('btnUndoImport').classList.toggle('hidden',!LedgerStore.hasSnapshot('before_import'));
-  if(state.settingsPage==='data')renderCsvRanges();
+  if(state.settingsPage==='data'){renderCsvRanges();LedgerBackup.renderSection();}
   if(state.settingsPage==='budget')renderBudgetSettings();
   if(state.settingsPage==='recurring')renderRecurringSettings();
   $('btnAddCategory').textContent=`＋ 新增${state.catMgrType==='income'?'收入':'支出'}分類`;
@@ -3209,17 +3278,20 @@ async function installImport(imported) {
 async function prepareImport(file) {
   if(!file)return;
   if(file.size>20*1024*1024)return showToast('備份檔案不可超過 20 MB。');
-  try {
-    const raw=JSON.parse(await file.text()),imported=validateBackup(raw),origin=importOrigin(raw),merge=planImportMerge(state,imported,origin),linked=LedgerSync.isLinked();
-    openDialog({title:'確認匯入備份',message:importSummary(imported,merge.plan,origin),confirmText:'匯入',
-      checkbox:{label:`改為完全取代目前帳本（備份中沒有的紀錄會被刪除${linked?'，其他裝置也會一併刪除':''}）`,checked:false},
-      onConfirm:(_,replace)=>{
-        if(!replace)return installImport(merge.next);
-        const next=planImportReplace(state,imported,origin);
-        LedgerSync.acknowledgeBulkChange(state.records.length);
-        return installImport(next);
-      }});
-  }catch(e){showToast('未匯入：'+e.message);}
+  try { prepareImportText(await file.text()); }
+  catch(e){showToast('未匯入：'+e.message);}
+}
+// 備份內容（下載的檔案或雲端備份）先列出會怎麼合併，確認後才匯入；格式不符時丟出錯誤。
+function prepareImportText(text,{title='確認匯入備份'}={}) {
+  const raw=JSON.parse(text),imported=validateBackup(raw),origin=importOrigin(raw),merge=planImportMerge(state,imported,origin),linked=LedgerSync.isLinked();
+  openDialog({title,message:importSummary(imported,merge.plan,origin),confirmText:'匯入',
+    checkbox:{label:`改為完全取代目前帳本（備份中沒有的紀錄會被刪除${linked?'，其他裝置也會一併刪除':''}）`,checked:false},
+    onConfirm:(_,replace)=>{
+      if(!replace)return installImport(merge.next);
+      const next=planImportReplace(state,imported,origin);
+      LedgerSync.acknowledgeBulkChange(state.records.length);
+      return installImport(next);
+    }});
 }
 function removeRecord() {
   const rec=state.records.find(r=>r.id===modalState?.editingRecordId);if(!rec)return;
@@ -3236,6 +3308,15 @@ function handleKeypadInput(key) {
   else if(s.length<100)s=s==='0'?key:s+key;
   modalState.amountExpr=s;$('inputAmountExpr').value=s;updateCalcPreviewAndRecommendations();
 }
+// 主畫面圖示長按的捷徑（manifest.webmanifest 的 shortcuts）：網址帶 ?new=expense 或 ?new=income 時直接打開記帳頁。
+// 打開後把網址改回原樣，重新整理時不會再打開一次。
+function openFromShortcut() {
+  const params=new URLSearchParams(location.search),type=params.get('new');
+  if(type!=='expense'&&type!=='income')return;
+  params.delete('new');
+  try{const query=params.toString();history.replaceState(history.state,'',location.pathname+(query?'?'+query:'')+location.hash);}catch{}
+  if(!storageBlocked)openNewRecordModal(type);
+}
 window.addEventListener('DOMContentLoaded',async()=>{
   removeSampleBook();
   // 帳本從資料庫讀出來之後才綁定按鈕與畫面；同步（80-sync-ui.js）也等到這時才開始。
@@ -3248,12 +3329,12 @@ window.addEventListener('DOMContentLoaded',async()=>{
   on('btnSettingsBack','click',()=>openSettingsPage(''));
   on('btnSettingsSyncAction','click',()=>{if(canSyncNow())$('btnSyncNow').click();else openSettingsPage('sync');});
   on('btnSettingsBackup','click',()=>{exportBackup();updateSyncStatusUI();});
-  window.addEventListener('popstate',onSettingsPopState);
+  LedgerBack.init();
   setupCategoryDrag();
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
   on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
-  on('btnOpenAddModal','click',openNewRecordModal);
+  on('btnOpenAddModal','click',()=>openNewRecordModal());
   on('btnCloseRecordModal','click',closeRecordPage);
   ['expense','income'].forEach(t=>on(t==='expense'?'modalTypeExpense':'modalTypeIncome','click',()=>{
     if(modalState.type===t)return;
@@ -3271,13 +3352,15 @@ window.addEventListener('DOMContentLoaded',async()=>{
   on('btnMerchantHistory','click',()=>{const name=$('inputMerchantSearch').value.trim();if(name)openMerchantHistory(name,{readOnly:true,type:modalState.type});});
   on('btnClearMerchant','click',()=>{modalState.selectedMerchant='';$('inputMerchantSearch').value='';updateCalcPreviewAndRecommendations();});
   on('inputRecordNote','input',e=>{modalState.note=e.target.value;});
-  on('btnDateToggle','click',()=>{$('inputRecordDate').hidden=!$('inputRecordDate').hidden;if(!$('inputRecordDate').hidden)$('inputRecordDate').focus();});
-  on('inputRecordDate','change',e=>{modalState.date=e.target.value;$('btnDateToggle').textContent=(modalState.date===today()?'今天':modalState.date||'選擇日期')+' ▾';});
+  on('btnDateToday','click',()=>pickRecordDate(today()));on('btnDateYesterday','click',()=>pickRecordDate(daysAgo(1)));
+  // 其他日期：打開日曆（不支援時至少把日期欄位顯示出來）。
+  on('btnDateToggle','click',()=>{const input=$('inputRecordDate');input.hidden=!input.hidden;if(input.hidden)return;input.focus();try{input.showPicker();}catch{}});
+  on('inputRecordDate','change',e=>{modalState.date=e.target.value;renderDateChips();});
   on('btnSaveRecord','click',()=>handleSaveRecord(false));on('btnSaveAndNextRecord','click',()=>handleSaveRecord(true));on('btnDeleteRecordInModal','click',removeRecord);
   on('btnUndoDelete','click',()=>{if(!lastDeletedRecord)return;const r=lastDeletedRecord;if(!commit(s=>{if(!s.records.some(x=>x.id===r.id))s.records.push(r);} ))return;lastDeletedRecord=null;$('undoBar').classList.add('hidden');renderAll();showToast('已復原紀錄');});
   ['expense','income'].forEach(t=>{on(t==='expense'?'statsTabExpense':'statsTabIncome','click',()=>{state.statsType=t;renderAll();});on(t==='expense'?'catMgrTabExpense':'catMgrTabIncome','click',()=>{state.catMgrType=t;renderSettings();});});
   ['month','year'].forEach(p=>on(p==='month'?'statsPeriodMonth':'statsPeriodYear','click',()=>{state.statsPeriod=p;renderAll();}));
-  on('btnCloseDrilldown','click',()=>$('modalDrilldown').classList.add('hidden'));
+  on('btnCloseDrilldown','click',closeDrilldown);
   document.querySelectorAll('.setting-header-btn').forEach(b=>b.onclick=()=>{if(commit(s=>s.preferences.homeHeaderMode=b.dataset.mode))renderAll();});
   on('toggleSaveAndNext','click',()=>{if(commit(s=>s.preferences.enableSaveAndNext=!s.preferences.enableSaveAndNext))renderSettings();});
   on('btnManageAddMerchant','click',()=>{const name=$('inputManageNewMerchant').value.trim();if(!name||name.length>100||state.merchants.includes(name))return showToast('請輸入尚未存在的名稱（最多 100 字）。');const type=state.merchantMgrType==='income'?'income':'expense';if(commit(s=>{s.merchants.push(name);Object.defineProperty(s.merchantTypes,name,{value:type,enumerable:true,writable:true,configurable:true});})){$('inputManageNewMerchant').value='';renderSettings();showToast(`已新增「${name}」`);}});
@@ -3304,6 +3387,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   LedgerStore.watchOtherTabs(()=>showStorageError('帳本已在另一個分頁變更。請先下載帳本備份，再重新開啟，避免覆蓋。'));
   window.addEventListener('pagehide',()=>{if(state.activeView==='record'){discardForm();state.activeView=state.previousView||'home';renderAll();}});
   renderAll();if(loadIssue)showStorageError(loadIssue);
+  openFromShortcut();
   markLedgerReady();
   ledgerReady.then(()=>{document.documentElement.dataset.ready='1';});
   scheduleRecurring();
@@ -3725,6 +3809,79 @@ function setupRecurringForm() {
   $('ruleFreq').addEventListener('change',updateRulePreview);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')scheduleRecurring();});
 }
+// 返回手勢：Android 的返回手勢（以及瀏覽器的上一頁）關掉最上面的畫面，而不是離開網頁。
+// 記帳頁、設定分頁、明細、分類編輯與對話框，每開一層就加一筆瀏覽紀錄（history.pushState）；
+// 用畫面上的按鈕關閉時，收回對應的紀錄，之後按返回才不會停在原地。
+// 開關畫面的地方很多，這裡不在每個地方各自處理，而是觀察這幾個畫面的 class，統一比對開了幾層。
+const LedgerBack = (() => {
+  'use strict';
+  const shown = id => { const el = document.getElementById(id); return Boolean(el) && !el.classList.contains('hidden'); };
+  // 由上而下排列：按返回時先關最上層。
+  const LAYERS = [
+    { isOpen: () => shown('modalDialog'), close: () => closeDialog() },
+    { isOpen: () => shown('modalCategory'), close: () => closeCategoryEditor() },
+    { isOpen: () => shown('modalDrilldown'), close: () => closeDrilldown() },
+    { isOpen: () => state.activeView === 'record', close: () => closeRecordPage() },
+    { isOpen: () => state.activeView === 'settings' && Boolean(state.settingsPage), close: () => openSettingsPage('') },
+  ];
+  const WATCH = ['modalDialog', 'modalCategory', 'modalDrilldown', 'modalRecord', 'viewSettings', 'settingsHome'];
+  const MOVE_TIMEOUT_MS = 1000;
+  let depth = 0;        // 目前停在第幾筆加上去的紀錄；網頁原本的那一筆是第 0 層
+  let moving = false;   // 自己呼叫 history.go() 移動、還沒抵達
+  let moveTimer = null;
+
+  const openCount = () => LAYERS.filter(layer => layer.isOpen()).length;
+  const entryDepth = () => Number(history.state && history.state.ledgerLayer) || 0;
+
+  // 畫面開關之後：多開了幾層就加幾筆紀錄；用按鈕關掉的層，收回對應的紀錄。
+  // 同一個動作裡先關後開（例如從明細點紀錄進入修改），只比對最後的層數，原本那筆紀錄直接沿用。
+  function sync() {
+    // 收回紀錄要等瀏覽器移動完成；移動途中又開了畫面，抵達後再加紀錄，順序才不會錯亂。
+    if (moving) return;
+    const want = openCount();
+    if (want > depth) {
+      try { while (depth < want) { history.pushState({ ledgerLayer: depth + 1 }, ''); depth++; } } catch {}
+    } else if (want < depth) {
+      move(want - depth);
+    }
+  }
+  function move(delta) {
+    moving = true;
+    clearTimeout(moveTimer);
+    // 萬一瀏覽器沒有移動（沒有觸發 popstate），不要一直等下去。
+    moveTimer = setTimeout(arrived, MOVE_TIMEOUT_MS);
+    try { history.go(delta); } catch { arrived(); }
+  }
+  // 移動完成：以實際停在的那一筆為準，再比對一次開著的層數。
+  function arrived() {
+    clearTimeout(moveTimer);
+    moving = false;
+    depth = entryDepth();
+    sync();
+  }
+
+  // 按了返回（或上一頁、下一頁）。
+  function onPopState() {
+    if (moving) return arrived();
+    const at = entryDepth();
+    if (at === depth) return;
+    // 下一頁：不重新打開已經關掉的畫面，退回原本的位置。
+    if (at > depth) return move(depth - at);
+    depth = at;
+    for (let guard = 0; openCount() > at && guard < LAYERS.length; guard++) LAYERS.find(layer => layer.isOpen()).close();
+  }
+
+  function init() {
+    // 重新整理後可能停在之前加的紀錄上，但畫面已經回到首頁：把這一筆當成第 0 層。
+    try { if (entryDepth()) history.replaceState({ ledgerLayer: 0 }, ''); } catch {}
+    const observer = new MutationObserver(sync);
+    for (const id of WATCH) observer.observe(document.getElementById(id), { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('popstate', onPopState);
+    sync();
+  }
+
+  return { init, openCount };
+})();
 // Firebase 連線：Google 登入（Firebase Authentication）與雲端資料庫（Cloud Firestore Lite）。
 // 只有在同步設定完成、且使用者開啟同步時才會從 Google 官方網址載入元件；
 // 未設定或離線時，帳本仍完全在本機運作。
@@ -3734,6 +3891,7 @@ const LedgerFirebase = (() => {
   const SDK_VERSION = '12.19.0';
   const SDK_BASE = `https://www.gstatic.com/firebasejs/${SDK_VERSION}/`;
   const NETWORK_TIMEOUT_MS = 25000;
+  const BACKUP_TIMEOUT_MS = 60000; // 雲端備份一次上傳或下載整本帳，手機網路慢時需要久一點
   let sdkPromise = null;
 
   function loadSdk() {
@@ -3814,9 +3972,16 @@ const LedgerFirebase = (() => {
       });
     });
 
-    const entities = () => {
+    const signedInUid = () => {
       if (!user) throw Object.assign(new Error('not signed in'), { code: 'unauthenticated' });
-      return F.collection(db, 'users', user.uid, 'entities');
+      return user.uid;
+    };
+    const entities = () => F.collection(db, 'users', signedInUid(), 'entities');
+    // 雲端自動備份（見 85-backup.js）：users/{uid}/backups/{週代號}，內容分段存在底下的 parts。
+    const backups = () => F.collection(db, 'users', signedInUid(), 'backups');
+    const backupMeta = snap => {
+      const d = snap.data();
+      return { id: snap.id, at: d.at ? d.at.toMillis() : d.t, t: d.t, records: d.records, size: d.size, parts: d.parts, enc: d.enc };
     };
 
     return {
@@ -3881,6 +4046,33 @@ const LedgerFirebase = (() => {
           });
           return results;
         }));
+      },
+
+      async getBackup(id) {
+        const snap = await withTimeout(F.getDoc(F.doc(backups(), id)));
+        return snap.exists() ? backupMeta(snap) : null;
+      },
+
+      // 內容與說明一次寫入（全部成功或全部失敗），不會留下只寫了一半的備份。
+      // 安全規則只允許新增：同一週已經有備份時會被拒絕，不會蓋掉。
+      async saveBackup(id, meta, parts) {
+        const ref = F.doc(backups(), id), batch = F.writeBatch(db);
+        parts.forEach((bytes, i) => batch.set(F.doc(ref, 'parts', String(i)), { i, data: F.Bytes.fromUint8Array(bytes) }));
+        batch.set(ref, {
+          v: 1, at: F.serverTimestamp(), t: meta.t, records: meta.records, size: meta.size,
+          parts: parts.length, enc: meta.enc, dev: meta.dev, app: meta.app,
+        });
+        await withTimeout(batch.commit(), BACKUP_TIMEOUT_MS);
+      },
+
+      async listBackups(limit) {
+        const snap = await withTimeout(F.getDocs(F.query(backups(), F.orderBy('at', 'desc'), F.limit(limit))));
+        return snap.docs.map(backupMeta);
+      },
+
+      async loadBackup(id) {
+        const snap = await withTimeout(F.getDocs(F.collection(F.doc(backups(), id), 'parts')), BACKUP_TIMEOUT_MS);
+        return snap.docs.map(d => d.data()).sort((a, b) => a.i - b.i).map(p => p.data.toUint8Array());
       },
     };
   }
@@ -4031,7 +4223,10 @@ const LedgerSync = (() => {
     if (backend) return Promise.resolve(backend);
     if (backendPromise) return backendPromise;
     const factory = testFactory || (opts => LedgerFirebase.create(config, opts));
-    backendPromise = factory({ onAuth })
+    // 先記下「正在連線」再建立連線：登入狀態可能在建立途中就回報（onAuth → 重畫畫面），
+    // 這時畫面看到 backendPromise 已經有值，才不會再要求建立一次而無限重複。
+    backendPromise = Promise.resolve()
+      .then(() => factory({ onAuth }))
       .then(b => {
         backend = b;
         engine = createEngine();
@@ -4175,6 +4370,8 @@ const LedgerSync = (() => {
         retryDelay = 0;
         heldDeletes = result.heldDeletes;
         if (result.conflicts) showToast(`有 ${result.conflicts} 項在不同裝置都改過，已保留較新的版本，可在設定查看`);
+        // 同步完成後檢查這一週的雲端備份；備份失敗不影響同步。
+        LedgerBackup.afterSync().catch(e => console.warn('cloud backup failed', e));
       }
     } catch (e) {
       lastError = toError(e);
@@ -4370,7 +4567,8 @@ const LedgerSync = (() => {
     let last = 0;
     try { last = Number(localStorage.getItem(storageKey() + '_last_backup')) || 0; } catch {}
     const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
-    el('backupAge').textContent = days === null ? '此裝置尚未下載過備份。' : `此裝置上次下載備份：${days === 0 ? '今天' : `${days} 天前`}。`;
+    el('backupAge').textContent = (days === null ? '此裝置尚未下載過備份。' : `此裝置上次下載備份：${days === 0 ? '今天' : `${days} 天前`}。`)
+      + LedgerBackup.cloudSummary();
   }
 
   function savedMessage() {
@@ -4425,7 +4623,240 @@ const LedgerSync = (() => {
   return {
     badge, renderPanel, afterCommit, savedMessage, acknowledgeBulkChange,
     isLinked, isPending: key => pendingSet.has(key), __test: testApi,
+    // 雲端自動備份（85-backup.js）用：連結的帳號，以及已登入同一個帳號、可以讀寫雲端時的連線。
+    linkedUid: () => (isLinked() ? info().uid : null),
+    readyBackend: () => (canSync() ? backend : null),
+    heldDeletes: () => heldDeletes,
   };
+})();
+// 備份提醒與雲端自動備份。同步不是備份：在任何一台裝置刪除，其他裝置也會刪除。
+// - 提醒：很久沒備份、又記了不少筆時，在首頁提醒下載完整備份（沒有連結雲端也適用）。
+// - 雲端自動備份：有連結 Google 雲端同步時，每週在雲端另存一份完整備份（users/{uid}/backups/{週代號}）。
+//   和同步的資料分開，安全規則只允許新增、不能修改或刪除，誤刪或同步出錯時可以在設定頁找回。
+const LedgerBackup = (() => {
+  'use strict';
+  const DAY_MS = 86400000;
+  const REMIND_AFTER_DAYS = 30;        // 距離上次備份超過這麼多天，
+  const REMIND_MIN_CHANGES = 30;       // 而且之後新增、修改或刪除了這麼多筆，才提醒
+  const SNOOZE_DAYS = 7;               // 按「稍後提醒」之後幾天內不再提醒
+  const RETRY_AFTER_ERROR_MS = DAY_MS; // 雲端備份失敗（例如安全規則還沒更新）後，隔多久再試
+  const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
+  const MAX_PARTS = 10;
+  const LIST_LIMIT = 8;                // 設定頁列出最近幾份
+  const APP_VERSION = '4784ad52c8ad';
+  const ERROR_TEXT = {
+    rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
+    'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
+    other: '上次雲端備份沒有成功，之後同步時會再試一次。',
+  };
+  const keys = {
+    lastDownload: () => storageKey() + '_last_backup',
+    snooze: () => storageKey() + '_backup_snooze',
+    cloud: () => BOOK_PREFIX + 'personal_cloud_backup',
+  };
+  let running = false;
+  let list = null; // 設定頁的雲端備份清單：null 是收起；{loading} 讀取中；{items} 或 {error}
+
+  const readNumber = key => { try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; } };
+  const formatWhen = ms => new Date(ms).toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const shortDay = ms => { const d = new Date(ms); return `${d.getMonth() + 1}/${d.getDate()}`; };
+
+  // 這台裝置記得的雲端備份狀態：{uid, week, at, records}，失敗時另有 {error, errorAt}；只對同一個雲端帳號有效。
+  function cloudInfo(uid = LedgerSync.linkedUid()) {
+    if (!uid) return null;
+    try {
+      const info = JSON.parse(localStorage.getItem(keys.cloud()) || 'null');
+      return info && info.uid === uid ? info : null;
+    } catch { return null; }
+  }
+  function saveCloudInfo(info) { try { localStorage.setItem(keys.cloud(), JSON.stringify(info)); } catch {} }
+
+  // ISO 週（週一開始），例如 2026-W44：同一週只存一份，兩台裝置也不會各存一份。
+  function weekId(date = new Date()) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const week = Math.ceil(((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / DAY_MS + 1) / 7);
+    return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
+
+  // ---------- 首頁提醒 ----------
+  function reminder(now = Date.now()) {
+    if (storageBlocked || !state.records.length || now < readNumber(keys.snooze())) return null;
+    const cloud = cloudInfo(), last = Math.max(readNumber(keys.lastDownload()), (cloud && cloud.at) || 0);
+    if (last && now - last < REMIND_AFTER_DAYS * DAY_MS) return null;
+    // 上次備份之後新增、修改或刪除的紀錄；從沒備份過就是全部紀錄。
+    const times = state.entityTimes || {};
+    const changed = last ? Object.keys(times).filter(k => k.startsWith('rec:') && times[k] > last).length : state.records.length;
+    return changed >= REMIND_MIN_CHANGES ? { changed, days: last ? Math.floor((now - last) / DAY_MS) : null } : null;
+  }
+  function renderReminder() {
+    const r = reminder();
+    $('backupReminder').classList.toggle('hidden', !r);
+    if (!r) return;
+    $('backupReminderText').textContent = r.days === null
+      ? `還沒有下載過備份，帳本已經有 ${r.changed} 筆紀錄。下載一份存到雲端硬碟或電腦，換手機或誤刪時可以找回。`
+      : `上次備份是 ${r.days} 天前，之後新增或修改了 ${r.changed} 筆。下載一份新的備份，誤刪時可以找回。`;
+  }
+
+  // ---------- 備份內容：壓縮後分段 ----------
+  async function pack(text) {
+    const raw = new TextEncoder().encode(text);
+    let bytes = raw, enc = 'json';
+    if (typeof CompressionStream === 'function') {
+      try {
+        bytes = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+        enc = 'gzip';
+      } catch { bytes = raw; enc = 'json'; }
+    }
+    const parts = [];
+    for (let i = 0; i < bytes.length; i += PART_BYTES) parts.push(bytes.slice(i, i + PART_BYTES));
+    return { enc, size: raw.length, parts };
+  }
+  async function unpack(enc, parts) {
+    const bytes = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { bytes.set(p, at); at += p.length; }
+    if (enc === 'json') return new TextDecoder().decode(bytes);
+    return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  }
+  function deviceLabel() { try { return (localStorage.getItem(BOOK_PREFIX + 'device_id') || '').slice(0, 80); } catch { return ''; } }
+
+  // ---------- 雲端自動備份 ----------
+  // 每次同步成功後檢查：這一週還沒有備份就存一份。同一週已經有（這台或其他裝置存的）就只記下來。
+  async function afterSync() {
+    const backend = LedgerSync.readyBackend(), uid = LedgerSync.linkedUid();
+    if (!backend || !uid || typeof backend.saveBackup !== 'function') return;
+    // 還有等待確認的大量刪除時先不存，避免把還沒確認的刪除存成備份。
+    if (running || storageBlocked || LedgerSync.heldDeletes() || !state.records.length) return;
+    const week = weekId(), info = cloudInfo(uid);
+    if (info && info.week === week) return;
+    if (info && info.errorAt && Date.now() - info.errorAt < RETRY_AFTER_ERROR_MS) return;
+    running = true;
+    try {
+      const existing = await backend.getBackup(week);
+      if (existing) { saveCloudInfo({ uid, week, at: existing.at, records: existing.records }); return; }
+      const packed = await pack(JSON.stringify(backupEnvelope()));
+      if (packed.parts.length > MAX_PARTS) { saveCloudInfo({ ...(info || {}), uid, error: 'too-large', errorAt: Date.now() }); return; }
+      const meta = { t: Date.now(), records: state.records.length, size: packed.size, enc: packed.enc, dev: deviceLabel(), app: APP_VERSION };
+      await backend.saveBackup(week, meta, packed.parts);
+      saveCloudInfo({ uid, week, at: meta.t, records: meta.records });
+    } catch (e) {
+      // 離線就等下次同步再試；其他錯誤（例如安全規則還沒更新）隔一段時間再試，期間在設定頁說明。
+      const code = backend.classify(e);
+      if (code === 'unknown') console.warn('cloud backup failed', e);
+      if (code !== 'offline') saveCloudInfo({ ...(cloudInfo(uid) || {}), uid, error: code === 'permission' ? 'rules' : 'other', errorAt: Date.now() });
+    } finally {
+      running = false;
+      refresh();
+    }
+  }
+
+  // ---------- 設定頁：資料與備份 ----------
+  // 設定第一頁「備份」卡片後面接的一句話。
+  function cloudSummary() {
+    const info = cloudInfo();
+    return info && info.at ? `雲端備份：${shortDay(info.at)}。` : '';
+  }
+  function renderSection() {
+    const uid = LedgerSync.linkedUid(), info = cloudInfo(uid), ready = Boolean(LedgerSync.readyBackend());
+    let status;
+    if (!uid) status = '連結 Google 雲端同步後，每週會自動在雲端另存一份完整備份。這份備份不會被同步或刪除影響，誤刪時可以從這裡找回。';
+    else if (info && info.at) status = `每週自動備份一次。最近一次：${formatWhen(info.at)}（${info.records.toLocaleString('zh-TW')} 筆紀錄）。`;
+    else status = '每週自動備份一次，下次同步完成後會存第一份。';
+    if (uid && !ready) status += '登入後可以查看與還原。';
+    $('cloudBackupStatus').textContent = status;
+    const error = uid && info && info.error ? ERROR_TEXT[info.error] || ERROR_TEXT.other : '';
+    $('cloudBackupError').textContent = error;
+    $('cloudBackupError').classList.toggle('hidden', !error);
+    const button = $('btnCloudBackupList');
+    button.classList.toggle('hidden', !uid);
+    button.disabled = !ready || Boolean(list && list.loading);
+    button.textContent = list && !list.loading ? '收起雲端備份' : '查看雲端備份';
+    renderList();
+  }
+  function note(text) { const p = document.createElement('p'); p.className = 'text-xs text-textMuted'; p.textContent = text; return p; }
+  function renderList() {
+    const box = $('cloudBackupList');
+    box.classList.toggle('hidden', !list);
+    box.innerHTML = '';
+    if (!list) return;
+    if (list.loading) return box.appendChild(note('讀取中…'));
+    if (list.error) return box.appendChild(note(list.error));
+    if (!list.items.length) return box.appendChild(note('雲端還沒有備份。'));
+    for (const item of list.items) {
+      const row = document.createElement('div');
+      row.className = 'cloud-backup-row';
+      const label = document.createElement('span');
+      label.textContent = `${formatWhen(item.at)}・${item.records.toLocaleString('zh-TW')} 筆紀錄`;
+      const actions = document.createElement('div');
+      actions.className = 'cloud-backup-actions';
+      for (const [text, run] of [['還原', restore], ['下載', download]]) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'action'; b.textContent = text;
+        b.setAttribute('aria-label', `${text}${formatWhen(item.at)}的雲端備份`);
+        b.onclick = () => run(item);
+        actions.appendChild(b);
+      }
+      row.append(label, actions);
+      box.appendChild(row);
+    }
+  }
+  async function toggleList() {
+    if (list) { list = null; return renderSection(); }
+    const backend = LedgerSync.readyBackend();
+    if (!backend) return;
+    list = { loading: true };
+    renderSection();
+    try {
+      list = { items: await backend.listBackups(LIST_LIMIT) };
+      // 讀得到雲端備份，表示安全規則已經更新：不用等隔天，馬上再試著存這一週的備份。
+      const uid = LedgerSync.linkedUid(), info = cloudInfo(uid);
+      if (info && info.error === 'rules') {
+        const { error, errorAt, ...rest } = info;
+        saveCloudInfo(rest);
+        afterSync().catch(() => {});
+      }
+    } catch (e) {
+      list = { error: backend.classify(e) === 'permission' ? ERROR_TEXT.rules : '無法讀取雲端備份（可能沒有網路），請稍後再試。' };
+    }
+    renderSection();
+  }
+  // 下載並解開一份雲端備份；雲端或網路的錯誤換成看得懂的說明。
+  async function fetchText(item) {
+    const backend = LedgerSync.readyBackend();
+    if (!backend) throw new Error('請先登入雲端同步。');
+    let parts;
+    try { parts = await backend.loadBackup(item.id); }
+    catch { throw new Error('讀不到雲端備份（可能沒有網路），請稍後再試。'); }
+    if (parts.length !== item.parts) throw new Error('雲端備份不完整。');
+    return unpack(item.enc, parts);
+  }
+  // 還原：和匯入備份檔一樣先列出會怎麼合併，確認後才寫入（預設合併，也可以改為完全取代）。
+  async function restore(item) {
+    try { prepareImportText(await fetchText(item), { title: `從雲端備份還原（${formatWhen(item.at)}）` }); }
+    catch (e) { showToast('無法還原：' + e.message); }
+  }
+  async function download(item) {
+    try { downloadText(await fetchText(item), `記帳-雲端備份-${item.id}.json`); }
+    catch (e) { showToast('無法下載：' + e.message); }
+  }
+
+  function refresh() {
+    renderReminder();
+    if (state.activeView === 'settings' && state.settingsPage === 'data') renderSection();
+    updateSyncStatusUI();
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    $('btnReminderBackup').onclick = () => { exportBackup(); refresh(); };
+    $('btnReminderLater').onclick = () => {
+      try { localStorage.setItem(keys.snooze(), String(Date.now() + SNOOZE_DAYS * DAY_MS)); } catch {}
+      renderReminder();
+    };
+    $('btnCloudBackupList').onclick = toggleList;
+  });
+
+  return { afterSync, renderReminder, renderSection, cloudSummary, weekId, pack, unpack };
 })();
 // 網站離線載入與版本更新：註冊 Service Worker，手機沒有網路時也能開啟記帳頁（帳目本來就存在本機）。
 // 每次進入網頁（開啟、或從其他 App 切回來）都檢查網站有沒有新版本。剛進入、還沒操作而且停在首頁時，
@@ -4433,7 +4864,7 @@ const LedgerSync = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '60c686a63b39';
+  const APP_VERSION = '4784ad52c8ad';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');
