@@ -142,9 +142,20 @@ select.rule-input { color-scheme:dark; }
 .icon-option[aria-pressed=true] { background:#A78BFA20; border-color:#B7A0FC; color:#D4C4FF; }
 #modalDialog > div { max-width:520px; max-height:90dvh; overflow-y:auto; }
 #merchantChipsContainer button { min-height:42px; }
-#settingsCategoryList > div, #settingsMerchantList > div { flex-wrap:wrap; gap:6px; }
+#settingsCategoryList > div { flex-wrap:wrap; gap:6px; }
 .merchant-list-scroll { max-height:60vh; overflow-y:auto; padding-right:4px; }
-#settingsCategoryList button, #settingsMerchantList button { min-height:36px; }
+#settingsCategoryList button { min-height:36px; }
+/* 設定頁的店家／收入來源：每個名稱一行，名稱太長時截斷；點一下看紀錄與管理 */
+.merchant-row { display:flex; align-items:center; gap:8px; width:100%; min-height:44px; padding:8px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; text-align:left; font-size:14px; }
+.merchant-row:hover { border-color:#4B5262; }
+.merchant-row-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#F3F4F6; }
+.merchant-row.is-archived .merchant-row-name { color:#9CA3AF; }
+.merchant-row-meta { flex-shrink:0; font-size:12px; color:#9CA3AF; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.merchant-row-arrow { flex-shrink:0; font-size:20px; line-height:1; color:#9CA3AF; }
+/* 店家紀錄上方的改名、合併、停用 */
+.drilldown-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin:12px 16px 0; }
+.drilldown-actions button { min-height:40px; border-radius:10px; border:1px solid #3D4251; background:#262934; color:#D4C4FF; font-size:13px; font-weight:600; }
+.drilldown-actions button:hover { border-color:#A78BFA; }
 /* 明細：期間切換、全部時間的月份小計、記帳頁的「看這家店的紀錄」 */
 .drilldown-scope { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin:12px 16px 0; padding:4px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
 .drilldown-scope button { min-height:36px; border-radius:9px; font-size:13px; color:#9CA3AF; }

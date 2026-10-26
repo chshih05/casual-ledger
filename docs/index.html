@@ -172,9 +172,20 @@ select.rule-input { color-scheme:dark; }
 .icon-option[aria-pressed=true] { background:#A78BFA20; border-color:#B7A0FC; color:#D4C4FF; }
 #modalDialog > div { max-width:520px; max-height:90dvh; overflow-y:auto; }
 #merchantChipsContainer button { min-height:42px; }
-#settingsCategoryList > div, #settingsMerchantList > div { flex-wrap:wrap; gap:6px; }
+#settingsCategoryList > div { flex-wrap:wrap; gap:6px; }
 .merchant-list-scroll { max-height:60vh; overflow-y:auto; padding-right:4px; }
-#settingsCategoryList button, #settingsMerchantList button { min-height:36px; }
+#settingsCategoryList button { min-height:36px; }
+/* 設定頁的店家／收入來源：每個名稱一行，名稱太長時截斷；點一下看紀錄與管理 */
+.merchant-row { display:flex; align-items:center; gap:8px; width:100%; min-height:44px; padding:8px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; text-align:left; font-size:14px; }
+.merchant-row:hover { border-color:#4B5262; }
+.merchant-row-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#F3F4F6; }
+.merchant-row.is-archived .merchant-row-name { color:#9CA3AF; }
+.merchant-row-meta { flex-shrink:0; font-size:12px; color:#9CA3AF; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.merchant-row-arrow { flex-shrink:0; font-size:20px; line-height:1; color:#9CA3AF; }
+/* 店家紀錄上方的改名、合併、停用 */
+.drilldown-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin:12px 16px 0; }
+.drilldown-actions button { min-height:40px; border-radius:10px; border:1px solid #3D4251; background:#262934; color:#D4C4FF; font-size:13px; font-weight:600; }
+.drilldown-actions button:hover { border-color:#A78BFA; }
 /* 明細：期間切換、全部時間的月份小計、記帳頁的「看這家店的紀錄」 */
 .drilldown-scope { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin:12px 16px 0; padding:4px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
 .drilldown-scope button { min-height:36px; border-radius:9px; font-size:13px; color:#9CA3AF; }
@@ -747,7 +758,7 @@ select.rule-input { color-scheme:dark; }
         <div class="flex items-center justify-between gap-2">
           <div>
             <h3 class="text-sm font-semibold text-textMain">店家與收入來源</h3>
-            <p class="text-xs text-textMuted mt-0.5">只列最近 6 個月最常用的 12 個，其他的可以搜尋或按「顯示全部」。停用後不再推薦，歷史紀錄保留。</p>
+            <p class="text-xs text-textMuted mt-0.5">點名稱看所有紀錄，也可以改名、合併或停用。只列最近 6 個月最常用的 12 個。</p>
           </div>
           <div class="inline-flex rounded-lg bg-bgInput p-0.5 border border-borderSubtle text-xs shrink-0">
             <button id="merMgrTabExpense" type="button" class="px-2.5 py-1 rounded-md bg-accent text-bgMain font-medium">店家</button>
@@ -814,7 +825,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">65d019ed4cb9</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">b8d0f5f780a9</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -880,6 +891,8 @@ select.rule-input { color-scheme:dark; }
         <button type="button" data-scope="period">這段期間</button>
         <button type="button" data-scope="all">全部時間</button>
       </div>
+      <!-- 從設定頁的店家清單打開時：改名、合併、停用（見 40-views.js 的 renderDrilldown） -->
+      <div id="drilldownActions" role="group" aria-label="管理這個名稱" class="hidden drilldown-actions"></div>
       <div id="drilldownList" class="p-4 overflow-y-auto space-y-2.5 flex-1"></div>
     </div>
   </div>
@@ -1437,9 +1450,10 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
     // 明細（分類或店家）：統計頁點進來先看這段期間，可以切到「全部時間」；
     // 從設定頁或記帳頁點店家，直接看全部時間。全部時間依月份分組，並列出平均與最近一次。
     // 只看同一種類型（店家看支出、收入來源看收入），合計與平均才不會混在一起。
+    // 從設定頁的店家清單打開時（manage），上方另有改名、合併、停用。
     let drilldown = null;
     function openDrilldownModal(filterType, filterValue, titleName, opts = {}) {
-      drilldown = { filterType, filterValue, titleName, scope: opts.scope || 'period', switchable: opts.scope !== 'all', readOnly: Boolean(opts.readOnly), type: opts.type || state.statsType };
+      drilldown = { filterType, filterValue, titleName, scope: opts.scope || 'period', switchable: opts.scope !== 'all', readOnly: Boolean(opts.readOnly), manage: Boolean(opts.manage), type: opts.type || state.statsType };
       renderDrilldown();
       document.getElementById('modalDrilldown').classList.remove('hidden');
       document.getElementById('drilldownList').scrollTop = 0;
@@ -1481,6 +1495,22 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           b.setAttribute('aria-pressed', String(on));
           b.onclick = () => { if (on) return; d.scope = b.dataset.scope; renderDrilldown(); document.getElementById('drilldownList').scrollTop = 0; };
         });
+      }
+
+      const actions = document.getElementById('drilldownActions');
+      actions.classList.toggle('hidden', !d.manage);
+      actions.innerHTML = '';
+      if (d.manage) {
+        const name = d.filterValue, archived = state.archivedMerchants.includes(name);
+        for (const [action, label] of [['rename', '改名'], ['merge', '合併'], [archived ? 'restore' : 'archive', archived ? '恢復推薦' : '停用']]) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.dataset.action = action;
+          b.textContent = label;
+          b.setAttribute('aria-label', `${name} ${label}`);
+          b.onclick = () => manageMerchant(action, name);
+          actions.appendChild(b);
+        }
       }
 
       const listEl = document.getElementById('drilldownList');
@@ -2920,11 +2950,14 @@ function renderMerchantManager() {
   const income=state.merchantMgrType==='income',{rows,total,query}=merchantManagerRows(),list=$('settingsMerchantList');
   ['expense','income'].forEach(t=>{const b=$(t==='expense'?'merMgrTabExpense':'merMgrTabIncome'),on=income===(t==='income');b.classList.toggle('bg-accent',on);b.classList.toggle('text-bgMain',on);b.classList.toggle('text-textMuted',!on);b.setAttribute('aria-pressed',String(on));});
   list.innerHTML='';list.classList.toggle('merchant-list-scroll',Boolean(query)||merchantMgrShowAll);
+  // 每個名稱一行（名稱太長時截斷），點一下打開它的所有紀錄；改名、合併、停用在紀錄上方，手機上不會擠成兩行。
   rows.forEach(m=>{
-    const row=document.createElement('div');row.className='flex items-center justify-between px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-xs';
     const meta=m.archived?'已停用':!m.used?(m.recent?'新加入':'尚未使用'):m.recent?`近半年 ${m.recent} 次`:`上次 ${m.last}`;
-    row.innerHTML=`<span>${escapeHtml(m.name)} <span class="text-textDim">· ${meta}</span></span><div class="flex gap-1"></div>`;
-    [m.history?['history','紀錄']:null,['rename','改名'],['merge','合併'],[m.archived?'restore':'archive',m.archived?'恢復':'停用']].filter(Boolean).forEach(([a,t])=>{const b=document.createElement('button');b.textContent=t;b.className='px-2 text-accent';b.setAttribute('aria-label',`${m.name} ${t}`);b.onclick=()=>a==='history'?openMerchantHistory(m.name,{type:income?'income':'expense'}):handleMerchantAction(a,m.name);row.lastElementChild.appendChild(b);});
+    const row=document.createElement('button');row.type='button';row.className='merchant-row';row.classList.toggle('is-archived',m.archived);
+    row.innerHTML='<span class="merchant-row-name"></span><span class="merchant-row-meta"></span><span class="merchant-row-arrow" aria-hidden="true">›</span>';
+    row.children[0].textContent=m.name;row.children[1].textContent=meta;
+    row.setAttribute('aria-label',`${m.name}，${meta}。看紀錄、改名、合併或停用`);
+    row.onclick=()=>openMerchantHistory(m.name,{type:income?'income':'expense',manage:true});
     list.appendChild(row);
   });
   if(!rows.length){const p=document.createElement('p');p.className='text-xs text-textMuted';p.textContent=query?`找不到「${merchantMgrQuery.trim()}」。`:total?'最近 6 個月沒有常用的，按「顯示全部」可以看到全部。':income?'還沒有收入來源。記收入時輸入來源名稱就會自動加入。':'還沒有店家。記帳時輸入店家名稱就會自動加入。';list.appendChild(p);}
@@ -2995,6 +3028,12 @@ function handleMerchantAction(action,name) {
     if(action==='rename'&&state.merchants.includes(target))return showToast('名稱已存在，請改用合併。'),false;
     if(!commit(s=>renameMerchant(s,name,target)))return false;renderAll();showToast('已更新，歷史金額保留');
   }});
+}
+// 店家（收入來源）紀錄上方的管理按鈕：改名、合併要輸入名稱，先關掉紀錄再開輸入框；停用、恢復直接生效，紀錄留著。
+function manageMerchant(action,name) {
+  if(action==='rename'||action==='merge'){closeDrilldown();return handleMerchantAction(action,name);}
+  handleMerchantAction(action,name);
+  if(!$('modalDrilldown').classList.contains('hidden'))renderDrilldown();
 }
 const PLUS_ICON='<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>';
 const GRIP_ICON='<svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
@@ -4604,7 +4643,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = '65d019ed4cb9';
+  const APP_VERSION = 'b8d0f5f780a9';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -4825,7 +4864,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '65d019ed4cb9';
+  const APP_VERSION = 'b8d0f5f780a9';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

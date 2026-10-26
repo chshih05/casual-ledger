@@ -307,11 +307,14 @@ function renderMerchantManager() {
   const income=state.merchantMgrType==='income',{rows,total,query}=merchantManagerRows(),list=$('settingsMerchantList');
   ['expense','income'].forEach(t=>{const b=$(t==='expense'?'merMgrTabExpense':'merMgrTabIncome'),on=income===(t==='income');b.classList.toggle('bg-accent',on);b.classList.toggle('text-bgMain',on);b.classList.toggle('text-textMuted',!on);b.setAttribute('aria-pressed',String(on));});
   list.innerHTML='';list.classList.toggle('merchant-list-scroll',Boolean(query)||merchantMgrShowAll);
+  // 每個名稱一行（名稱太長時截斷），點一下打開它的所有紀錄；改名、合併、停用在紀錄上方，手機上不會擠成兩行。
   rows.forEach(m=>{
-    const row=document.createElement('div');row.className='flex items-center justify-between px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-xs';
     const meta=m.archived?'已停用':!m.used?(m.recent?'新加入':'尚未使用'):m.recent?`近半年 ${m.recent} 次`:`上次 ${m.last}`;
-    row.innerHTML=`<span>${escapeHtml(m.name)} <span class="text-textDim">· ${meta}</span></span><div class="flex gap-1"></div>`;
-    [m.history?['history','紀錄']:null,['rename','改名'],['merge','合併'],[m.archived?'restore':'archive',m.archived?'恢復':'停用']].filter(Boolean).forEach(([a,t])=>{const b=document.createElement('button');b.textContent=t;b.className='px-2 text-accent';b.setAttribute('aria-label',`${m.name} ${t}`);b.onclick=()=>a==='history'?openMerchantHistory(m.name,{type:income?'income':'expense'}):handleMerchantAction(a,m.name);row.lastElementChild.appendChild(b);});
+    const row=document.createElement('button');row.type='button';row.className='merchant-row';row.classList.toggle('is-archived',m.archived);
+    row.innerHTML='<span class="merchant-row-name"></span><span class="merchant-row-meta"></span><span class="merchant-row-arrow" aria-hidden="true">›</span>';
+    row.children[0].textContent=m.name;row.children[1].textContent=meta;
+    row.setAttribute('aria-label',`${m.name}，${meta}。看紀錄、改名、合併或停用`);
+    row.onclick=()=>openMerchantHistory(m.name,{type:income?'income':'expense',manage:true});
     list.appendChild(row);
   });
   if(!rows.length){const p=document.createElement('p');p.className='text-xs text-textMuted';p.textContent=query?`找不到「${merchantMgrQuery.trim()}」。`:total?'最近 6 個月沒有常用的，按「顯示全部」可以看到全部。':income?'還沒有收入來源。記收入時輸入來源名稱就會自動加入。':'還沒有店家。記帳時輸入店家名稱就會自動加入。';list.appendChild(p);}
@@ -382,6 +385,12 @@ function handleMerchantAction(action,name) {
     if(action==='rename'&&state.merchants.includes(target))return showToast('名稱已存在，請改用合併。'),false;
     if(!commit(s=>renameMerchant(s,name,target)))return false;renderAll();showToast('已更新，歷史金額保留');
   }});
+}
+// 店家（收入來源）紀錄上方的管理按鈕：改名、合併要輸入名稱，先關掉紀錄再開輸入框；停用、恢復直接生效，紀錄留著。
+function manageMerchant(action,name) {
+  if(action==='rename'||action==='merge'){closeDrilldown();return handleMerchantAction(action,name);}
+  handleMerchantAction(action,name);
+  if(!$('modalDrilldown').classList.contains('hidden'))renderDrilldown();
 }
 const PLUS_ICON='<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>';
 const GRIP_ICON='<svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';

@@ -467,8 +467,11 @@
       date: daysAgo(a, ago + i), categoryId, amount: 100, merchant: name, note: '' }));
   }
   const chipNames = a => [...a.$('merchantChipsContainer').querySelectorAll('button')].map(b => b.textContent);
-  // 每列的名稱與狀態（不含右邊的按鈕）
-  const managerRows = a => [...a.$('settingsMerchantList').children].map(r => (r.firstElementChild || r).textContent.replace(/\s+/g, ' ').trim());
+  // 每列的名稱與狀態，例如「全家 · 近半年 3 次」
+  const managerRows = a => [...a.$('settingsMerchantList').querySelectorAll('.merchant-row')]
+    .map(r => `${r.querySelector('.merchant-row-name').textContent} · ${r.querySelector('.merchant-row-meta').textContent}`);
+  const merchantRow = (a, name) => [...a.$('settingsMerchantList').querySelectorAll('.merchant-row')].find(r => r.querySelector('.merchant-row-name').textContent === name);
+  const drilldownActions = a => [...a.$('drilldownActions').querySelectorAll('button')].map(b => b.textContent);
 
   test('店家｜記帳頁沒打字時推薦最近 6 個月在這個分類用過的（最多 8 個），很久沒用的打字才找得到', async () => {
     const a = await personalApp();
@@ -739,11 +742,10 @@
     eq(a.$('drilldownList').children.length, 1, '切回這段期間');
   });
 
-  test('店家｜設定頁的「紀錄」與記帳頁的連結都能看到以前的紀錄；記帳頁開的只能看，不會打斷正在記的這一筆', async () => {
+  test('店家｜設定頁點名稱與記帳頁的連結都能看到以前的紀錄；記帳頁開的只能看，不會打斷正在記的這一筆', async () => {
     const { a } = await historyApp();
     openSettings(a, 'merchants');
-    const row = [...a.$('settingsMerchantList').children].find(r => r.textContent.includes('全家'));
-    a.click([...row.querySelectorAll('button')].find(b => b.textContent === '紀錄'));
+    a.click(merchantRow(a, '全家'));
     eq(a.text('drilldownTitle'), '全家 — 所有紀錄');
     assert(!a.visible('drilldownScope'), '直接看全部時間');
     eq(a.$('drilldownList').querySelectorAll('button').length, 4, '從設定頁開的可以點進去修改');
@@ -756,6 +758,7 @@
     a.click('btnMerchantHistory');
     assert(a.visible('modalDrilldown'));
     eq(a.$('drilldownList').querySelectorAll('button').length, 0, '只能看，不會跳去修改別筆');
+    assert(!a.visible('drilldownActions'), '記帳頁開的不能改名、合併或停用');
     a.click('btnCloseDrilldown');
     eq(a.ev('modalState.amountExpr'), '55', '正在記的內容還在');
     a.type('inputMerchantSearch', '新店家');
@@ -764,6 +767,49 @@
     a.click(a.$('step1CategoryGrid').querySelectorAll('button')[0]);
     a.type('inputMerchantSearch', '全家');
     eq(a.text('btnMerchantHistory'), '看「全家」以前的 1 筆紀錄 ›', '記收入時只算收入');
+  });
+
+  test('店家｜設定頁每個名稱只佔一行；點名稱打開紀錄，改名、合併、停用都在紀錄上方', async () => {
+    const { a } = await historyApp();
+    openSettings(a, 'merchants');
+    a.$('inputManageNewMerchant').value = '全家便利商店台北車站捷運地下街第二分店';
+    a.click('btnManageAddMerchant');
+    for (const name of ['全家', '全家便利商店台北車站捷運地下街第二分店']) {
+      const row = merchantRow(a, name);
+      assert(row, `${name} 應有一列`);
+      assert(row.getBoundingClientRect().height <= 50, `「${name}」只佔一行：${row.getBoundingClientRect().height}px`);
+      eq(row.querySelectorAll('button').length, 0, '列上沒有另外的按鈕，整列就是按鈕');
+    }
+    // 停用、恢復：直接生效，紀錄留著
+    a.click(merchantRow(a, '全家'));
+    eq([a.text('drilldownTitle'), drilldownActions(a)], ['全家 — 所有紀錄', ['改名', '合併', '停用']]);
+    a.click(a.$('drilldownActions').querySelector('[data-action="archive"]'));
+    eq([a.ev('state.archivedMerchants.includes("全家")'), a.text('toastBox')], [true, '已停用，歷史紀錄保留']);
+    assert(a.visible('modalDrilldown'), '停用後紀錄還開著');
+    eq(drilldownActions(a), ['改名', '合併', '恢復推薦']);
+    a.click('btnMerchantShowAll'); // 已停用的只在「顯示全部」裡
+    assert(merchantRow(a, '全家').classList.contains('is-archived') && managerRows(a).includes('全家 · 已停用'), managerRows(a).join('\n'));
+    a.click(a.$('drilldownActions').querySelector('[data-action="restore"]'));
+    eq([a.ev('state.archivedMerchants.includes("全家")'), drilldownActions(a)[2]], [false, '停用']);
+    // 改名：關掉紀錄、打開輸入框，改完紀錄跟著改
+    a.click(a.$('drilldownActions').querySelector('[data-action="rename"]'));
+    assert(!a.visible('modalDrilldown') && a.visible('modalDialog'), '改名時換成輸入框');
+    eq(a.$('dialogInput').value, '全家');
+    a.$('dialogInput').value = '全家超商';
+    a.click('dialogBtnConfirm');
+    await waitFor(() => !a.visible('modalDialog'));
+    eq(a.ev('state.records.filter(r => r.merchant === "全家超商").length'), 5, '以前的紀錄都改成新名稱');
+    // 合併：輸入既有的名稱
+    a.click(merchantRow(a, '全家便利商店台北車站捷運地下街第二分店'));
+    a.click(a.$('drilldownActions').querySelector('[data-action="merge"]'));
+    a.$('dialogInput').value = '全家超商';
+    a.click('dialogBtnConfirm');
+    await waitFor(() => !a.visible('modalDialog'));
+    assert(!a.ev('state.merchants.includes("全家便利商店台北車站捷運地下街第二分店")'), '合併後原名稱不見了');
+    // 統計頁打開的明細不能管理名稱
+    a.click('navBtnStats');
+    a.click(a.$('statsMerchantList').querySelector('button'));
+    assert(a.visible('modalDrilldown') && !a.visible('drilldownActions'), '統計頁的明細沒有改名、合併、停用');
   });
 
   // ---------- 分類：拖曳排序 ----------
@@ -1802,9 +1848,9 @@
     eq(a.ev('state.activeView'), 'record');
     await goBack(a, () => a.ev('state.activeView') === 'home', '再按返回回到首頁');
     openSettings(a, 'merchants');
-    const row = [...a.$('settingsMerchantList').children].find(r => r.textContent.includes('全家'));
-    a.click([...row.querySelectorAll('button')].find(b => b.textContent === '改名'));
-    assert(a.visible('modalDialog'));
+    a.click(merchantRow(a, '全家'));
+    a.click(a.$('drilldownActions').querySelector('[data-action="rename"]'));
+    assert(a.visible('modalDialog') && !a.visible('modalDrilldown'), '改名時紀錄換成輸入框');
     await goBack(a, () => !a.visible('modalDialog'), '返回關掉對話框');
     assert(a.visible('settingsMerchantList'), '還在店家分頁');
     eq(a.ev('state.merchants.includes("全家")'), true, '對話框沒有確認，名稱不變');

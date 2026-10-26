@@ -394,9 +394,10 @@
     // 明細（分類或店家）：統計頁點進來先看這段期間，可以切到「全部時間」；
     // 從設定頁或記帳頁點店家，直接看全部時間。全部時間依月份分組，並列出平均與最近一次。
     // 只看同一種類型（店家看支出、收入來源看收入），合計與平均才不會混在一起。
+    // 從設定頁的店家清單打開時（manage），上方另有改名、合併、停用。
     let drilldown = null;
     function openDrilldownModal(filterType, filterValue, titleName, opts = {}) {
-      drilldown = { filterType, filterValue, titleName, scope: opts.scope || 'period', switchable: opts.scope !== 'all', readOnly: Boolean(opts.readOnly), type: opts.type || state.statsType };
+      drilldown = { filterType, filterValue, titleName, scope: opts.scope || 'period', switchable: opts.scope !== 'all', readOnly: Boolean(opts.readOnly), manage: Boolean(opts.manage), type: opts.type || state.statsType };
       renderDrilldown();
       document.getElementById('modalDrilldown').classList.remove('hidden');
       document.getElementById('drilldownList').scrollTop = 0;
@@ -438,6 +439,22 @@
           b.setAttribute('aria-pressed', String(on));
           b.onclick = () => { if (on) return; d.scope = b.dataset.scope; renderDrilldown(); document.getElementById('drilldownList').scrollTop = 0; };
         });
+      }
+
+      const actions = document.getElementById('drilldownActions');
+      actions.classList.toggle('hidden', !d.manage);
+      actions.innerHTML = '';
+      if (d.manage) {
+        const name = d.filterValue, archived = state.archivedMerchants.includes(name);
+        for (const [action, label] of [['rename', '改名'], ['merge', '合併'], [archived ? 'restore' : 'archive', archived ? '恢復推薦' : '停用']]) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.dataset.action = action;
+          b.textContent = label;
+          b.setAttribute('aria-label', `${name} ${label}`);
+          b.onclick = () => manageMerchant(action, name);
+          actions.appendChild(b);
+        }
       }
 
       const listEl = document.getElementById('drilldownList');

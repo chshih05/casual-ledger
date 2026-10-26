@@ -538,7 +538,7 @@
         <div class="flex items-center justify-between gap-2">
           <div>
             <h3 class="text-sm font-semibold text-textMain">店家與收入來源</h3>
-            <p class="text-xs text-textMuted mt-0.5">只列最近 6 個月最常用的 12 個，其他的可以搜尋或按「顯示全部」。停用後不再推薦，歷史紀錄保留。</p>
+            <p class="text-xs text-textMuted mt-0.5">點名稱看所有紀錄，也可以改名、合併或停用。只列最近 6 個月最常用的 12 個。</p>
           </div>
           <div class="inline-flex rounded-lg bg-bgInput p-0.5 border border-borderSubtle text-xs shrink-0">
             <button id="merMgrTabExpense" type="button" class="px-2.5 py-1 rounded-md bg-accent text-bgMain font-medium">店家</button>
@@ -671,6 +671,8 @@
         <button type="button" data-scope="period">這段期間</button>
         <button type="button" data-scope="all">全部時間</button>
       </div>
+      <!-- 從設定頁的店家清單打開時：改名、合併、停用（見 40-views.js 的 renderDrilldown） -->
+      <div id="drilldownActions" role="group" aria-label="管理這個名稱" class="hidden drilldown-actions"></div>
       <div id="drilldownList" class="p-4 overflow-y-auto space-y-2.5 flex-1"></div>
     </div>
   </div>
