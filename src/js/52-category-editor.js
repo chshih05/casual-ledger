@@ -1,15 +1,9 @@
 // 分類編輯：新增與修改用同一個畫面。參考熱門記帳 App 的做法：
 // - 在需要的地方新增：記帳頁分類最後面就有「＋ 新增」，新增後直接選取（Monzo 從交易直接建立分類）。
 // - 先打名稱，圖示依名稱自動建議；上方即時預覽在記帳頁的樣子（Rocket Money、Wallet 都是名稱優先）。
-// - 一鍵套用常見分類；先挑圖示時，名稱自動帶入圖示名稱。
+// - 名稱和圖示都由使用者自己決定，不提供現成的常見分類；先挑圖示時，名稱自動帶入圖示名稱。
 // - 設定頁點分類就能改名、換圖示或刪除，不再分成三個按鈕（Money Manager 的編輯畫面）。
 const CAT_PICKER='categoryEditorIcons';
-const CATEGORY_SUGGESTIONS={
-  expense:[['外送','delivery'],['咖啡','coffee'],['宵夜','dinner'],['食材','groceries'],['加油','fuel'],['停車','parking'],['房租','rent'],['水電瓦斯','electricity'],
-    ['電話網路','phone'],['訂閱服務','subscription'],['衣服','clothing'],['美妝保養','cosmetics'],['剪髮','cut'],['寵物','pet'],['送禮','gift'],['保險','insurance'],
-    ['學費','tuition'],['書籍','book'],['旅遊','travel'],['健身運動','fitness']],
-  income:[['兼職接案','freelance'],['利息股息','bank'],['退款','refund'],['報銷補助','reimbursement'],['二手出售','sale'],['紅包禮金','red_envelope'],['投資收益','investment']],
-};
 let catEditor=null; // {mode:'add'|'edit', type, id, from:'record'|'settings', iconTouched, hint, returnFocus}
 const defaultCategoryIcon=type=>type==='income'?'income':'other';
 
@@ -26,10 +20,8 @@ function openCategoryEditor({mode='add',type='expense',id=null,from='settings'}=
   $('catEditorError').classList.add('hidden');
   $('btnCatEditorDelete').classList.toggle('hidden',!cat);
   $('btnCatEditorSave').textContent=cat?'儲存':from==='record'?'新增並選取':'新增';
-  $('catEditorSuggestWrap').classList.toggle('hidden',Boolean(cat));
   $('modalCategory').classList.remove('hidden');
   renderIconPicker(CAT_PICKER);
-  renderCategorySuggestions();
   updateCategoryPreview();
   $('catEditorName').focus();
 }
@@ -62,7 +54,6 @@ function onCategoryNameInput() {
     selectPickerIcon(CAT_PICKER,key||defaultCategoryIcon(catEditor.type));
     catEditor.hint=key?`已依名稱選了「${ICON_LABELS[key]}」圖示，可以在下面改選。`:'';
   }
-  renderCategorySuggestions();
   updateCategoryPreview();
 }
 // 自己挑了圖示之後，名稱就不再改變圖示；名稱還空著時帶入圖示名稱，方便直接儲存或修改。
@@ -72,28 +63,7 @@ function onCategoryIconPick(key) {
   const input=$('catEditorName');
   if(!input.value.trim()){input.value=ICON_LABELS[key]||'';input.select();}
   categoryEditorError('');
-  renderCategorySuggestions();
   updateCategoryPreview();
-}
-// 常見分類：已經有的名稱不再列出；點一下同時填入名稱與圖示。
-function renderCategorySuggestions() {
-  if(!catEditor||catEditor.mode!=='add')return;
-  const have=new Set(getCategoriesByType(catEditor.type).map(c=>c.name)),current=$('catEditorName').value.trim();
-  const list=$('catEditorSuggest');list.innerHTML='';
-  const items=CATEGORY_SUGGESTIONS[catEditor.type].filter(([name])=>!have.has(name));
-  $('catEditorSuggestWrap').classList.toggle('hidden',!items.length);
-  for(const [name,key] of items){
-    const b=document.createElement('button');b.type='button';b.className='cat-suggest';b.setAttribute('aria-pressed',String(name===current));
-    b.innerHTML=`${ICONS[key]||ICONS.other}<span></span>`;b.lastElementChild.textContent=name;
-    b.onclick=()=>{
-      $('catEditorName').value=name;
-      selectPickerIcon(CAT_PICKER,key);
-      catEditor.iconTouched=false;catEditor.hint='';
-      categoryEditorError('');
-      renderCategorySuggestions();updateCategoryPreview();
-    };
-    list.appendChild(b);
-  }
 }
 function saveCategoryEditor() {
   const ed=catEditor;if(!ed)return;

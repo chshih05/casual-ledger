@@ -532,8 +532,8 @@
   test('圖示｜依大分類分組：沒有大方向／細項，每個圖示只出現一次，通用圖示排在各組第一個', async () => {
     const a = await personalApp();
     eq(a.ev('ICON_GROUPS'), ['餐飲', '交通', '購物', '日用生活', '帳單', '醫療', '娛樂運動', '旅遊', '學習工作', '家庭寵物', '人情', '財務', '收入', '其他']);
-    eq(a.ev('ICON_CATALOG.length'), 126);
-    eq(a.ev('new Set(ICON_CATALOG.map(i => i.key)).size'), 126, '每個圖示只出現一次');
+    eq(a.ev('ICON_CATALOG.length'), 127);
+    eq(a.ev('new Set(ICON_CATALOG.map(i => i.key)).size'), 127, '每個圖示只出現一次');
     assert(a.ev('ICON_CATALOG.every(i => Object.hasOwn(ICONS, i.key) && !("level" in i))'), '都有圖案，也沒有大方向／細項欄位');
     eq(a.ev('ICON_GROUPS.map(g => ICON_CATALOG.find(i => i.group === g).key)'),
       ['food', 'transport_general', 'shopping', 'home', 'bills', 'medical', 'entertainment', 'travel', 'education', 'family', 'social', 'finance', 'income', 'other']);
@@ -542,7 +542,7 @@
     a.click('btnAddCategory');
     const picker = a.$('categoryEditorIcons');
     assert(!picker.querySelector('select') && !picker.textContent.includes('大方向'), '不應再有大方向／細項的選單或標籤');
-    assert(!picker.querySelector('input') && !picker.textContent.includes('已選') && !picker.textContent.includes('／126'), '沒有搜尋框、已選與數量（打名稱就會選圖示，上方預覽已經顯示選中的圖示）');
+    assert(!picker.querySelector('input') && !picker.textContent.includes('已選') && !picker.textContent.includes('／127'), '沒有搜尋框、已選與數量（打名稱就會選圖示，上方預覽已經顯示選中的圖示）');
   });
 
   test('圖示｜點大分類只顯示該組，點「全部」顯示全部大分類', async () => {
@@ -550,13 +550,27 @@
     openSettings(a, 'categories');
     a.click('btnAddCategory');
     const id = 'categoryEditorIcons', options = () => a.$(id).querySelectorAll('.icon-option').length;
-    eq([activeChip(a, id), pickerGroups(a, id).length, options()], ['全部', 14, 126]);
+    eq([activeChip(a, id), pickerGroups(a, id).length, options()], ['全部', 14, 127]);
     a.click(a.$(id).querySelector('.icon-chip[data-group="交通"]'));
     eq([activeChip(a, id), pickerGroups(a, id), options()], ['交通', ['交通'], 12]);
     a.click(a.$(id).querySelector('.icon-chip[data-group="財務"]'));
     eq(pickerGroups(a, id), ['財務']);
     a.click(a.$(id).querySelector('.icon-chip[data-group=""]'));
-    eq([activeChip(a, id), pickerGroups(a, id).length, options()], ['全部', 14, 126]);
+    eq([activeChip(a, id), pickerGroups(a, id).length, options()], ['全部', 14, 127]);
+  });
+
+  test('圖示｜餐飲裡有「宵夜」的串燒圖示：打「宵夜」「串燒」都會選它，先挑它時名稱帶入「宵夜」', async () => {
+    const a = await personalApp();
+    eq(a.ev('ICON_CATALOG.find(i => i.key === "skewer")'), { key: 'skewer', label: '宵夜', group: '餐飲', keywords: '串燒 燒烤 烤肉 烤串 消夜 夜市 居酒屋' });
+    eq(a.ev('ICON_CATALOG.filter(i => i.group === "餐飲").map(i => i.key).slice(0, 5)'), ['food', 'breakfast', 'lunch', 'dinner', 'skewer'], '排在晚餐後面');
+    assert(a.ev('ICONS.skewer').includes('<rect'), '有自己的圖案');
+    eq(['宵夜', '串燒', '燒烤'].map(n => a.ev(`suggestIcon(${JSON.stringify(n)})`)), ['skewer', 'skewer', 'skewer']);
+    openSettings(a, 'categories');
+    a.click('btnAddCategory');
+    a.click(a.$('categoryEditorIcons').querySelector('.icon-option[data-icon="skewer"]'));
+    eq(a.$('catEditorName').value, '宵夜', '名稱還空著時帶入圖示名稱');
+    a.click('btnCatEditorSave');
+    eq(a.ev('state.categories.find(c => c.name === "宵夜").icon'), 'skewer');
   });
 
   test('圖示｜新增收入分類時先顯示「收入」大分類；修改分類時直接顯示目前圖示的大分類', async () => {
@@ -619,17 +633,12 @@
     eq(a.text('toastBox'), '已新增「加油」');
   });
 
-  test('分類｜常見分類一鍵套用；先挑圖示時帶入圖示名稱；自己挑過圖示後，打名稱不再換圖示', async () => {
+  test('分類｜名稱和圖示由自己挑，沒有現成的常見分類；先挑圖示時帶入圖示名稱；自己挑過圖示後，打名稱不再換圖示', async () => {
     const a = await personalApp();
     openSettings(a, 'categories');
     a.click('btnAddCategory');
-    const chips = () => [...a.$('catEditorSuggest').querySelectorAll('.cat-suggest')];
-    assert(chips().length > 5);
-    a.click(chips().find(c => c.textContent === '寵物'));
-    eq(a.$('catEditorName').value, '寵物');
-    eq(a.ev('selectedIcon("categoryEditorIcons")'), 'pet');
-    eq(chips().find(c => c.textContent === '寵物').getAttribute('aria-pressed'), 'true');
-    typeName(a, '');
+    assert(!a.$('catEditorSuggestWrap') && !a.$('modalCategory').textContent.includes('常見分類'), '不再列出常見分類');
+    eq(a.$('catEditorName').value, '', '名稱一開始是空的');
     a.click(a.$('categoryEditorIcons').querySelector('.icon-option[data-icon="coffee"]'));
     eq(a.$('catEditorName').value, '咖啡', '名稱還空著時帶入圖示名稱');
     typeName(a, '加油錢');
@@ -637,9 +646,6 @@
     a.click('btnCatEditorSave');
     eq(a.ev('state.categories.find(c => c.name === "加油錢").icon'), 'coffee');
     eq(a.text('toastBox'), '已新增「加油錢」');
-    a.ev(`commit(s => s.categories.push({ id: 'cat_pet', type: 'expense', name: '寵物', icon: 'pet', order: 99 }))`);
-    a.click('btnAddCategory');
-    assert(!chips().some(c => c.textContent === '寵物'), '已經有的分類不再出現在常見分類');
   });
 
   test('分類｜名稱空白或重複時在畫面上提示、不關閉；Esc 或點背景可以關閉', async () => {
@@ -673,7 +679,6 @@
     a.click(categoryRow(a, '早餐').firstElementChild.lastElementChild);
     eq(a.text('catEditorTitle'), '編輯分類');
     eq(a.$('catEditorName').value, '早餐');
-    assert(!a.visible('catEditorSuggestWrap'), '修改時不顯示常見分類');
     eq(a.$('categoryEditorIcons').querySelector('.icon-chip[aria-pressed="true"]').textContent, '餐飲', '直接顯示目前圖示所在的大分類');
     typeName(a, '早午餐');
     eq(a.ev('selectedIcon("categoryEditorIcons")'), 'breakfast', '改名不會自動換掉原本的圖示');
@@ -697,12 +702,11 @@
   test('分類｜依名稱建議圖示：完全相同優先，收入分類優先用收入圖示', async () => {
     const a = await personalApp();
     const s = (name, type = 'expense') => a.ev(`suggestIcon(${JSON.stringify(name)}, '${type}')`);
-    eq(['加油', '宵夜', '停車費', 'Netflix', '房租', '孝親費', '寵物美容'].map(n => s(n)), ['fuel', 'dinner', 'parking', 'streaming', 'rent', 'elder', 'pet_care']);
+    eq(['加油', '宵夜', '停車費', 'Netflix', '房租', '孝親費', '寵物美容'].map(n => s(n)), ['fuel', 'skewer', 'parking', 'streaming', 'rent', 'elder', 'pet_care']);
     eq(['水電瓦斯', '手機費', '看醫生'].map(n => s(n)), ['electricity', 'phone', 'doctor']);
     eq(s('利息', 'income'), 'bank', '收入的利息是利息股息');
     eq(s('利息'), 'loan', '支出的利息是貸款');
     eq(s('隨便'), null);
-    eq(a.ev('Object.entries(CATEGORY_SUGGESTIONS).flatMap(([type, list]) => list.filter(([name, key]) => suggestIcon(name, type) !== key).map(([name]) => name))'), [], '常見分類的名稱和建議的圖示一致');
   });
 
   // ---------- 店家：以前的所有紀錄 ----------

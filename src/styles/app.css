@@ -168,11 +168,6 @@ select.rule-input { color-scheme:dark; }
 .cat-hint { font-size:12px; color:#9CA3AF; min-height:0; }
 .cat-hint:empty { display:none; }
 .cat-section-title { font-size:13px; color:#9CA3AF; margin-bottom:6px; }
-.cat-suggest-list { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
-.cat-suggest-list::-webkit-scrollbar { display:none; }
-.cat-suggest { flex-shrink:0; display:inline-flex; align-items:center; gap:6px; min-height:38px; padding:6px 12px; border-radius:999px; border:1px solid #3D4251; background:#191B22; color:#E5E7EB; font-size:13px; white-space:nowrap; }
-.cat-suggest svg { width:16px; height:16px; color:#A78BFA; }
-.cat-suggest[aria-pressed=true] { border-color:#A78BFA; background:#A78BFA20; color:#D4C4FF; }
 .cat-delete { padding:8px 4px; font-size:13px; color:#F87171; }
 #modalCategory .icon-results { max-height:38dvh; }
 .category-add-tile { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:8px 4px; border-radius:14px; border:1px dashed #4B5262; color:#A78BFA; background:transparent; min-height:70px; }
