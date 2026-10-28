@@ -4,7 +4,7 @@
       python tools/make_icons.py shortcuts    只產生長按主畫面圖示的捷徑圖示
 輸出到 src/static/：icon.svg、icon-192.png、icon-512.png、icon-maskable-512.png、apple-touch-icon.png，
 以及捷徑用的 shortcut-expense.png（記一筆支出）、shortcut-income.png（記一筆收入）。
-圖樣：紫色漸層底，一張收據，鉛筆剛隨手寫下一筆金額（對應「隨便記」）；捷徑是同樣的底色加上白色的 − 或 ＋。
+圖樣：霧藍漸層底（和預設主題顏色同色系），一張收據，鉛筆剛隨手寫下一筆金額（對應「隨便記」）；捷徑是同樣的底色加上白色的 − 或 ＋。
 畫法：每個圖形都用「到邊緣的距離」描述（負數代表在圖形內），邊緣依距離算出半透明，
 不需要繪圖套件也有平滑的邊緣；陰影是把這個距離做成柔和的漸層。SVG 與 PNG 用同一組座標。
 """
@@ -17,12 +17,12 @@ import zlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "static"
 
-BG_TOP = (0xB9, 0xA4, 0xFF)      # 左上淡紫
-BG_BOTTOM = (0x6D, 0x4A, 0xE2)   # 右下深紫
-SHADOW = (0x2B, 0x16, 0x70)
+BG_TOP = (0xA8, 0xC7, 0xFA)      # 左上淡藍
+BG_BOTTOM = (0x4A, 0x7D, 0xDB)   # 右下深藍
+SHADOW = (0x15, 0x2E, 0x66)
 WHITE = (0xFF, 0xFF, 0xFF)
-LINE = (0xD4, 0xC8, 0xFF)        # 收據上的淡色字行
-INK = (0x6D, 0x4A, 0xE2)         # 手寫金額與筆芯同色
+LINE = (0xCC, 0xDD, 0xFB)        # 收據上的淡色字行
+INK = (0x4A, 0x7D, 0xDB)         # 手寫金額與筆芯同色
 PENCIL = {"wood": (0xFD, 0xE3, 0xBD), "body": (0xFC, 0xD3, 0x4D), "stripe": (0xF5, 0xB7, 0x31),
           "band": (0xD9, 0xDC, 0xE8), "eraser": (0xF9, 0xA8, 0xD4)}
 SHADOW_OPACITY, SHADOW_DY, SHADOW_BLUR = 0.35, 10, 12
