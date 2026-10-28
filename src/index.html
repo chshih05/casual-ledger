@@ -318,6 +318,19 @@
         <div id="statsBudgetList"></div>
       </section>
 
+      <!-- 按月、支出：這個月每天花了多少（見 64-stats-compare.js 的 renderStatsDaily） -->
+      <section id="statsDailySection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h3 id="statsDailyTitle" class="text-sm font-semibold text-textMain">每日支出</h3>
+          <span id="statsDailyMax" class="text-[11px] text-textMuted num-tabular"></span>
+        </div>
+        <div class="trend-wrap">
+          <div id="statsDailyChart" class="trend-chart daily-chart"></div>
+          <div id="statsDailyTip" class="trend-tip hidden"></div>
+        </div>
+        <p class="text-[11px] text-textMuted">點長條看那天的金額</p>
+      </section>
+
       <!-- 按月：近 12 個月走勢 -->
       <section id="statsTrendSection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div class="flex items-center justify-between gap-2">

@@ -125,6 +125,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .trend-col[aria-current=true]:hover .trend-bar, .trend-col[aria-current=true]:focus-visible .trend-bar { background:var(--accent-light); }
 .trend-label { font-size:11px; line-height:1.2; color:#9CA3AF; text-align:center; font-variant-numeric:tabular-nums; }
 .trend-col[aria-current=true] .trend-label { color:#F3F4F6; font-weight:700; }
+/* 每日支出：一天一欄，長條和日期都比近 12 個月的窄 */
+.daily-chart .trend-plot { height:80px; }
+.daily-chart .trend-bar { width:72%; border-radius:2px 2px 0 0; }
+.daily-chart .trend-label { overflow:visible; white-space:nowrap; }
 .trend-tip { position:absolute; z-index:5; transform:translate(-50%,-100%); display:grid; gap:1px; padding:6px 10px; border-radius:10px; background:#262934; border:1px solid #3D4251; box-shadow:0 8px 20px rgba(0,0,0,.4); font-size:12px; color:#9CA3AF; white-space:nowrap; pointer-events:none; }
 .trend-tip strong { font-size:14px; color:#F3F4F6; font-variant-numeric:tabular-nums; }
 /* 固定收支 */

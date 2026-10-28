@@ -384,6 +384,7 @@
       renderStatsMonthly(records, yearMode);
       renderStatsBudget(yearMode);
       renderStatsCompare(yearMode);
+      renderStatsDaily(yearMode);
       renderStatsTrend(yearMode);
     }
     // 整年度時列出 1～12 月的金額；長條以金額最高的月份為滿格，點月份切回該月的統計。

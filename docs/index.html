@@ -157,6 +157,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .trend-col[aria-current=true]:hover .trend-bar, .trend-col[aria-current=true]:focus-visible .trend-bar { background:var(--accent-light); }
 .trend-label { font-size:11px; line-height:1.2; color:#9CA3AF; text-align:center; font-variant-numeric:tabular-nums; }
 .trend-col[aria-current=true] .trend-label { color:#F3F4F6; font-weight:700; }
+/* 每日支出：一天一欄，長條和日期都比近 12 個月的窄 */
+.daily-chart .trend-plot { height:80px; }
+.daily-chart .trend-bar { width:72%; border-radius:2px 2px 0 0; }
+.daily-chart .trend-label { overflow:visible; white-space:nowrap; }
 .trend-tip { position:absolute; z-index:5; transform:translate(-50%,-100%); display:grid; gap:1px; padding:6px 10px; border-radius:10px; background:#262934; border:1px solid #3D4251; box-shadow:0 8px 20px rgba(0,0,0,.4); font-size:12px; color:#9CA3AF; white-space:nowrap; pointer-events:none; }
 .trend-tip strong { font-size:14px; color:#F3F4F6; font-variant-numeric:tabular-nums; }
 /* 固定收支 */
@@ -569,6 +573,19 @@ select.rule-input { color-scheme:dark; }
         <div id="statsBudgetList"></div>
       </section>
 
+      <!-- 按月、支出：這個月每天花了多少（見 64-stats-compare.js 的 renderStatsDaily） -->
+      <section id="statsDailySection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h3 id="statsDailyTitle" class="text-sm font-semibold text-textMain">每日支出</h3>
+          <span id="statsDailyMax" class="text-[11px] text-textMuted num-tabular"></span>
+        </div>
+        <div class="trend-wrap">
+          <div id="statsDailyChart" class="trend-chart daily-chart"></div>
+          <div id="statsDailyTip" class="trend-tip hidden"></div>
+        </div>
+        <p class="text-[11px] text-textMuted">點長條看那天的金額</p>
+      </section>
+
       <!-- 按月：近 12 個月走勢 -->
       <section id="statsTrendSection" class="hidden bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div class="flex items-center justify-between gap-2">
@@ -887,7 +904,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">7e262fc479cd</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">614eebab158d</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1502,6 +1519,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       renderStatsMonthly(records, yearMode);
       renderStatsBudget(yearMode);
       renderStatsCompare(yearMode);
+      renderStatsDaily(yearMode);
       renderStatsTrend(yearMode);
     }
     // 整年度時列出 1～12 月的金額；長條以金額最高的月份為滿格，點月份切回該月的統計。
@@ -3775,21 +3793,51 @@ function renderStatsTrend(yearMode) {
     chart.appendChild(btn);
   });
 }
-// 滑鼠移到長條或用鍵盤選到時，顯示那個月的金額。
-function setupTrendTooltip() {
-  const chart=$('statsTrendChart'),tip=$('statsTrendTip');
+// 這個月每天的支出：一天一根長條，今天用主色，還沒到的日子留空。
+function renderStatsDaily(yearMode) {
+  const show=!yearMode&&state.statsType==='expense';
+  $('statsDailySection').classList.toggle('hidden',!show);
+  $('statsDailyTip').classList.add('hidden');
+  if(!show)return;
+  const month=state.currentMonth,[y,m]=month.split('-').map(Number),days=new Date(y,m,0).getDate(),now=today();
+  const sums=new Array(days).fill(0);
+  for(const r of state.records)if(r.type==='expense'&&r.date.startsWith(month+'-'))sums[Number(r.date.slice(8))-1]+=r.amount;
+  const max=Math.max(...sums);
+  $('statsDailyTitle').textContent=`${m} 月每日支出`;
+  $('statsDailyMax').textContent=max?`最多 ${m}/${sums.indexOf(max)+1} NT$ ${formatMoney(max)}`:'';
+  const chart=$('statsDailyChart');chart.innerHTML='';
+  chart.style.gridTemplateColumns=`repeat(${days},minmax(0,1fr))`;
+  sums.forEach((v,i)=>{
+    const d=i+1,date=`${month}-${String(d).padStart(2,'0')}`,btn=document.createElement('button');
+    // 日期只標 1、5、10…和月底，太擠時略過月底前的那一個（例如 31 天的月份不標 30）。
+    const label=d===1||d===days||(d%5===0&&days-d>=3)?d:'';
+    btn.type='button';btn.className='trend-col';btn.dataset.date=date;btn.dataset.value=v;
+    btn.setAttribute('aria-label',`${m} 月 ${d} 日 NT$ ${formatMoney(v)}`);
+    btn.setAttribute('aria-current',String(date===now));
+    btn.innerHTML=`<span class="trend-plot"><span class="trend-bar" style="height:${max?(v/max*100).toFixed(1):0}%${v?';min-height:2px':''}"></span></span><span class="trend-label">${label}</span>`;
+    chart.appendChild(btn);
+  });
+}
+// 滑鼠移到長條、用鍵盤選到（每日支出也可以點一下）時，在長條上方顯示金額。
+function setupChartTooltip(chart,tip,label,tapToShow) {
   const show=e=>{
     const col=e.target.closest('.trend-col');if(!col)return;
-    const [y,m]=col.dataset.month.split('-').map(Number);
-    tip.innerHTML=`<strong>NT$ ${formatMoney(Number(col.dataset.value))}</strong><span>${y} 年 ${m} 月</span>`;
+    tip.innerHTML=`<strong>NT$ ${formatMoney(Number(col.dataset.value))}</strong><span>${label(col)}</span>`;
     tip.classList.remove('hidden');
     const half=tip.offsetWidth/2,x=col.offsetLeft+col.offsetWidth/2;
     tip.style.left=`${Math.min(chart.offsetWidth-half,Math.max(half,x))}px`;
-    tip.style.top=`${col.querySelector('.trend-bar').offsetTop-6}px`;
+    // 最高的長條上方沒有空間：提示最高只到圖表頂端（蓋住長條頂端），不蓋到上面的標題。
+    tip.style.top=`${Math.max(col.querySelector('.trend-bar').offsetTop-6,tip.offsetHeight)}px`;
   };
   const hide=()=>tip.classList.add('hidden');
   chart.addEventListener('pointerover',show);chart.addEventListener('focusin',show);
   chart.addEventListener('pointerleave',hide);chart.addEventListener('focusout',hide);
+  // 手機點一下時，手指離開就會觸發 pointerleave；click 在那之後，再顯示一次讓金額留著。
+  if(tapToShow)chart.addEventListener('click',show);
+}
+function setupTrendTooltip() {
+  setupChartTooltip($('statsTrendChart'),$('statsTrendTip'),col=>{const [y,m]=col.dataset.month.split('-').map(Number);return `${y} 年 ${m} 月`;});
+  setupChartTooltip($('statsDailyChart'),$('statsDailyTip'),col=>{const [,m,d]=col.dataset.date.split('-').map(Number);return `${m} 月 ${d} 日`;},true);
 }
 // 固定收支：房租、訂閱、薪水這類固定的收支，到了那天自動記一筆。
 // 自動記的紀錄代碼由規則與日期決定（rec_規則代碼_年月日），兩台裝置各自產生也只會有一筆；
@@ -4823,7 +4871,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = '7e262fc479cd';
+  const APP_VERSION = '614eebab158d';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -5044,7 +5092,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '7e262fc479cd';
+  const APP_VERSION = '614eebab158d';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

@@ -83,19 +83,49 @@ function renderStatsTrend(yearMode) {
     chart.appendChild(btn);
   });
 }
-// 滑鼠移到長條或用鍵盤選到時，顯示那個月的金額。
-function setupTrendTooltip() {
-  const chart=$('statsTrendChart'),tip=$('statsTrendTip');
+// 這個月每天的支出：一天一根長條，今天用主色，還沒到的日子留空。
+function renderStatsDaily(yearMode) {
+  const show=!yearMode&&state.statsType==='expense';
+  $('statsDailySection').classList.toggle('hidden',!show);
+  $('statsDailyTip').classList.add('hidden');
+  if(!show)return;
+  const month=state.currentMonth,[y,m]=month.split('-').map(Number),days=new Date(y,m,0).getDate(),now=today();
+  const sums=new Array(days).fill(0);
+  for(const r of state.records)if(r.type==='expense'&&r.date.startsWith(month+'-'))sums[Number(r.date.slice(8))-1]+=r.amount;
+  const max=Math.max(...sums);
+  $('statsDailyTitle').textContent=`${m} 月每日支出`;
+  $('statsDailyMax').textContent=max?`最多 ${m}/${sums.indexOf(max)+1} NT$ ${formatMoney(max)}`:'';
+  const chart=$('statsDailyChart');chart.innerHTML='';
+  chart.style.gridTemplateColumns=`repeat(${days},minmax(0,1fr))`;
+  sums.forEach((v,i)=>{
+    const d=i+1,date=`${month}-${String(d).padStart(2,'0')}`,btn=document.createElement('button');
+    // 日期只標 1、5、10…和月底，太擠時略過月底前的那一個（例如 31 天的月份不標 30）。
+    const label=d===1||d===days||(d%5===0&&days-d>=3)?d:'';
+    btn.type='button';btn.className='trend-col';btn.dataset.date=date;btn.dataset.value=v;
+    btn.setAttribute('aria-label',`${m} 月 ${d} 日 NT$ ${formatMoney(v)}`);
+    btn.setAttribute('aria-current',String(date===now));
+    btn.innerHTML=`<span class="trend-plot"><span class="trend-bar" style="height:${max?(v/max*100).toFixed(1):0}%${v?';min-height:2px':''}"></span></span><span class="trend-label">${label}</span>`;
+    chart.appendChild(btn);
+  });
+}
+// 滑鼠移到長條、用鍵盤選到（每日支出也可以點一下）時，在長條上方顯示金額。
+function setupChartTooltip(chart,tip,label,tapToShow) {
   const show=e=>{
     const col=e.target.closest('.trend-col');if(!col)return;
-    const [y,m]=col.dataset.month.split('-').map(Number);
-    tip.innerHTML=`<strong>NT$ ${formatMoney(Number(col.dataset.value))}</strong><span>${y} 年 ${m} 月</span>`;
+    tip.innerHTML=`<strong>NT$ ${formatMoney(Number(col.dataset.value))}</strong><span>${label(col)}</span>`;
     tip.classList.remove('hidden');
     const half=tip.offsetWidth/2,x=col.offsetLeft+col.offsetWidth/2;
     tip.style.left=`${Math.min(chart.offsetWidth-half,Math.max(half,x))}px`;
-    tip.style.top=`${col.querySelector('.trend-bar').offsetTop-6}px`;
+    // 最高的長條上方沒有空間：提示最高只到圖表頂端（蓋住長條頂端），不蓋到上面的標題。
+    tip.style.top=`${Math.max(col.querySelector('.trend-bar').offsetTop-6,tip.offsetHeight)}px`;
   };
   const hide=()=>tip.classList.add('hidden');
   chart.addEventListener('pointerover',show);chart.addEventListener('focusin',show);
   chart.addEventListener('pointerleave',hide);chart.addEventListener('focusout',hide);
+  // 手機點一下時，手指離開就會觸發 pointerleave；click 在那之後，再顯示一次讓金額留著。
+  if(tapToShow)chart.addEventListener('click',show);
+}
+function setupTrendTooltip() {
+  setupChartTooltip($('statsTrendChart'),$('statsTrendTip'),col=>{const [y,m]=col.dataset.month.split('-').map(Number);return `${y} 年 ${m} 月`;});
+  setupChartTooltip($('statsDailyChart'),$('statsDailyTip'),col=>{const [,m,d]=col.dataset.date.split('-').map(Number);return `${m} 月 ${d} 日`;},true);
 }

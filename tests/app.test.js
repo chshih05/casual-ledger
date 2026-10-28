@@ -1076,6 +1076,25 @@
     a.click('navBtnStats');
     return a;
   }
+  test('統計｜按月、支出時列出這個月每天的支出，今天用主色；點長條看金額；收入與整年不顯示', async () => {
+    const a = await compareApp();
+    assert(a.visible('statsDailySection'));
+    eq([a.text('statsDailyTitle'), a.text('statsDailyMax')], ['10 月每日支出', '最多 10/10 NT$ 500']);
+    const cols = () => [...a.$('statsDailyChart').children];
+    eq(cols().length, 31, '10 月有 31 天');
+    eq(cols().map(c => c.querySelector('.trend-label').textContent).filter(Boolean), ['1', '5', '10', '15', '20', '25', '31']);
+    eq([2, 9, 4].map(i => cols()[i].querySelector('.trend-bar').style.height), ['60%', '100%', '0%']);
+    eq(cols().map(c => c.getAttribute('aria-current')).indexOf('true'), 14, '今天（15 日）用主色');
+    a.click(cols()[9]);
+    assert(a.visible('statsDailyTip'), '點長條顯示金額');
+    eq(a.text('statsDailyTip'), 'NT$ 50010 月 10 日');
+    a.click('statsTabIncome');
+    assert(!a.visible('statsDailySection'), '收入不顯示');
+    a.click('statsTabExpense');
+    a.click('statsPeriodYear');
+    assert(!a.visible('statsDailySection'), '整年不顯示');
+  });
+
   const compareRows = a => [...a.$('statsCompareList').querySelectorAll('.compare-row')].map(r => [
     r.querySelector('.compare-name').textContent.trim(), r.querySelector('.compare-delta').textContent.trim(),
     r.querySelector('.compare-delta').dataset.tone, r.querySelector('.compare-detail').textContent.trim(),
