@@ -49,6 +49,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .storage-error { position:sticky; top:0; width:100%; max-width:960px; padding:12px; z-index:60; background:#532c2c; color:#fff; }
 .save-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:448px; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); background:#191B22f5; border-top:1px solid #2E323E; z-index:30; }
 #modalRecord { padding-bottom:100px; }
+/* 數字鍵盤的乘號：半形 × 比全形的＋－小，放大到看起來一樣大（高度和其他鍵相同） */
+.keypad-times { font-size:19px; line-height:24px; }
 /* 記帳頁只淡入、不位移：外層有位移（transform）時，底部的儲存列會跟著頁面捲動，而不是固定在畫面底部 */
 #modalRecord.animate-fade { animation-name:fadeInOnly; }
 @keyframes fadeInOnly { from { opacity:0; } to { opacity:1; } }
@@ -65,6 +67,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .search-filter-clear { min-height:40px; padding:0 10px; font-size:13px; color:#9CA3AF; }
 .trend-category { justify-self:start; min-height:36px; padding:6px 10px; border-radius:10px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:13px; }
 .search-summary { padding:0 2px; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
+/* 退款（負數的支出）的標籤：首頁紀錄與明細 */
+.refund-badge { flex-shrink:0; font-size:11px; font-weight:500; padding:2px 6px; border-radius:4px; background:#34D3991F; color:#34D399; }
 /* 首頁清單往前補的上個月紀錄前面的分隔線 */
 .home-month-divider { display:flex; align-items:center; gap:10px; padding:4px 2px 0; font-size:12px; color:#9CA3AF; }
 .home-month-divider::before, .home-month-divider::after { content:""; flex:1; height:1px; background:#2E323E; }
@@ -171,6 +175,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .trend-tip strong { font-size:14px; color:#F3F4F6; font-variant-numeric:tabular-nums; }
 /* 固定收支 */
 .rule-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.rule-summary { display:grid; gap:4px; padding:10px 12px; border-radius:12px; background:rgba(var(--accent-rgb),.08); border:1px solid rgba(var(--accent-rgb),.3); font-size:13px; line-height:1.5; color:#D1D5DB; font-variant-numeric:tabular-nums; }
+.rule-summary strong { color:#F3F4F6; white-space:nowrap; }
 .rule-row { padding:10px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
 .rule-row-main { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:start; gap:10px; }
 .rule-title { display:flex; align-items:center; gap:6px; min-width:0; font-size:14px; font-weight:600; color:#F3F4F6; }
@@ -257,6 +263,7 @@ select.rule-input { color-scheme:dark; }
 .cat-hint:empty { display:none; }
 .cat-section-title { font-size:13px; color:#9CA3AF; margin-bottom:6px; }
 .cat-delete { padding:8px 4px; font-size:13px; color:#F87171; }
+.cat-merge { padding:8px 4px; font-size:13px; color:var(--accent); }
 #modalCategory .icon-results { max-height:38dvh; }
 .category-add-tile { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:8px 4px; border-radius:14px; border:1px dashed #4B5262; color:var(--accent); background:transparent; min-height:70px; }
 .category-add-tile:hover, #step1CategoryGrid .category-add-tile:hover { border-color:var(--accent); }
@@ -275,6 +282,9 @@ select.rule-input { color-scheme:dark; }
 #dialogMessage { white-space:pre-line; }
 .dialog-check { display:flex; gap:8px; align-items:flex-start; font-size:13px; line-height:1.5; color:#D1D5DB; }
 .dialog-check input { width:18px; height:18px; margin-top:2px; flex-shrink:0; accent-color:var(--accent); }
+.dialog-field { display:grid; gap:4px; font-size:13px; color:#9CA3AF; }
+.dialog-select { width:100%; min-height:44px; padding:9px 12px; border-radius:12px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:16px; color-scheme:dark; }
+.dialog-select:focus { border-color:var(--accent); }
 .action:disabled { opacity:.6; }
 .csv-range { flex:1; min-width:0; max-width:100%; color:#F3F4F6; }
 .sync-chip { font-size:12px; padding:3px 10px; border-radius:999px; background:#262934; border:1px solid #3D4251; color:#D1D5DB; white-space:nowrap; }
@@ -345,6 +355,8 @@ select.rule-input { color-scheme:dark; }
           <div class="inline-flex rounded-xl bg-bgCard p-0.5 border border-borderSubtle text-xs">
             <button id="modalTypeExpense" type="button" class="px-3 py-1 rounded-lg font-semibold bg-accent text-bgMain transition">支出</button>
             <button id="modalTypeIncome" type="button" class="px-3 py-1 rounded-lg font-semibold text-textMuted hover:text-textMain transition">收入</button>
+            <!-- 退款、朋友還你代墊的錢：記成負數的支出，從選的分類扣掉（見 60-app.js 的 handleSaveRecord） -->
+            <button id="modalTypeRefund" type="button" class="px-3 py-1 rounded-lg font-semibold text-textMuted hover:text-textMain transition">退款</button>
           </div>
         </div>
       </div>
@@ -415,7 +427,7 @@ select.rule-input { color-scheme:dark; }
             <h2 class="text-xs font-semibold uppercase tracking-wider text-textMuted">最近收支紀錄</h2>
             <span class="text-[11px] text-textDim"></span>
           </div>
-          <span id="homeRecordCount" class="text-xs text-textDim">共 0 筆</span>
+          <span id="homeRecordCount" class="text-xs text-textDim">本月 0 筆</span>
         </div>
         <div class="flex gap-2 flex-wrap">
 <input id="recordSearch" type="search" aria-label="搜尋紀錄（全部月份）" placeholder="搜尋店家、備註或分類" class="search-input" />
@@ -448,8 +460,9 @@ select.rule-input { color-scheme:dark; }
 
         <div id="singleAmountBox" class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
           <div class="flex items-center justify-between">
-            <label for="inputAmountExpr" class="text-xs font-medium text-textMuted">金額</label>
-            <span id="calcPreviewBadge" class="text-xs font-mono font-semibold text-accent hidden">= NT$ 0</span>
+            <label id="amountLabel" for="inputAmountExpr" class="text-xs font-medium text-textMuted">金額</label>
+            <!-- 打算式時即時顯示結果；點一下把算式換成算好的金額 -->
+            <button id="calcPreviewBadge" type="button" title="點一下換成算好的金額" class="text-xs font-mono font-semibold text-accent hidden">= NT$ 0</button>
           </div>
           <div class="flex items-center gap-2 bg-bgInput border border-accent/40 rounded-xl px-3.5 py-2.5 focus-within:border-accent transition">
             <span class="text-lg font-semibold text-textMuted">NT$</span>
@@ -459,7 +472,7 @@ select.rule-input { color-scheme:dark; }
             </button>
           </div>
 
-          <p id="amountHint" class="text-xs text-textMuted">可輸入加減算式，例如 85＋35</p><button id="btnToggleKeypad" class="text-sm text-accent" aria-expanded="true">收起數字鍵盤</button><!-- 內建 4x4 小算盤網格 -->
+          <p id="amountHint" class="text-xs text-textMuted">可以打算式，例如 85＋35、55×3</p><button id="btnToggleKeypad" class="text-sm text-accent" aria-expanded="true">收起數字鍵盤</button><!-- 內建 4x4 小算盤網格 -->
           <div id="builtInKeypad" class="grid grid-cols-4 gap-2 pt-0.5 select-none">
             <button type="button" data-key="7" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">7</button>
             <button type="button" data-key="8" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">8</button>
@@ -479,7 +492,8 @@ select.rule-input { color-scheme:dark; }
             <button type="button" data-key="CLEAR" class="keypad-btn py-2.5 rounded-xl bg-bgElevated hover:bg-borderSubtle active:scale-95 border border-borderSubtle text-xs font-semibold text-dangerRed transition">C 清空</button>
             <button type="button" data-key="0" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-base font-bold text-textMain num-tabular transition">0</button>
             <button type="button" data-key="00" class="keypad-btn py-2.5 rounded-xl bg-bgInput hover:bg-bgElevated active:scale-95 border border-borderSubtle text-sm font-bold text-textMuted num-tabular transition">00</button>
-            <button type="button" id="btnApplyCalcNow" class="py-2.5 rounded-xl bg-accentSoft hover:bg-accent/25 active:scale-95 border border-accent/40 text-accent text-xs font-bold transition">＝ 算出</button>
+            <!-- 原本的「＝ 算出」：上方本來就即時顯示算好的金額、儲存時也會自動算，改放乘號；要換成算好的金額點上方的「= NT$ …」 -->
+            <button type="button" data-op="×" data-key="×" aria-label="乘" class="op-btn keypad-btn keypad-times py-2.5 rounded-xl bg-bgElevated hover:bg-borderSubtle active:scale-95 border border-borderSubtle font-bold text-textMain transition">×</button>
           </div>
         </div>
 
@@ -646,6 +660,7 @@ select.rule-input { color-scheme:dark; }
           <span class="text-[11px] text-textMuted">共用店家庫統計・點擊查看明細</span>
         </div>
         <div id="statsMerchantList" class="space-y-2"></div>
+        <button id="btnMerchantRankMore" type="button" class="hidden text-xs text-accent">顯示全部</button>
       </section>
 
       <!-- 整年度：每月金額（點月份查看該月統計） -->
@@ -791,6 +806,8 @@ select.rule-input { color-scheme:dark; }
           </div>
           <button id="btnAddRule" type="button" class="action shrink-0">新增</button>
         </div>
+        <!-- 每月與一年的合計（見 66-recurring.js 的 renderRuleSummary） -->
+        <div id="ruleSummary" class="hidden rule-summary"></div>
         <div id="ruleList" class="space-y-2"></div>
       </section>
       <section id="ruleEditor" class="hidden bg-bgCard border border-accent/40 rounded-2xl p-4 space-y-3">
@@ -902,7 +919,7 @@ select.rule-input { color-scheme:dark; }
 <select id="csvRange" class="action csv-range" aria-label="匯出範圍"></select>
 <button id="btnExportCsv" class="action">匯出 CSV</button>
 </div>
-<p id="csvStatus" class="text-xs text-textMuted">欄位：日期、類型、分類、金額、店家／收入來源、備註。</p>
+<p id="csvStatus" class="text-xs text-textMuted">欄位：日期、類型、分類、金額、店家／收入來源、備註。退款的金額是負數。</p>
 </section>
 <!-- 刪除資料：刪除所有紀錄、全部重置（見 60-app.js）；刪除前的帳本和匯入一樣保留一份，可以在上方還原 -->
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
@@ -925,7 +942,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">152ff6490831</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">f2f0106713f4</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1023,6 +1040,8 @@ select.rule-input { color-scheme:dark; }
       </div>
       <div class="cat-sheet-foot">
         <button id="btnCatEditorDelete" type="button" class="hidden cat-delete">刪除分類</button>
+        <!-- 把這個分類的紀錄與固定收支搬到另一個分類，再刪除這個分類 -->
+        <button id="btnCatEditorMerge" type="button" class="hidden cat-merge">合併到…</button>
         <span class="flex-1"></span>
         <button id="btnCatEditorCancel" type="button" class="px-3.5 py-2 rounded-xl bg-bgElevated text-xs font-medium text-textMuted hover:text-textMain">取消</button>
         <button id="btnCatEditorSave" type="button" class="px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">新增</button>
@@ -1036,6 +1055,7 @@ select.rule-input { color-scheme:dark; }
       <h4 id="dialogTitle" class="text-sm font-bold text-textMain">提示</h4>
       <p id="dialogMessage" class="text-xs text-textMuted leading-relaxed"></p>
       <input id="dialogInput" type="text" class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl px-3 py-2 text-sm text-textMain focus:outline-none focus:border-accent" />
+      <label id="dialogSelectWrap" class="hidden dialog-field"><span id="dialogSelectLabel"></span><select id="dialogSelect" class="dialog-select"></select></label>
       <textarea id="dialogTextarea" rows="7" readonly class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl p-2.5 text-[11px] font-mono text-textMuted focus:outline-none"></textarea>
       <label id="dialogCheckWrap" class="hidden dialog-check"><input id="dialogCheck" type="checkbox" /><span id="dialogCheckLabel"></span></label>
       <div class="flex justify-end gap-2 pt-1">
@@ -1175,16 +1195,17 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           { id: 'cat_breakfast', type: 'expense', name: '早餐', icon: 'breakfast', order: 1 },
           { id: 'cat_lunch', type: 'expense', name: '午餐', icon: 'lunch', order: 2 },
           { id: 'cat_dinner', type: 'expense', name: '晚餐', icon: 'dinner', order: 3 },
-          { id: 'cat_drink', type: 'expense', name: '飲料點心', icon: 'drink', order: 4 },
+          // 名稱依圖示取兩個字，記帳頁一格放得下、不會斷成兩行（舊帳本的換法見 60-app.js 的 SHORT_CATEGORY_NAMES）
+          { id: 'cat_drink', type: 'expense', name: '飲料', icon: 'drink', order: 4 },
           { id: 'cat_daily', type: 'expense', name: '日用品', icon: 'daily', order: 5 },
           { id: 'cat_transport', type: 'expense', name: '交通', icon: 'transport', order: 6 },
-          { id: 'cat_bills', type: 'expense', name: '帳單固定', icon: 'bills', order: 7 },
-          { id: 'cat_medical', type: 'expense', name: '醫療保健', icon: 'medical', order: 8 },
-          { id: 'cat_entertainment', type: 'expense', name: '娛樂休閒', icon: 'entertainment', order: 9 },
-          { id: 'cat_other_exp', type: 'expense', name: '其他支出', icon: 'other', order: 10 },
+          { id: 'cat_bills', type: 'expense', name: '帳單', icon: 'bills', order: 7 },
+          { id: 'cat_medical', type: 'expense', name: '醫療', icon: 'medical', order: 8 },
+          { id: 'cat_entertainment', type: 'expense', name: '娛樂', icon: 'entertainment', order: 9 },
+          { id: 'cat_other_exp', type: 'expense', name: '其他', icon: 'other', order: 10 },
           { id: 'cat_salary', type: 'income', name: '薪資', icon: 'salary', order: 1 },
-          { id: 'cat_bonus', type: 'income', name: '獎金補助', icon: 'bonus', order: 2 },
-          { id: 'cat_other_inc', type: 'income', name: '其他收入', icon: 'other', order: 3 }
+          { id: 'cat_bonus', type: 'income', name: '獎金', icon: 'bonus', order: 2 },
+          { id: 'cat_other_inc', type: 'income', name: '其他', icon: 'other', order: 3 }
         ],
         recurring: [], // 固定收支規則（見 66-recurring.js）
         merchants: [
@@ -1218,6 +1239,19 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       const num = Math.round(Number(n) || 0);
       return num.toLocaleString('zh-TW');
     }
+    // 退款記成負數的支出，合計可能是負數（例如這段期間退款比支出多）：負號放在 NT$ 前面。
+    function moneyText(n) {
+      return `${n < 0 ? '-' : ''}NT$ ${formatMoney(Math.abs(n))}`;
+    }
+    // 占比（0～100）：分母只算大於 0 的金額，扣到變負數的分類不算，占比加起來才是 100%。
+    function shareOf(amount, base) {
+      return amount > 0 && base > 0 ? (amount / base) * 100 : 0;
+    }
+    // 有金額但四捨五入是 0% 時寫「不到 1%」，不會看起來像沒花錢。
+    function percentText(share) {
+      return !share ? '' : share < 0.5 ? '不到 1%' : `${Math.round(share)}%`;
+    }
+    const barWidth = share => (share > 0 ? Math.max(Math.round(share), 3) : 0);
     function getCategoryById(id) {
       return state.categories.find(c => c.id === id) || { id: 'unknown', name: '未分類', icon: 'other', type: 'expense' };
     }
@@ -1298,8 +1332,9 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       renderSearchFilters();
       const monthRecords = filteredHomeRecords();
       const sumOf = (records, type) => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
-      const totalExp = sumOf(getMonthRecords(), 'expense');
-      const totalInc = sumOf(getMonthRecords(), 'income');
+      const thisMonth = getMonthRecords();
+      const totalExp = sumOf(thisMonth, 'expense');
+      const totalInc = sumOf(thisMonth, 'income');
       const net = totalInc - totalExp;
 
       document.getElementById('homeTotalExpense').textContent = formatMoney(totalExp);
@@ -1326,7 +1361,10 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         modeLabel.textContent = '顯示收支與結餘';
       }
 
-      document.getElementById('homeRecordCount').textContent = `共 ${monthRecords.length} 筆`;
+      // 筆數和上面的總額算同一個月，往前補的上個月幾天不算；搜尋、篩選時是找到的筆數。
+      document.getElementById('homeRecordCount').textContent = homeFilterActive()
+        ? `共 ${monthRecords.length} 筆`
+        : `${monthWord(state.currentMonth)} ${thisMonth.length} 筆`;
       renderSearchSummary(monthRecords);
       LedgerBackup.renderReminder();
       const listEl = document.getElementById('homeRecordList');
@@ -1369,10 +1407,12 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         const groupCard = document.createElement('div');
         groupCard.className = 'bg-bgCard border border-borderSubtle rounded-2xl overflow-hidden';
 
-        // 當天合計：支出一律顯示，有收入時另外列出。
-        const dayExp = sumOf(items, 'expense'), dayInc = sumOf(items, 'income');
+        // 當天合計：支出一律顯示，有退款、收入時另外列出（本月總額是支出扣掉退款）。
+        const dayRefund = -items.reduce((s, r) => s + (r.type === 'expense' && r.amount < 0 ? r.amount : 0), 0);
+        const dayExp = sumOf(items, 'expense') + dayRefund, dayInc = sumOf(items, 'income');
         const dayTotals = [
-          dayExp || !dayInc ? `<span class="text-textMain num-tabular">支出 $${formatMoney(dayExp)}</span>` : '',
+          dayExp || (!dayInc && !dayRefund) ? `<span class="text-textMain num-tabular">支出 $${formatMoney(dayExp)}</span>` : '',
+          dayRefund ? `<span class="text-incomeGreen num-tabular">退款 -$${formatMoney(dayRefund)}</span>` : '',
           dayInc ? `<span class="text-incomeGreen num-tabular">收入 +$${formatMoney(dayInc)}</span>` : ''
         ].filter(Boolean).join(' ');
         const headerHtml = `
@@ -1390,8 +1430,11 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           const isPendingSync = LedgerSync.isPending('rec:' + rec.id);
           const pendingBadge = isPendingSync ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-warnAmber/20 text-warnAmber font-medium">待同步</span>` : '';
           const fixedBadge = isRuleRecord(rec.id) ? `<span class="text-[11px] px-1.5 py-0.5 rounded bg-accentSoft text-accent">固定</span>` : '';
-          const amountPrefix = rec.type === 'income' ? '+' : '';
-          const amountColor = rec.type === 'income' ? 'text-incomeGreen' : 'text-textMain';
+          // 退款（負數的支出）用綠色和負號，表示從支出扣掉。
+          const refund = rec.amount < 0;
+          const refundBadge = refund ? '<span class="refund-badge">退款</span>' : '';
+          const amountPrefix = rec.type === 'income' ? '+' : refund ? '-' : '';
+          const amountColor = rec.type === 'income' || refund ? 'text-incomeGreen' : 'text-textMain';
 
           return `
             <button type="button" data-record-id="${escapeHtml(rec.id)}" class="record-item-btn w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-bgElevated/40 active:bg-bgElevated transition text-left border-b border-borderSubtle/40 last:border-b-0">
@@ -1403,6 +1446,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-medium text-textMain truncate">${escapeHtml(primaryTitle)}</span>
                     ${categoryBadge}
+                    ${refundBadge}
                     ${fixedBadge}
                     ${pendingBadge}
                   </div>
@@ -1410,7 +1454,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
                 </div>
               </div>
               <div class="text-right shrink-0">
-                <span class="text-sm font-semibold num-tabular ${amountColor}">${amountPrefix}$${formatMoney(rec.amount)}</span>
+                <span class="text-sm font-semibold num-tabular ${amountColor}">${amountPrefix}$${formatMoney(Math.abs(rec.amount))}</span>
               </div>
             </button>
           `;
@@ -1434,11 +1478,16 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       if (!show) return;
       const sumOf = type => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
       const expense = sumOf('expense'), income = sumOf('income');
+      const refund = -records.reduce((s, r) => s + (r.type === 'expense' && r.amount < 0 ? r.amount : 0), 0);
       const parts = [`全部月份找到 ${records.length} 筆`];
-      if (expense) parts.push(`支出合計 NT$ ${formatMoney(expense)}`);
+      // 支出合計已經扣掉退款（例如查「蝦皮」：買的減掉退貨的）；只找到退款時（例如查「退款」）列退款合計。
+      if (expense + refund) parts.push(`支出合計 ${moneyText(expense)}${refund ? `（已扣退款 NT$ ${formatMoney(refund)}）` : ''}`);
+      else if (refund) parts.push(`退款合計 NT$ ${formatMoney(refund)}`);
       if (income) parts.push(`收入合計 NT$ ${formatMoney(income)}`);
       el.textContent = parts.join('・');
     }
+    const MERCHANT_RANK_TOP = 10;
+    let merchantRankShowAll = false;
     function renderStats() {
       const yearMode = isYearStats();
       const records = getStatsRecords();
@@ -1456,7 +1505,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         tabExp.className = 'px-3.5 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-textMain transition';
         document.getElementById('statsTotalTitle').textContent = yearMode ? '全年總收入' : '當月總收入';
       }
-      document.getElementById('statsTotalValue').textContent = `NT$ ${formatMoney(total)}`;
+      document.getElementById('statsTotalValue').textContent = moneyText(total);
       [['statsPeriodMonth', !yearMode], ['statsPeriodYear', yearMode]].forEach(([id, on]) => {
         const btn = document.getElementById(id);
         btn.className = `px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${on ? 'bg-accent text-bgMain' : 'text-textMuted hover:text-textMain'}`;
@@ -1470,6 +1519,8 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         catMap[r.categoryId].count += 1;
       }
       const catList = Object.values(catMap).sort((a, b) => b.amount - a.amount);
+      const positiveSum = list => list.reduce((s, x) => s + Math.max(x.amount, 0), 0);
+      const catBase = positiveSum(catList);
       const catContainer = document.getElementById('statsCategoryList');
       catContainer.innerHTML = '';
 
@@ -1478,7 +1529,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       } else {
         catList.forEach(item => {
           const cat = getCategoryById(item.categoryId);
-          const pct = total > 0 ? Math.round((item.amount / total) * 100) : 0;
+          const share = shareOf(item.amount, catBase);
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'w-full text-left p-2.5 rounded-xl bg-bgInput hover:bg-bgElevated border border-borderSubtle/60 transition space-y-1.5';
@@ -1490,12 +1541,12 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
                 <span class="text-textDim">(${item.count} 筆)</span>
               </div>
               <div class="flex items-center gap-2 num-tabular">
-                <span class="text-textMuted">${pct}%</span>
-                <span class="font-bold text-sm text-textMain">NT$ ${formatMoney(item.amount)}</span>
+                <span class="text-textMuted">${percentText(share)}</span>
+                <span class="font-bold text-sm text-textMain">${moneyText(item.amount)}</span>
               </div>
             </div>
             <div class="w-full h-1.5 bg-bgCard rounded-full overflow-hidden">
-              <div class="h-full bg-accent rounded-full" style="width: ${Math.max(pct, 3)}%"></div>
+              <div class="h-full bg-accent rounded-full" style="width: ${barWidth(share)}%"></div>
             </div>
           `;
           btn.addEventListener('click', () => openDrilldownModal('category', item.categoryId, cat.name));
@@ -1511,15 +1562,17 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         merMap[key].count += 1;
       }
       const merList = Object.values(merMap).sort((a, b) => b.amount - a.amount);
+      const merBase = positiveSum(merList);
       const merContainer = document.getElementById('statsMerchantList');
       merContainer.innerHTML = '';
 
       if (merList.length === 0) {
         merContainer.innerHTML = `<div class="text-xs text-textDim py-4 text-center">${periodWord}尚無店家統計資料</div>`;
       } else {
-        merList.forEach(item => {
+        // 先列金額最高的 10 個，其餘按「顯示全部」（整年時店家很多）。
+        merList.slice(0, merchantRankShowAll ? merList.length : MERCHANT_RANK_TOP).forEach(item => {
           const displayName = item.key === '__BLANK__' ? (state.statsType === 'income' ? '未指定來源' : '未指定店家') : item.key;
-          const pct = total > 0 ? Math.round((item.amount / total) * 100) : 0;
+          const share = shareOf(item.amount, merBase);
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'w-full flex items-center justify-between p-2.5 rounded-xl bg-bgInput hover:bg-bgElevated border border-borderSubtle/60 text-xs transition';
@@ -1529,14 +1582,17 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
               <span class="text-textDim shrink-0">${item.count} 筆</span>
             </div>
             <div class="flex items-center gap-2 shrink-0 num-tabular">
-              <span class="text-textMuted">${pct}%</span>
-              <span class="font-bold text-sm text-textMain">NT$ ${formatMoney(item.amount)}</span>
+              <span class="text-textMuted">${percentText(share)}</span>
+              <span class="font-bold text-sm text-textMain">${moneyText(item.amount)}</span>
             </div>
           `;
           btn.addEventListener('click', () => openDrilldownModal('merchant', item.key, displayName));
           merContainer.appendChild(btn);
         });
       }
+      const merMore = document.getElementById('btnMerchantRankMore');
+      merMore.classList.toggle('hidden', merList.length <= MERCHANT_RANK_TOP);
+      merMore.textContent = merchantRankShowAll ? `只顯示前 ${MERCHANT_RANK_TOP} 名` : `顯示全部 ${merList.length} 個`;
 
       renderStatsMonthly(records, yearMode);
       renderStatsBudget(yearMode);
@@ -1566,7 +1622,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           <div class="w-full h-1.5 bg-bgCard rounded-full overflow-hidden">
             <div class="h-full bg-accent rounded-full" style="width: ${pct}%"></div>
           </div>
-          <span class="font-bold text-sm num-tabular ${tone}">NT$ ${formatMoney(amount)}</span>
+          <span class="font-bold text-sm num-tabular ${tone}">${moneyText(amount)}</span>
         `;
         btn.addEventListener('click', () => {
           state.statsPeriod = 'month';
@@ -1607,11 +1663,13 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
     function renderDrilldown() {
       const d = drilldown, records = drilldownRecords(), all = d.scope === 'all';
       const sum = records.reduce((s, r) => s + r.amount, 0);
+      // 合計已經扣掉退款；平均每筆只算買東西的那幾筆（退款不算一次消費）。
+      const buys = records.filter(r => r.amount > 0), refunds = records.length - buys.length;
       document.getElementById('drilldownTitle').textContent = `${d.titleName} — ${all ? '所有紀錄' : '明細紀錄'}`;
       const parts = [];
       if (!all && d.filterType !== 'date') parts.push(isYearStats() ? `${state.currentMonth.slice(0, 4)} 年` : state.currentMonth);
-      parts.push(`共 ${records.length} 筆`, `合計 NT$ ${formatMoney(sum)}`);
-      if (all && records.length) parts.push(`平均每筆 NT$ ${formatMoney(sum / records.length)}`);
+      parts.push(`共 ${records.length} 筆${refunds ? `（含 ${refunds} 筆退款）` : ''}`, `合計 ${moneyText(sum)}`);
+      if (all && buys.length) parts.push(`平均每筆 NT$ ${formatMoney(buys.reduce((s, r) => s + r.amount, 0) / buys.length)}`);
       document.getElementById('drilldownSubtitle').textContent = parts.join('・');
       const visits = document.getElementById('drilldownVisits');
       visits.textContent = all && records.length ? `最近一次 ${shortDate(records[0].date)}・第一次 ${shortDate(records[records.length - 1].date)}` : '';
@@ -1659,7 +1717,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           const inMonth = records.filter(r => r.date.startsWith(month));
           const head = document.createElement('div');
           head.className = 'drilldown-month';
-          head.innerHTML = `<span>${Number(month.slice(0, 4))} 年 ${Number(month.slice(5))} 月</span><span>${inMonth.length} 筆・NT$ ${formatMoney(inMonth.reduce((s, r) => s + r.amount, 0))}</span>`;
+          head.innerHTML = `<span>${Number(month.slice(0, 4))} 年 ${Number(month.slice(5))} 月</span><span>${inMonth.length} 筆・${moneyText(inMonth.reduce((s, r) => s + r.amount, 0))}</span>`;
           listEl.appendChild(head);
         }
         const cat = getCategoryById(rec.categoryId);
@@ -1674,10 +1732,11 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
               <span class="text-xs font-mono text-textMuted">${rec.date}</span>
               <span class="text-sm font-semibold text-textMain">${escapeHtml(title)}</span>
               <span class="text-[11px] px-1.5 py-0.5 rounded bg-bgCard text-textMuted">${escapeHtml(cat.name)}</span>
+              ${rec.amount < 0 ? '<span class="refund-badge">退款</span>' : ''}
             </div>
             ${rec.note ? `<div class="text-xs text-textMuted mt-1">${escapeHtml(rec.note)}</div>` : ''}
           </div>
-          <div class="text-sm font-bold num-tabular text-textMain">NT$ ${formatMoney(rec.amount)}</div>
+          <div class="text-sm font-bold num-tabular ${rec.amount < 0 ? 'text-incomeGreen' : 'text-textMain'}">${moneyText(rec.amount)}</div>
         `;
         if (!d.readOnly) row.addEventListener('click', () => {
           closeDrilldown();
@@ -1798,6 +1857,7 @@ function openCategoryEditor({mode='add',type='expense',id=null,from='settings'}=
   $('catEditorName').value=cat?cat.name:'';
   $('catEditorError').classList.add('hidden');
   $('btnCatEditorDelete').classList.toggle('hidden',!cat);
+  $('btnCatEditorMerge').classList.toggle('hidden',!cat||getCategoriesByType(type).length<2);
   $('btnCatEditorSave').textContent=cat?'儲存':from==='record'?'新增並選取':'新增';
   $('modalCategory').classList.remove('hidden');
   renderIconPicker(CAT_PICKER);
@@ -1861,24 +1921,60 @@ function saveCategoryEditor() {
   else renderAll();
   showToast(`已新增「${name}」`);
 }
-// 刪除：有紀錄或固定收支在用的分類不能刪，每種類型至少留一個。
+// 刪除：有紀錄或固定收支在用的分類不能刪（可以改用「合併到…」），每種類型至少留一個。
 function deleteFromCategoryEditor() {
   const ed=catEditor;if(!ed)return;
   const cat=state.categories.find(c=>c.id===ed.id);
   if(!cat)return closeCategoryEditor(); // 已在其他裝置刪除
-  if(state.records.some(r=>r.categoryId===ed.id))return categoryEditorError('還有紀錄使用這個分類，請先把那些紀錄改到其他分類。');
-  if((state.recurring||[]).some(r=>r.categoryId===ed.id))return categoryEditorError('固定收支還在使用這個分類，請先修改或刪除。');
+  const used=state.records.filter(r=>r.categoryId===ed.id).length;
+  if(used)return categoryEditorError(`還有 ${used.toLocaleString('zh-TW')} 筆紀錄使用這個分類，可以按「合併到…」把紀錄搬到其他分類。`);
+  if((state.recurring||[]).some(r=>r.categoryId===ed.id))return categoryEditorError('固定收支還在使用這個分類，可以按「合併到…」搬到其他分類，或先修改規則。');
   if(getCategoriesByType(cat.type).length<=1)return categoryEditorError('至少要保留一個分類。');
   openDialog({title:'刪除分類？',message:`「${cat.name}」沒有紀錄使用，刪除後不會影響帳本。`,confirmText:'刪除',onConfirm:()=>{
     if(!commit(s=>s.categories=s.categories.filter(c=>c.id!==ed.id)))return false;
     closeCategoryEditor();renderAll();showToast('已刪除分類');
   }});
 }
+// 合併：紀錄與固定收支搬到選的分類，再刪除這個分類（預算一起刪除，選的分類預算不變）。
+// 合併後分不開，所以和匯入一樣先保留一份合併前的帳本，可以在「資料與備份」還原。
+function mergeCategoryData(s,fromId,toId) {
+  s.records=s.records.map(r=>r.categoryId===fromId?{...r,categoryId:toId}:r); // 換成新物件，不改到上一版共用的紀錄
+  for(const r of s.recurring||[])if(r.categoryId===fromId)r.categoryId=toId;
+  s.categories=s.categories.filter(c=>c.id!==fromId);
+}
+function mergeFromCategoryEditor() {
+  const ed=catEditor;if(!ed)return;
+  const cat=state.categories.find(c=>c.id===ed.id);
+  if(!cat)return closeCategoryEditor(); // 已在其他裝置刪除
+  const targets=getCategoriesByType(cat.type).filter(c=>c.id!==cat.id);
+  if(!targets.length)return categoryEditorError('沒有其他分類可以合併。');
+  const records=state.records.filter(r=>r.categoryId===cat.id).length,rules=(state.recurring||[]).filter(r=>r.categoryId===cat.id).length;
+  openDialog({
+    title:`把「${cat.name}」合併到…`,
+    message:[
+      records||rules?`「${cat.name}」的${records?` ${records.toLocaleString('zh-TW')} 筆紀錄`:''}${records&&rules?'和':''}${rules?` ${rules} 項固定收支`:''}會搬到下面選的分類，然後刪除「${cat.name}」。`:`「${cat.name}」沒有紀錄，合併後直接刪除。`,
+      cat.budget?`「${cat.name}」的每月預算 NT$ ${formatMoney(cat.budget)} 會一起刪除，選的分類預算不變。`:'',
+      '合併後沒辦法再分開；合併前的帳本會保留一份，可以在「資料與備份」還原。',
+    ].filter(Boolean).join('\n'),
+    // 一開始沒有選：直接按「合併」不會併到清單第一個分類。
+    select:{label:'合併到',options:[{value:'',label:'請選擇分類'},...targets.map(c=>({value:c.id,label:c.name}))]},
+    confirmText:'合併',
+    onConfirm:async(_,__,targetId)=>{
+      if(!targetId)return showToast('請先選擇要合併到哪個分類。'),false;
+      const target=state.categories.find(c=>c.id===targetId&&c.type===cat.type&&c.id!==cat.id);
+      if(!target||!state.categories.some(c=>c.id===cat.id))return showToast('分類已經變更，請重新選擇。'),false;
+      const ok=await replaceLedger(s=>mergeCategoryData(s,cat.id,target.id),{reason:'merge',done:`已合併到「${target.name}」，可以在「資料與備份」還原合併前帳本`});
+      if(ok)closeCategoryEditor();
+      return ok;
+    },
+  });
+}
 function setupCategoryEditor() {
   $('btnCatEditorClose').onclick=closeCategoryEditor;
   $('btnCatEditorCancel').onclick=closeCategoryEditor;
   $('btnCatEditorSave').onclick=saveCategoryEditor;
   $('btnCatEditorDelete').onclick=deleteFromCategoryEditor;
+  $('btnCatEditorMerge').onclick=mergeFromCategoryEditor;
   $('catEditorName').addEventListener('input',onCategoryNameInput);
   $('catEditorName').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();saveCategoryEditor();}});
   // 點背景關閉（只在按下與放開都在背景上時，避免拖曳選字時誤關）。
@@ -1899,9 +1995,9 @@ const LedgerSyncCore = (() => {
   const HEADER_MODES = ['expense_only', 'expense_and_income', 'full_net'];
   const MAX_AMOUNT = 999999999;
   const MAX_CONFLICTS = 30;
-  // 同步格式版本：2 起有預算欄位與固定收支規則。舊版程式會略過或去掉這些資料，
-  // 所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
-  const FORMAT = 2;
+  // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）。
+  // 舊版程式會略過或去掉這些資料，所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
+  const FORMAT = 3;
   // 固定收支規則沿用偏好設定的類別（pref:rule_…），雲端安全規則不需要修改。
   const RULE_PREFIX = 'rule_';
 
@@ -2148,8 +2244,9 @@ const LedgerSyncCore = (() => {
   function validEntityData(kind, id, d) {
     if (!d || typeof d !== 'object') return false;
     if (kind === 'rec') {
+      // 退款記成負數的支出；收入一定是正數。
       return d.id === id && isId(d.id) && isType(d.type) && validDate(d.date) && isId(d.categoryId)
-        && Number.isSafeInteger(d.amount) && d.amount > 0 && d.amount <= MAX_AMOUNT
+        && Number.isSafeInteger(d.amount) && d.amount !== 0 && Math.abs(d.amount) <= MAX_AMOUNT && (d.amount > 0 || d.type === 'expense')
         && isStr(d.merchant, 100) && isStr(d.note, 1000) && Number.isFinite(d.seq);
     }
     if (kind === 'cat') {
@@ -2824,21 +2921,33 @@ function validDate(s) {
   const date = new Date(y, m - 1, d);
   return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
+// 金額可以打加、減、乘的算式，例如 85＋35、55×3＋20（先乘後加減）；鍵盤打 * 或 x 也算乘號。
+const AMOUNT_EXPR = (() => {
+  const num = '(?:\\d+|\\d{1,3}(?:,\\d{3})+)',
+    term = `${num}(?:×${num})*`;
+  return new RegExp(`^${term}(?:[+-]${term})*$`);
+})();
 function evaluateSimpleMath(expr) {
   const invalid = { valid: false, value: 0, isExpression: false };
   if (typeof expr !== 'string' || expr.length > 100) return invalid;
-  let s = expr.replace(/＋/g, '+').replace(/－/g, '-').replace(/\s/g, '');
-  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:[+-](?:\d+|\d{1,3}(?:,\d{3})+))*$/.test(s)) return invalid;
+  let s = expr
+    .replace(/＋/g, '+')
+    .replace(/－/g, '-')
+    .replace(/[xX*＊]/g, '×')
+    .replace(/\s/g, '');
+  if (!AMOUNT_EXPR.test(s)) return invalid;
   s = s.replace(/,/g, '');
-  const tokens = s.match(/[+-]?\d+/g);
   let value = 0;
-  for (const token of tokens) {
-    const number = Number(token);
-    if (!Number.isSafeInteger(number) || Math.abs(number) > MAX_AMOUNT) return invalid;
-    value += number;
+  for (const token of s.match(/[+-]?[\d×]+/g)) {
+    let product = 1;
+    for (const factor of token.replace(/^[+-]/, '').split('×')) {
+      product *= Number(factor);
+      if (!Number.isSafeInteger(product) || product > MAX_AMOUNT) return invalid;
+    }
+    value += token.startsWith('-') ? -product : product;
     if (!Number.isSafeInteger(value) || Math.abs(value) > MAX_AMOUNT) return invalid;
   }
-  return { valid: value > 0, value, isExpression: /[+-]/.test(s) };
+  return { valid: value > 0, value, isExpression: /[+\-×]/.test(s) };
 }
 function uid(prefix = 'rec') {
   return (
@@ -2862,6 +2971,38 @@ function removeSampleBook() {
     for (const key of ['demo', 'demo_before_import', 'demo_last_backup', 'active'])
       localStorage.removeItem(BOOK_PREFIX + key);
   } catch {}
+}
+// 預設分類改成兩個字的短名稱（記帳頁一格放不下四個字，會斷成兩行）。舊帳本裡還是原本的預設名稱、
+// 而且改版前沒改過的，開啟時換成短名稱一次。修改時間不變：其他裝置改過這個分類時以那邊為準；
+// 改版後自己改回原本的名稱，修改時間比改版晚，也不會再被換掉。
+const SHORT_CATEGORY_NAMES = {
+  cat_drink: ['飲料點心', '飲料'],
+  cat_bills: ['帳單固定', '帳單'],
+  cat_medical: ['醫療保健', '醫療'],
+  cat_entertainment: ['娛樂休閒', '娛樂'],
+  cat_other_exp: ['其他支出', '其他'],
+  cat_bonus: ['獎金補助', '獎金'],
+  cat_other_inc: ['其他收入', '其他'],
+};
+const SHORT_NAMES_SINCE = Date.UTC(2026, 9, 28, 18); // 改版時間：2026/10/29 02:00（台灣時間）
+function shortenDefaultCategoryNames() {
+  if (storageBlocked) return;
+  const due = state.categories.filter(c => {
+    const pair = SHORT_CATEGORY_NAMES[c.id];
+    return (
+      pair &&
+      c.name === pair[0] &&
+      !(ownTime(state.entityTimes, 'cat:' + c.id) > SHORT_NAMES_SINCE) &&
+      !state.categories.some(x => x.type === c.type && x.name === pair[1])
+    );
+  });
+  if (!due.length) return;
+  commit(
+    s => {
+      for (const { id } of due) s.categories.find(c => c.id === id).name = SHORT_CATEGORY_NAMES[id][1];
+    },
+    { stamp: false }
+  );
 }
 function validateBackup(input) {
   if (input?.format && input.format !== 'daily-ledger') throw new Error('這不是支援的記帳備份格式。');
@@ -2910,8 +3051,9 @@ function validateBackup(input) {
       !dateOk(r.date) ||
       cats.get(r.categoryId)?.type !== r.type ||
       !Number.isSafeInteger(r.amount) ||
-      r.amount <= 0 ||
-      r.amount > MAX_AMOUNT ||
+      r.amount === 0 ||
+      Math.abs(r.amount) > MAX_AMOUNT ||
+      (r.amount < 0 && r.type !== 'expense') || // 退款記成負數的支出；收入一定是正數
       !safeString(r.merchant, 100) ||
       !safeString(r.note, 1000)
     )
@@ -3106,12 +3248,16 @@ function homeFilterActive() {
 function filteredHomeRecords() {
   if (!homeFilterActive()) return getMonthRecords(homeListStart());
   const q = searchQuery.trim().toLocaleLowerCase();
+  // 退款的金額是負數，「金額至少」比的是退回多少；搜尋「退款」找得到所有退款。
   return state.records
     .filter(
       r =>
         (!searchCategory || r.categoryId === searchCategory) &&
-        r.amount >= searchMinAmount &&
-        (!q || [r.merchant, r.note, getCategoryById(r.categoryId).name].some(t => t.toLocaleLowerCase().includes(q)))
+        Math.abs(r.amount) >= searchMinAmount &&
+        (!q ||
+          [r.merchant, r.note, getCategoryById(r.categoryId).name, r.amount < 0 ? '退款' : ''].some(t =>
+            t.toLocaleLowerCase().includes(q)
+          ))
     )
     .sort((a, b) => b.date.localeCompare(a.date) || a.seq - b.seq);
 }
@@ -3161,8 +3307,9 @@ function discardForm() {
   });
   closeCategoryEditor();
 }
-function emptyForm(type = 'expense', date = today()) {
-  return { editingRecordId: null, type, categoryId: '', date, amountExpr: '', selectedMerchant: '', note: '' };
+// refund：退款或別人還錢。用支出的分類，金額存成負數，從那個分類的支出扣掉。
+function emptyForm(type = 'expense', date = today(), refund = false) {
+  return { editingRecordId: null, type, refund, categoryId: '', date, amountExpr: '', selectedMerchant: '', note: '' };
 }
 function openNewRecordModal(type = 'expense') {
   state.previousView = state.activeView === 'record' ? 'home' : state.activeView;
@@ -3180,9 +3327,10 @@ function openEditRecordModal(id) {
   modalState = {
     editingRecordId: id,
     type: rec.type,
+    refund: rec.amount < 0,
     categoryId: rec.categoryId,
     date: rec.date,
-    amountExpr: String(rec.amount),
+    amountExpr: String(Math.abs(rec.amount)),
     selectedMerchant: rec.merchant,
     note: rec.note,
   };
@@ -3234,10 +3382,14 @@ function renderRecordModal() {
     isEdit = Boolean(d.editingRecordId),
     cat = state.categories.find(c => c.id === d.categoryId);
   $('modalTitleText').textContent = isEdit ? '編輯紀錄' : '記一筆';
-  ['expense', 'income'].forEach(t => {
-    const b = $(t === 'expense' ? 'modalTypeExpense' : 'modalTypeIncome');
-    b.className = 'px-3 py-1 rounded-lg font-semibold ' + (t === d.type ? 'bg-accent text-bgMain' : 'text-textMuted');
-    b.setAttribute('aria-pressed', String(t === d.type));
+  const mode = d.refund ? 'refund' : d.type;
+  [
+    ['modalTypeExpense', 'expense'],
+    ['modalTypeIncome', 'income'],
+    ['modalTypeRefund', 'refund'],
+  ].forEach(([id, m]) => {
+    $(id).className = 'px-3 py-1 rounded-lg font-semibold ' + (m === mode ? 'bg-accent text-bgMain' : 'text-textMuted');
+    $(id).setAttribute('aria-pressed', String(m === mode));
   });
   $('step1CategoryGrid').innerHTML = '';
   getCategoriesByType(d.type).forEach(c => {
@@ -3268,7 +3420,11 @@ function renderRecordModal() {
   $('step1CategoryGrid').appendChild(add);
   $('step1CategoryGrid').classList.remove('hidden');
   $('categoryPrompt').classList.toggle('hidden', Boolean(cat));
-  $('categoryPrompt').textContent = '選擇分類，填入金額';
+  $('categoryPrompt').textContent = d.refund ? '選擇要扣掉的分類，填入退回的金額' : '選擇分類，填入金額';
+  $('amountLabel').textContent = d.refund ? '退回的金額' : '金額';
+  $('amountHint').textContent = d.refund
+    ? '退貨退款、朋友還你代墊的錢：會從這個分類的支出扣掉，不算收入'
+    : '可以打算式，例如 85＋35、55×3';
   $('step2CatIcon').innerHTML = cat ? ICONS[cat.icon] || ICONS.other : '';
   $('step2CatName').textContent = cat?.name || '尚未選擇';
   $('step2DetailSection').classList.remove('hidden');
@@ -3280,7 +3436,8 @@ function renderRecordModal() {
   renderDateChips();
   $('merchantFieldLabel').textContent = d.type === 'income' ? '收入來源' : '店家';
   $('inputMerchantSearch').placeholder = d.type === 'income' ? '搜尋或輸入收入來源' : '搜尋或輸入店家名稱';
-  $('inputRecordNote').placeholder = d.type === 'income' ? '例如：十月份薪資' : '例如：大麥克套餐、衛生紙';
+  $('inputRecordNote').placeholder =
+    d.type === 'income' ? '例如：十月份薪資' : d.refund ? '例如：退貨、小明還晚餐的錢' : '例如：大麥克套餐、衛生紙';
   $('btnDeleteRecordInModal').classList.toggle('hidden', !isEdit);
   $('btnSaveAndNextRecord').classList.toggle('hidden', isEdit || !state.preferences.enableSaveAndNext);
   $('recordFormError').classList.add('hidden');
@@ -3301,7 +3458,8 @@ function getRecommendedMerchants(categoryId, amount, keyword = '') {
   const amounts = new Map(),
     recent = new Map();
   for (const r of state.records) {
-    if (r.categoryId !== categoryId || !r.merchant || archived.has(r.merchant)) continue;
+    // 退款不算一次消費，也不拿來比金額。
+    if (r.categoryId !== categoryId || !r.merchant || archived.has(r.merchant) || r.amount < 0) continue;
     if (!amounts.has(r.merchant)) amounts.set(r.merchant, []);
     amounts.get(r.merchant).push(r.amount);
     if (r.date >= since) recent.set(r.merchant, (recent.get(r.merchant) || 0) + 1);
@@ -3566,7 +3724,7 @@ function handleSaveRecord(keepOpenForNext = false) {
     type: d.type,
     date: d.date,
     categoryId: d.categoryId,
-    amount: parsed.value,
+    amount: d.refund ? -parsed.value : parsed.value,
     merchant: d.selectedMerchant.trim(),
     note: d.note.trim(),
   };
@@ -3593,7 +3751,7 @@ function handleSaveRecord(keepOpenForNext = false) {
   showToast(notice ? `${LedgerSync.savedMessage()}。${notice}` : LedgerSync.savedMessage(), notice ? 5000 : undefined);
   clearHomeSearch();
   if (keepOpenForNext) {
-    modalState = emptyForm(d.type, d.date);
+    modalState = emptyForm(d.type, d.date, d.refund);
     renderAll();
     renderRecordModal();
     window.scrollTo({ top: 0 });
@@ -3842,6 +4000,7 @@ function renderSettings() {
 }
 let dialogReturnFocus = null;
 // danger：刪除資料這類一次改掉很多的動作，確認鍵用紅色，一開始停在「取消」，直接按 Enter 不會刪除。
+// select：從清單選一個（例如合併分類時選要併到哪裡），選的值是 onConfirm 的第三個參數。
 function openDialog({
   title,
   message,
@@ -3850,6 +4009,7 @@ function openDialog({
   textareaValue,
   hideCancel = false,
   checkbox,
+  select,
   confirmText = '確認',
   danger = false,
   onConfirm,
@@ -3860,6 +4020,9 @@ function openDialog({
   $('dialogInput').classList.toggle('hidden', inputValue === undefined);
   $('dialogInput').value = inputValue || '';
   $('dialogInput').inputMode = inputMode;
+  $('dialogSelectWrap').classList.toggle('hidden', !select);
+  $('dialogSelectLabel').textContent = select?.label || '';
+  $('dialogSelect').replaceChildren(...(select?.options || []).map(o => new Option(o.label, o.value)));
   $('dialogTextarea').classList.toggle('hidden', textareaValue === undefined);
   $('dialogTextarea').value = textareaValue || '';
   $('dialogCheckWrap').classList.toggle('hidden', !checkbox);
@@ -3869,11 +4032,19 @@ function openDialog({
   $('dialogBtnConfirm').textContent = confirmText;
   $('dialogBtnConfirm').classList.toggle('dialog-danger', danger);
   $('dialogBtnConfirm').onclick = async () => {
-    if (onConfirm && (await onConfirm($('dialogInput').value, $('dialogCheck').checked)) === false) return;
+    const values = [$('dialogInput').value, $('dialogCheck').checked, $('dialogSelect').value];
+    if (onConfirm && (await onConfirm(...values)) === false) return;
     closeDialog();
   };
   $('modalDialog').classList.remove('hidden');
-  (inputValue !== undefined ? $('dialogInput') : danger ? $('dialogBtnCancel') : $('dialogBtnConfirm')).focus();
+  (inputValue !== undefined
+    ? $('dialogInput')
+    : select
+      ? $('dialogSelect')
+      : danger
+        ? $('dialogBtnCancel')
+        : $('dialogBtnConfirm')
+  ).focus();
 }
 function closeDialog() {
   $('modalDialog').classList.add('hidden');
@@ -3916,6 +4087,7 @@ function exportBackup() {
   }
 }
 // CSV 給試算表看：日期由舊到新，同一天依記帳先後。文字開頭是 = + - @ 時前面加 '，避免試算表把它當成公式執行。
+// 退款的類型寫「退款」、金額是負數，和支出加起來就是扣掉退款後的花費。
 const CSV_HEADER = ['日期', '類型', '分類', '金額', '店家／收入來源', '備註'];
 function csvCell(value) {
   let s = String(value ?? '');
@@ -3928,7 +4100,7 @@ function recordsCsv(records) {
     .sort((a, b) => a.date.localeCompare(b.date) || (Number(a.seq) || 0) - (Number(b.seq) || 0))
     .map(r => [
       r.date,
-      r.type === 'income' ? '收入' : '支出',
+      r.type === 'income' ? '收入' : r.amount < 0 ? '退款' : '支出',
       getCategoryById(r.categoryId)?.name || '',
       r.amount,
       r.merchant,
@@ -4134,13 +4306,14 @@ function importSummary(imported, plan, origin) {
   lines.push('合併不會刪除目前的紀錄；匯入前的帳本會保留一份，可在設定還原。');
   return lines.join('\n');
 }
-// 匯入、還原、刪除所有紀錄、全部重置會一次改掉整本帳：改之前先把目前的帳本存一份（只留最近一份），存不了就不改。
+// 匯入、還原、刪除所有紀錄、全部重置、合併分類會一次改掉很多：改之前先把目前的帳本存一份（只留最近一份），存不了就不改。
 // 「資料與備份」的還原按鈕依存下的原因顯示。
 const UNDO_KINDS = {
   import: { verb: '匯入', button: '還原匯入前帳本' },
   restore: { verb: '還原', button: '回到還原前帳本' },
   clear: { verb: '刪除', button: '還原刪除前帳本' },
   reset: { verb: '重置', button: '還原重置前帳本' },
+  merge: { verb: '合併', button: '還原合併前帳本' },
 };
 const undoKind = () => UNDO_KINDS[LedgerStore.snapshotReason('before_import')] || UNDO_KINDS.import;
 let replacingLedger = false;
@@ -4311,7 +4484,7 @@ function removeRecord() {
   state.activeView = state.previousView || 'home';
   renderAll();
   $('undoBarText').textContent =
-    `已刪除 ${rec.merchant || getCategoryById(rec.categoryId).name} $${formatMoney(rec.amount)}`;
+    `已刪除 ${rec.merchant || getCategoryById(rec.categoryId).name} ${rec.amount < 0 ? '退款 ' : ''}$${formatMoney(Math.abs(rec.amount))}`;
   $('undoBar').classList.remove('hidden');
   clearTimeout(window.__undoTimer);
   window.__undoTimer = setTimeout(() => {
@@ -4323,9 +4496,9 @@ function handleKeypadInput(key) {
   let s = modalState.amountExpr;
   if (key === 'CLEAR') s = '';
   else if (key === 'BACK') s = s.slice(0, -1);
-  else if (key === '+' || key === '-') {
+  else if (key === '+' || key === '-' || key === '×') {
     if (!s) return;
-    s = /[+-]$/.test(s) ? s.slice(0, -1) + key : s + key;
+    s = /[+\-×*xX]$/.test(s) ? s.slice(0, -1) + key : s + key;
   } else if (s.length < 100) s = s === '0' ? key : s + key;
   modalState.amountExpr = s;
   $('inputAmountExpr').value = s;
@@ -4423,12 +4596,20 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   on('btnOpenAddModal', 'click', () => openNewRecordModal());
   on('btnCloseRecordModal', 'click', closeRecordPage);
-  ['expense', 'income'].forEach(t =>
-    on(t === 'expense' ? 'modalTypeExpense' : 'modalTypeIncome', 'click', () => {
-      if (modalState.type === t) return;
-      modalState.type = t;
-      modalState.categoryId = '';
-      modalState.selectedMerchant = '';
+  // 支出、收入、退款：退款也用支出的分類，在支出和退款之間切換時保留已選的分類與店家。
+  [
+    ['modalTypeExpense', 'expense', false],
+    ['modalTypeIncome', 'income', false],
+    ['modalTypeRefund', 'expense', true],
+  ].forEach(([id, type, refund]) =>
+    on(id, 'click', () => {
+      if (modalState.type === type && modalState.refund === refund) return;
+      if (modalState.type !== type) {
+        modalState.categoryId = '';
+        modalState.selectedMerchant = '';
+      }
+      modalState.type = type;
+      modalState.refund = refund;
       renderRecordModal();
     })
   );
@@ -4442,9 +4623,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   document.querySelectorAll('.keypad-btn').forEach(b => (b.onclick = () => handleKeypadInput(b.dataset.key)));
   on('btnKeypadBackspaceTop', 'click', () => handleKeypadInput('BACK'));
-  on('btnApplyCalcNow', 'click', () => {
+  // 點算式結果「= NT$ …」：把算式換成算好的金額（只有算式有效時才會顯示）。
+  on('calcPreviewBadge', 'click', () => {
     const p = evaluateSimpleMath(modalState.amountExpr);
-    if (!p.valid) return formError('請先完成有效算式。');
+    if (!p.valid) return;
     modalState.amountExpr = String(p.value);
     $('inputAmountExpr').value = modalState.amountExpr;
     updateCalcPreviewAndRecommendations();
@@ -4576,6 +4758,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     compareShowAll = !compareShowAll;
     renderStats();
   });
+  on('btnMerchantRankMore', 'click', () => {
+    merchantRankShowAll = !merchantRankShowAll;
+    renderStats();
+  });
   setupTrendTooltip();
   setupRecurringForm();
   on('btnExportJsonDemo', 'click', exportBackup);
@@ -4616,8 +4802,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       else if (state.activeView === 'record') closeRecordPage();
     }
     if (e.key === 'Tab' && modal) {
-      const nodes = [...modal.querySelectorAll('button,input,textarea')].filter(
-        x => !x.hidden && !x.classList.contains('hidden') && !x.disabled
+      // 只算看得到的（例如藏起來的勾選框、清單外框裡面的欄位不算）。
+      const nodes = [...modal.querySelectorAll('button,input,select,textarea')].filter(
+        x => x.getClientRects().length && !x.disabled
       );
       const first = nodes[0],
         last = nodes.at(-1);
@@ -4640,6 +4827,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       renderAll();
     }
   });
+  shortenDefaultCategoryNames();
   renderAll();
   if (loadIssue) showStorageError(loadIssue);
   openFromShortcut();
@@ -4685,12 +4873,14 @@ function monthPace(month) {
 }
 // 進度條的顏色代表狀態（紫＝正常、黃＝快用完、紅＝超出），旁邊一定有文字，不只靠顏色。
 function budgetMeter(item, pace = null) {
-  const pct = Math.min(100, (item.used / item.limit) * 100).toFixed(1);
+  // 已用金額扣掉退款後可能是負數（例如這個月只有退款），進度條從 0 算起。
+  const used = Math.max(0, item.used),
+    pct = Math.min(100, (used / item.limit) * 100).toFixed(1);
   const tick =
     pace === null
       ? ''
       : `<span class="budget-pace" style="left:${(pace * 100).toFixed(1)}%"></span><span class="budget-pace-label" style="left:${Math.min(92, Math.max(8, pace * 100)).toFixed(1)}%">今天</span>`;
-  return `<div class="budget-meter${pace === null ? '' : ' has-pace'}" data-status="${budgetStatus(item)}" role="img" aria-label="已用 ${Math.round((item.used * 100) / item.limit)}%"><div class="budget-track"><div class="budget-fill" style="width:${pct}%"></div></div>${tick}</div>`;
+  return `<div class="budget-meter${pace === null ? '' : ' has-pace'}" data-status="${budgetStatus(item)}" role="img" aria-label="已用 ${Math.round((used * 100) / item.limit)}%"><div class="budget-track"><div class="budget-fill" style="width:${pct}%"></div></div>${tick}</div>`;
 }
 function budgetNote(item) {
   const status = budgetStatus(item),
@@ -4702,7 +4892,7 @@ function budgetNote(item) {
 function budgetRow(item, pace = null, extra = '') {
   const icon = item.icon ? `<span class="text-accent">${ICONS[item.icon] || ICONS.other}</span>` : '';
   return `<div class="budget-row">
-    <div class="budget-row-head"><span class="budget-name">${icon}<span class="truncate">${escapeHtml(item.name)}</span></span><span class="budget-amount">NT$ ${formatMoney(item.used)}<span class="text-textMuted"> / ${formatMoney(item.limit)}</span></span></div>
+    <div class="budget-row-head"><span class="budget-name">${icon}<span class="truncate">${escapeHtml(item.name)}</span></span><span class="budget-amount">${moneyText(item.used)}<span class="text-textMuted"> / ${formatMoney(item.limit)}</span></span></div>
     ${budgetMeter(item, pace)}
     <div class="budget-note">${budgetNote(item)}${extra}</div>
   </div>`;
@@ -4888,8 +5078,8 @@ function sumByCategory(type, [start, end]) {
 const deltaTone = (delta, type) => (!delta ? 'flat' : delta > 0 === (type === 'expense') ? 'bad' : 'good');
 function deltaChip(cur, prev, type) {
   const d = cur - prev;
-  if (!prev || !d) return '';
-  return `<span class="stats-delta" data-tone="${deltaTone(d, type)}">${d > 0 ? '▲' : '▼'} ${Math.round((Math.abs(d) * 100) / prev)}%</span>`;
+  if (!(prev > 0) || !d) return '';
+  return `<span class="stats-delta" data-tone="${deltaTone(d, type)}">${d > 0 ? '▲' : '▼'} ${percentText((Math.abs(d) * 100) / prev)}</span>`;
 }
 function renderStatsCompare(yearMode) {
   const type = state.statsType,
@@ -4906,7 +5096,7 @@ function renderStatsCompare(yearMode) {
       ? `和${name}一樣`
       : `比${name}${d > 0 ? '多' : '少'} NT$ ${formatMoney(Math.abs(d))}`;
   $('statsCompareText').innerHTML = `${deltaChip(cur.total, prev.total, type)}<span>${text}</span>`;
-  $('statsAverage').textContent = `${p.avgWord} NT$ ${formatMoney(cur.total / p.units)}`;
+  $('statsAverage').textContent = `${p.avgWord} ${moneyText(cur.total / p.units)}`;
 
   const rows = getCategoriesByType(type)
     .map(c => ({ c, cur: cur.map.get(c.id) || 0, prev: prev.map.get(c.id) || 0 }))
@@ -4924,7 +5114,7 @@ function renderStatsCompare(yearMode) {
     btn.className = 'compare-row';
     btn.innerHTML = `<span class="compare-name"><span class="text-accent">${ICONS[c.icon] || ICONS.other}</span><span class="truncate">${escapeHtml(c.name)}</span></span>
       <span class="compare-delta" data-tone="${deltaTone(diff, type)}">${diff ? `${diff > 0 ? '▲' : '▼'} NT$ ${formatMoney(Math.abs(diff))}` : '持平'}</span>
-      <span class="compare-detail">${p.curLabel} NT$ ${formatMoney(a)}・${p.prevLabel} NT$ ${formatMoney(b)}</span>`;
+      <span class="compare-detail">${p.curLabel} ${moneyText(a)}・${p.prevLabel} ${moneyText(b)}</span>`;
     btn.addEventListener('click', () => openDrilldownModal('category', c.id, c.name));
     list.appendChild(btn);
   });
@@ -4932,8 +5122,12 @@ function renderStatsCompare(yearMode) {
   more.classList.toggle('hidden', rows.length <= COMPARE_TOP);
   more.textContent = compareShowAll ? `只顯示變化最大的 ${COMPARE_TOP} 個` : `顯示全部 ${rows.length} 個分類`;
 }
+// 長條：以最高的為滿格；扣掉退款後是 0 或負數時不畫。
+function trendBar(v, max) {
+  return `<span class="trend-bar" style="height:${max > 0 && v > 0 ? ((v / max) * 100).toFixed(1) : 0}%${v > 0 ? ';min-height:2px' : ''}"></span>`;
+}
 // 近 12 個月的走勢：目前月份用主色，其他月份用灰色；點長條切換到那個月。
-// 近 12 個月可以只看一個分類（例如「飲料點心」每個月花多少）；換支出／收入時，分類不在清單裡就回到全部分類。
+// 近 12 個月可以只看一個分類（例如「飲料」每個月花多少）；換支出／收入時，分類不在清單裡就回到全部分類。
 let trendCategory = '';
 function renderTrendCategories(type) {
   const select = $('statsTrendCategory'),
@@ -4978,9 +5172,9 @@ function renderStatsTrend(yearMode) {
     btn.className = 'trend-col';
     btn.dataset.month = k;
     btn.dataset.value = v;
-    btn.setAttribute('aria-label', `${ky} 年 ${km} 月 NT$ ${formatMoney(v)}`);
+    btn.setAttribute('aria-label', `${ky} 年 ${km} 月 ${moneyText(v)}`);
     btn.setAttribute('aria-current', String(k === state.currentMonth));
-    btn.innerHTML = `<span class="trend-plot"><span class="trend-bar" style="height:${max ? ((v / max) * 100).toFixed(1) : 0}%${v ? ';min-height:2px' : ''}"></span></span><span class="trend-label">${km}</span>`;
+    btn.innerHTML = `<span class="trend-plot">${trendBar(v, max)}</span><span class="trend-label">${km}</span>`;
     btn.addEventListener('click', () => {
       state.currentMonth = k;
       renderAll();
@@ -4998,12 +5192,17 @@ function renderStatsDaily(yearMode) {
     [y, m] = month.split('-').map(Number),
     days = new Date(y, m, 0).getDate(),
     now = today();
-  const sums = new Array(days).fill(0);
+  // 每天的支出扣掉當天的退款；counts 是當天有幾筆，有紀錄的日子才能點開。
+  const sums = new Array(days).fill(0),
+    counts = new Array(days).fill(0);
   for (const r of state.records)
-    if (r.type === 'expense' && r.date.startsWith(month + '-')) sums[Number(r.date.slice(8)) - 1] += r.amount;
+    if (r.type === 'expense' && r.date.startsWith(month + '-')) {
+      sums[Number(r.date.slice(8)) - 1] += r.amount;
+      counts[Number(r.date.slice(8)) - 1]++;
+    }
   const max = Math.max(...sums);
   $('statsDailyTitle').textContent = `${m} 月每日支出`;
-  $('statsDailyMax').textContent = max ? `最多 ${m}/${sums.indexOf(max) + 1} NT$ ${formatMoney(max)}` : '';
+  $('statsDailyMax').textContent = max > 0 ? `最多 ${m}/${sums.indexOf(max) + 1} NT$ ${formatMoney(max)}` : '';
   const chart = $('statsDailyChart');
   chart.innerHTML = '';
   chart.style.gridTemplateColumns = `repeat(${days},minmax(0,1fr))`;
@@ -5017,11 +5216,11 @@ function renderStatsDaily(yearMode) {
     btn.className = 'trend-col';
     btn.dataset.date = date;
     btn.dataset.value = v;
-    btn.setAttribute('aria-label', `${m} 月 ${d} 日 NT$ ${formatMoney(v)}`);
+    btn.setAttribute('aria-label', `${m} 月 ${d} 日 ${moneyText(v)}`);
     btn.setAttribute('aria-current', String(date === now));
-    btn.innerHTML = `<span class="trend-plot"><span class="trend-bar" style="height:${max ? ((v / max) * 100).toFixed(1) : 0}%${v ? ';min-height:2px' : ''}"></span></span><span class="trend-label">${label}</span>`;
+    btn.innerHTML = `<span class="trend-plot">${trendBar(v, max)}</span><span class="trend-label">${label}</span>`;
     // 有紀錄的日子：點長條列出那天的紀錄（沒有紀錄的日子只顯示 NT$ 0）。
-    if (v)
+    if (counts[i])
       btn.addEventListener('click', e => {
         e.stopPropagation();
         $('statsDailyTip').classList.add('hidden');
@@ -5035,7 +5234,7 @@ function setupChartTooltip(chart, tip, label, tapToShow) {
   const show = e => {
     const col = e.target.closest('.trend-col');
     if (!col) return;
-    tip.innerHTML = `<strong>NT$ ${formatMoney(Number(col.dataset.value))}</strong><span>${label(col)}</span>`;
+    tip.innerHTML = `<strong>${moneyText(Number(col.dataset.value))}</strong><span>${label(col)}</span>`;
     tip.classList.remove('hidden');
     const half = tip.offsetWidth / 2,
       x = col.offsetLeft + col.offsetWidth / 2;
@@ -5195,7 +5394,43 @@ function ruleStatus(rule) {
   if (rule.end && rule.next > rule.end) return { text: `已結束（${formatDay(rule.end)}）` };
   return { text: `下次 ${formatDay(rule.next)}${rule.end ? `・到 ${formatDay(rule.end)}` : ''}` };
 }
+// 上方的合計：還會自動記帳的規則（暫停、已結束、分類被刪掉的不算）每月與一年各多少。
+// 每年一次的（例如年繳保險）另外列出，一年的合計才算得對。
+function ruleTotals(type) {
+  const t = { monthly: 0, yearly: 0, count: 0, paused: 0 };
+  for (const r of state.recurring || []) {
+    if (r.type !== type || !ruleUsable(r) || (r.end && r.next > r.end)) continue;
+    if (r.paused) {
+      t.paused++;
+      continue;
+    }
+    t[r.freq === 'year' ? 'yearly' : 'monthly'] += r.amount;
+    t.count++;
+  }
+  return t;
+}
+function renderRuleSummary() {
+  const lines = ['expense', 'income']
+    .map(type => {
+      const { monthly, yearly, count, paused } = ruleTotals(type),
+        word = type === 'income' ? '固定收入' : '固定支出',
+        money = n => `<strong>NT$ ${formatMoney(n)}</strong>`;
+      if (!count) return '';
+      const year = `一年約 ${money(monthly * 12 + yearly)}`;
+      const text =
+        monthly && yearly
+          ? `${word}每月 ${money(monthly)}，加上每年一次的 ${money(yearly)}，${year}`
+          : monthly
+            ? `${word}每月 ${money(monthly)}，${year}`
+            : `${word}${year}`;
+      return `<p>${text}${paused ? `（不含暫停中的 ${paused} 項）` : ''}</p>`;
+    })
+    .filter(Boolean);
+  $('ruleSummary').innerHTML = lines.join('');
+  $('ruleSummary').classList.toggle('hidden', !lines.length);
+}
 function renderRecurringSettings() {
+  renderRuleSummary();
   const list = $('ruleList'),
     rules = (state.recurring || [])
       .slice()
@@ -6020,7 +6255,7 @@ const LedgerSync = (() => {
     if (del || !data) return '（已刪除）';
     if (kind === 'rec') {
       const who = data.merchant || getCategoryById(data.categoryId).name;
-      return `${data.date.slice(5).replace('-', '/')} ${who} ${data.type === 'income' ? '+' : ''}$${formatMoney(data.amount)}${data.note ? '・' + data.note : ''}`;
+      return `${data.date.slice(5).replace('-', '/')} ${who} ${data.type === 'income' ? '+' : data.amount < 0 ? '退款 ' : ''}$${formatMoney(Math.abs(data.amount))}${data.note ? '・' + data.note : ''}`;
     }
     if (kind === 'cat') return `分類「${data.name}」`;
     if (kind === 'mer') return `${data.type === 'income' ? '收入來源' : '店家'}「${data.name}」${data.archived ? '（已停用）' : ''}`;
@@ -6254,7 +6489,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = '152ff6490831';
+  const APP_VERSION = 'f2f0106713f4';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -6475,7 +6710,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '152ff6490831';
+  const APP_VERSION = 'f2f0106713f4';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

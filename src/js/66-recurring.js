@@ -123,7 +123,43 @@ function ruleStatus(rule) {
   if (rule.end && rule.next > rule.end) return { text: `已結束（${formatDay(rule.end)}）` };
   return { text: `下次 ${formatDay(rule.next)}${rule.end ? `・到 ${formatDay(rule.end)}` : ''}` };
 }
+// 上方的合計：還會自動記帳的規則（暫停、已結束、分類被刪掉的不算）每月與一年各多少。
+// 每年一次的（例如年繳保險）另外列出，一年的合計才算得對。
+function ruleTotals(type) {
+  const t = { monthly: 0, yearly: 0, count: 0, paused: 0 };
+  for (const r of state.recurring || []) {
+    if (r.type !== type || !ruleUsable(r) || (r.end && r.next > r.end)) continue;
+    if (r.paused) {
+      t.paused++;
+      continue;
+    }
+    t[r.freq === 'year' ? 'yearly' : 'monthly'] += r.amount;
+    t.count++;
+  }
+  return t;
+}
+function renderRuleSummary() {
+  const lines = ['expense', 'income']
+    .map(type => {
+      const { monthly, yearly, count, paused } = ruleTotals(type),
+        word = type === 'income' ? '固定收入' : '固定支出',
+        money = n => `<strong>NT$ ${formatMoney(n)}</strong>`;
+      if (!count) return '';
+      const year = `一年約 ${money(monthly * 12 + yearly)}`;
+      const text =
+        monthly && yearly
+          ? `${word}每月 ${money(monthly)}，加上每年一次的 ${money(yearly)}，${year}`
+          : monthly
+            ? `${word}每月 ${money(monthly)}，${year}`
+            : `${word}${year}`;
+      return `<p>${text}${paused ? `（不含暫停中的 ${paused} 項）` : ''}</p>`;
+    })
+    .filter(Boolean);
+  $('ruleSummary').innerHTML = lines.join('');
+  $('ruleSummary').classList.toggle('hidden', !lines.length);
+}
 function renderRecurringSettings() {
+  renderRuleSummary();
   const list = $('ruleList'),
     rules = (state.recurring || [])
       .slice()

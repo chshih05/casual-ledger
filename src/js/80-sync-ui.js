@@ -328,7 +328,7 @@ const LedgerSync = (() => {
     if (del || !data) return '（已刪除）';
     if (kind === 'rec') {
       const who = data.merchant || getCategoryById(data.categoryId).name;
-      return `${data.date.slice(5).replace('-', '/')} ${who} ${data.type === 'income' ? '+' : ''}$${formatMoney(data.amount)}${data.note ? '・' + data.note : ''}`;
+      return `${data.date.slice(5).replace('-', '/')} ${who} ${data.type === 'income' ? '+' : data.amount < 0 ? '退款 ' : ''}$${formatMoney(Math.abs(data.amount))}${data.note ? '・' + data.note : ''}`;
     }
     if (kind === 'cat') return `分類「${data.name}」`;
     if (kind === 'mer') return `${data.type === 'income' ? '收入來源' : '店家'}「${data.name}」${data.archived ? '（已停用）' : ''}`;

@@ -202,15 +202,17 @@
       '10 月・不計入本月合計',
       '10 月 4 日（週日） 支出 $70',
     ], '11 月有 30 天：往前補到 10/4，10/3 不列出');
-    eq(a.text('homeRecordCount'), '共 5 筆');
+    eq(a.text('homeRecordCount'), '本月 4 筆', '筆數和本月合計一樣，不算往前補的 10/4');
 
     a.type('recordSearch', '星巴克');
     eq(items(), ['11 月 1 日（週日） 支出 $50', '10 月 4 日（週日） 支出 $70'], '搜尋找全部月份，搜尋時沒有分隔線');
     eq(a.text('searchSummary'), '全部月份找到 2 筆・支出合計 NT$ 120');
+    eq(a.text('homeRecordCount'), '共 2 筆', '搜尋時是找到的筆數');
     a.type('recordSearch', '');
 
     a.click('btnPrevMonth');
     eq(items(), ['10 月 4 日（週日） 支出 $70', '10 月 3 日（週六） 支出 $999'], '以前的月份只列那個月，沒有分隔線');
+    eq(a.text('homeRecordCount'), '10 月 2 筆');
     eq(a.text('homeTotalExpense'), '1,069');
 
     setToday('2026-10-30');
@@ -754,7 +756,7 @@
     eq(a.text('toastBox'), '已更新分類');
     a.click(categoryRow(a, '早午餐').querySelector('.category-edit'));
     a.click('btnCatEditorDelete');
-    eq(a.text('catEditorError'), '還有紀錄使用這個分類，請先把那些紀錄改到其他分類。');
+    eq(a.text('catEditorError'), '還有 1 筆紀錄使用這個分類，可以按「合併到…」把紀錄搬到其他分類。');
     a.click('btnCatEditorCancel');
     a.click(categoryRow(a, '晚餐').querySelector('.category-edit'));
     a.click('btnCatEditorDelete');
@@ -919,7 +921,7 @@
     eq(categoryRows(a).slice(0, 3), ['午餐', '晚餐', '早餐'], '拖過晚餐的一半就換到晚餐後面');
     eq(a.ev('getCategoryById("cat_breakfast").order'), 1, '還沒放開前不存檔');
     pointer(a, handle, 'pointerup', startY + middleY(rows[2]) - middleY(rows[0]) + 6);
-    eq(a.ev('getCategoriesByType("expense").map(c => c.name)').slice(0, 4), ['午餐', '晚餐', '早餐', '飲料點心']);
+    eq(a.ev('getCategoriesByType("expense").map(c => c.name)').slice(0, 4), ['午餐', '晚餐', '早餐', '飲料']);
     eq((await a.stored()).categories.filter(c => c.type === 'expense').sort((x, y) => x.order - y.order).map(c => c.name).slice(0, 3), ['午餐', '晚餐', '早餐'], '重新整理後也保留');
     eq(a.ev('getCategoriesByType("income").map(c => c.order)'), [1, 2, 3], '收入分類的順序不受影響');
     assert(!a.$('settingsCategoryList').querySelector('.dragging'), '放開後恢復原狀');
@@ -1031,14 +1033,14 @@
     eq(budgetRows(a, 'homeBudgetBody'), [
       ['總預算', 'NT$ 11,800 / 20,000', 'ok', `剩 NT$ 8,200 還有 ${daysLeft} 天，每天約 NT$ ${Math.floor(8200 / daysLeft).toLocaleString('zh-TW')}`],
       ['午餐', 'NT$ 2,600 / 3,000', 'near', '快用完 剩 NT$ 400'],
-      ['飲料點心', 'NT$ 1,200 / 1,000', 'over', '超出 NT$ 200'],
+      ['飲料', 'NT$ 1,200 / 1,000', 'over', '超出 NT$ 200'],
     ]);
     assert(a.$('homeBudgetBody').querySelector('.budget-pace'), '這個月的總預算標出「今天」的位置');
     eq(a.$('homeBudgetBody').querySelector('.budget-more').textContent, '其他 1 個分類預算都還在範圍內');
     a.click('btnHomeBudgetMore');
     eq(a.ev('state.activeView'), 'stats');
     assert(a.visible('statsBudgetSection'));
-    eq(budgetRows(a, 'statsBudgetList').map(r => r[0]), ['總預算', '午餐', '飲料點心', '交通']);
+    eq(budgetRows(a, 'statsBudgetList').map(r => r[0]), ['總預算', '午餐', '飲料', '交通']);
     eq(budgetRows(a, 'statsBudgetList')[3].slice(1), ['NT$ 0 / 2,000', 'ok', '剩 NT$ 2,000']);
     a.click('statsTabIncome');
     assert(!a.visible('statsBudgetSection'), '收入統計不顯示預算');
@@ -1238,7 +1240,7 @@
     eq(a.text('ruleList'), '還沒有固定收支。按「新增」設定房租、訂閱或薪水。');
     a.click('btnAddRule');
     assert(a.visible('ruleEditor'));
-    eq(a.$('ruleCategory').value, 'cat_bills', '支出預設「帳單固定」');
+    eq(a.$('ruleCategory').value, 'cat_bills', '支出預設「帳單」');
     fillRule(a, { amount: '12,000', merchant: '房東', note: '房租', start: `${k(-2)}-01` });
     eq(a.text('rulePreview'), `每月 1 日記一筆。儲存後會先補記 3 筆（${firstOf(k(-2))}～${firstOf(k(0))}），已經記過或刪掉的日期會略過。`);
     a.click('btnRuleSave');
@@ -1346,10 +1348,10 @@
     const a = await personalApp();
     a.ev(`commit(s => { s.merchants.push('中華電信'); s.merchantTypes['中華電信'] = 'expense'; s.recurring.push({ id: 'rule_t', type: 'expense', categoryId: 'cat_bills', amount: 300, merchant: '中華電信', note: '', freq: 'month', day: 1, next: '2099-01-01' }); })`);
     openSettings(a, 'categories');
-    const row = [...a.$('settingsCategoryList').querySelectorAll('.category-row')].find(r => r.textContent.includes('帳單固定'));
+    const row = [...a.$('settingsCategoryList').querySelectorAll('.category-row')].find(r => r.textContent.includes('帳單'));
     a.click(row.querySelector('.category-edit'));
     a.click('btnCatEditorDelete');
-    eq(a.text('catEditorError'), '固定收支還在使用這個分類，請先修改或刪除。');
+    eq(a.text('catEditorError'), '固定收支還在使用這個分類，可以按「合併到…」搬到其他分類，或先修改規則。');
     assert(a.ev('state.categories.some(c => c.id === "cat_bills")'));
     a.ev(`commit(s => renameMerchant(s, '中華電信', '中華電信 4G'))`);
     eq(a.ev('state.recurring[0].merchant'), '中華電信 4G');
@@ -2262,5 +2264,215 @@
     a.click('btnCloudBackupList');
     await waitFor(() => cloud.backups.size === 1, { message: '規則更新後應馬上補存這一週的備份' });
     await waitFor(() => !a.visible('cloudBackupError'), { message: '補存後不再顯示錯誤' });
+  });
+
+  // ---------- 分類短名稱、合併分類 ----------
+  test('分類｜四個字的預設分類改成兩個字：舊帳本裡改版前沒改過的，開啟時換一次；改版後改回原名或已有同名的不動', async () => {
+    const a = await personalApp();
+    eq(defaultCategories(a).map(c => c.name), ['早餐', '午餐', '晚餐', '飲料', '日用品', '交通', '帳單', '醫療', '娛樂', '其他', '薪資', '獎金', '其他']);
+    const since = a.ev('SHORT_NAMES_SINCE');
+    // 舊帳本：還是原本的四個字。飲料點心在改版前設過預算；醫療保健在改版後才改回原名；自己建過「娛樂」。
+    a.ev(`commit(s => {
+      const old = { cat_drink: '飲料點心', cat_bills: '帳單固定', cat_medical: '醫療保健', cat_entertainment: '娛樂休閒', cat_other_exp: '其他支出', cat_bonus: '獎金補助', cat_other_inc: '其他收入' };
+      for (const c of s.categories) if (old[c.id]) c.name = old[c.id];
+      s.categories.find(c => c.id === 'cat_drink').budget = 1500;
+      s.categories.push({ id: 'cat_mine', type: 'expense', name: '娛樂', icon: 'other', order: 11 });
+      s.entityTimes = { ...s.entityTimes, 'cat:cat_drink': ${since - 86400000}, 'cat:cat_medical': ${since + 60000} };
+    }, { stamp: false })`);
+    await a.stored();
+    const b = await reloadApp();
+    const ids = ['cat_drink', 'cat_bills', 'cat_medical', 'cat_entertainment', 'cat_other_exp', 'cat_bonus', 'cat_other_inc', 'cat_mine'];
+    const names = app => ids.map(id => app.ev(`getCategoryById('${id}').name`));
+    eq(names(b), ['飲料', '帳單', '醫療保健', '娛樂休閒', '其他', '獎金', '其他', '娛樂']);
+    eq(b.ev("getCategoryById('cat_drink').budget"), 1500, '預算保留');
+    eq(b.ev("state.entityTimes['cat:cat_drink']"), since - 86400000, '修改時間不變：其他裝置改過這個分類時以那邊為準');
+    assert(!b.ev("Object.hasOwn(state.entityTimes, 'cat:cat_bills')"), '沒有時間的預設分類仍然沒有時間');
+    eq((await b.stored()).categories.find(c => c.id === 'cat_bills').name, '帳單', '已經存進裝置');
+    b.ev("commit(s => { s.categories.find(c => c.id === 'cat_drink').name = '飲料點心'; })");
+    await b.stored();
+    const c = await reloadApp();
+    eq(names(c), ['飲料點心', '帳單', '醫療保健', '娛樂休閒', '其他', '獎金', '其他', '娛樂'], '改版後自己改回原本的名稱，不會再被換掉');
+  });
+
+  test('分類｜合併到其他分類：紀錄和固定收支搬過去、分類刪除；合併前的帳本可以還原', async () => {
+    const a = await personalApp();
+    addRecord(a, { cat: 3, amount: '60', merchant: '50嵐' });
+    addRecord(a, { cat: 3, amount: '55' });
+    addRecord(a, { cat: 1, amount: '120' });
+    a.ev(`commit(s => {
+      s.categories.find(c => c.id === 'cat_drink').budget = 1500;
+      s.recurring.push({ id: 'rule_m', type: 'expense', categoryId: 'cat_drink', amount: 50, merchant: '', note: '', freq: 'month', day: 1, next: '2099-01-01' });
+    })`);
+    a.click('btnOpenAddModal');
+    a.click(a.$('step1CategoryGrid').querySelector('.category-add-tile'));
+    assert(!a.visible('btnCatEditorMerge'), '新增分類時沒有「合併到…」');
+    a.click('btnCatEditorCancel');
+    a.click('btnCloseRecordModal');
+    openSettings(a, 'categories');
+    a.click(categoryRow(a, '飲料').querySelector('.category-edit'));
+    a.click('btnCatEditorDelete');
+    eq(a.text('catEditorError'), '還有 2 筆紀錄使用這個分類，可以按「合併到…」把紀錄搬到其他分類。');
+    a.click('btnCatEditorMerge');
+    eq(a.text('dialogTitle'), '把「飲料」合併到…');
+    eq(a.text('dialogMessage').split('\n'), [
+      '「飲料」的 2 筆紀錄和 1 項固定收支會搬到下面選的分類，然後刪除「飲料」。',
+      '「飲料」的每月預算 NT$ 1,500 會一起刪除，選的分類預算不變。',
+      '合併後沒辦法再分開；合併前的帳本會保留一份，可以在「資料與備份」還原。',
+    ]);
+    eq([...a.$('dialogSelect').options].map(o => o.textContent), ['請選擇分類', '早餐', '午餐', '晚餐', '日用品', '交通', '帳單', '醫療', '娛樂', '其他'], '只列其他支出分類，一開始沒有選');
+    a.click('dialogBtnConfirm');
+    await sleep(0);
+    assert(a.visible('modalDialog'), '沒選分類時不合併');
+    eq(a.text('toastBox'), '請先選擇要合併到哪個分類。');
+    a.$('dialogSelect').value = 'cat_lunch';
+    a.click('dialogBtnConfirm');
+    await waitFor(() => !a.visible('modalDialog'), { message: '合併確認視窗沒有關閉' });
+    assert(!a.visible('modalCategory'), '合併後關掉分類編輯');
+    assert(!a.ev("state.categories.some(c => c.id === 'cat_drink')"), '分類已刪除');
+    eq(a.ev('state.records.map(r => r.categoryId)'), ['cat_lunch', 'cat_lunch', 'cat_lunch']);
+    eq(a.ev('state.recurring[0].categoryId'), 'cat_lunch', '固定收支一起搬過去');
+    eq(a.text('toastBox'), '已合併到「午餐」，可以在「資料與備份」還原合併前帳本');
+    eq((await a.stored()).records.filter(r => r.categoryId === 'cat_lunch').length, 3);
+    openSettings(a, 'data');
+    eq(a.text('btnUndoImport'), '還原合併前帳本');
+    a.click('btnUndoImport');
+    await waitFor(() => a.visible('modalDialog'), { message: '沒有出現還原確認' });
+    a.click('dialogBtnConfirm');
+    await waitFor(() => a.ev("state.categories.some(c => c.id === 'cat_drink')"), { message: '還原後分類回來' });
+    eq(a.ev("state.records.filter(r => r.categoryId === 'cat_drink').length"), 2);
+  });
+
+  test('固定收支｜上方列出每月與一年的合計：年繳的另外算，暫停、已結束的不算', async () => {
+    const a = await personalApp();
+    openSettings(a, 'recurring');
+    assert(!a.visible('ruleSummary'), '沒有規則時不顯示');
+    const rule = (id, type, categoryId, amount, extra = {}) => ({ id, type, categoryId, amount, merchant: '', note: '', freq: 'month', day: 1, next: '2099-01-01', ...extra });
+    const rules = [
+      rule('rule_a', 'expense', 'cat_bills', 499),
+      rule('rule_b', 'expense', 'cat_entertainment', 390),
+      rule('rule_c', 'expense', 'cat_medical', 24000, { freq: 'year' }),
+      rule('rule_d', 'expense', 'cat_bills', 100, { paused: true }),
+      rule('rule_e', 'expense', 'cat_bills', 777, { end: '2098-12-31' }),
+      rule('rule_f', 'income', 'cat_salary', 52000),
+    ];
+    a.ev(`commit(s => { s.recurring.push(...${JSON.stringify(rules)}); })`);
+    a.ev('renderSettings()');
+    eq([...a.$('ruleSummary').children].map(p => p.textContent), [
+      '固定支出每月 NT$ 889，加上每年一次的 NT$ 24,000，一年約 NT$ 34,668（不含暫停中的 1 項）',
+      '固定收入每月 NT$ 52,000，一年約 NT$ 624,000',
+    ]);
+  });
+
+  test('統計｜很小的分類寫「不到 1%」；店家先列前 10 名，可以顯示全部', async () => {
+    const a = await personalApp();
+    const month = a.ev('today()').slice(0, 7);
+    const records = Array.from({ length: 12 }, (_, i) => ({ id: `rec_m${i}`, seq: i + 1, type: 'expense', date: `${month}-01`, categoryId: 'cat_lunch', amount: 1000 + i, merchant: `店${i + 1}`, note: '' }));
+    records.push({ id: 'rec_t', seq: 99, type: 'expense', date: `${month}-01`, categoryId: 'cat_transport', amount: 25, merchant: '', note: '' });
+    await importBackup(a, { records, categories: defaultCategories(a), merchants: [] });
+    a.click('navBtnStats');
+    const row = name => [...a.$('statsCategoryList').children].find(b => b.textContent.includes(name)).textContent.replace(/\s+/g, ' ').trim();
+    eq(row('交通'), '交通 (1 筆) 不到 1% NT$ 25');
+    eq(row('午餐'), '午餐 (12 筆) 100% NT$ 12,066');
+    const merchants = () => [...a.$('statsMerchantList').children].map(b => b.firstElementChild.firstElementChild.textContent);
+    eq(merchants().length, 10);
+    eq(merchants()[0], '店12', '金額最高的排第一');
+    eq(a.text('btnMerchantRankMore'), '顯示全部 13 個');
+    a.click('btnMerchantRankMore');
+    eq(merchants().length, 13);
+    eq(a.text('btnMerchantRankMore'), '只顯示前 10 名');
+    a.click('btnMerchantRankMore');
+    eq(merchants().length, 10);
+  });
+
+  test('畫面｜數字鍵盤可以乘：55×3 先乘後加減；點上方的算式結果換成算好的金額', async () => {
+    const a = await personalApp();
+    const calc = expr => a.ev(`evaluateSimpleMath(${JSON.stringify(expr)})`);
+    eq(calc('55×3'), { valid: true, value: 165, isExpression: true });
+    eq(['55×3+20', '10-2×3', '2*3', '1,000x2', '85＋35'].map(x => calc(x).value), [185, 4, 6, 2000, 120]);
+    eq(['×3', '3×', '3××2', '0×5', '999999999×2'].map(x => calc(x).valid), [false, false, false, false, false]);
+    a.click('btnOpenAddModal');
+    assert(!a.$('builtInKeypad').textContent.includes('算出'), '鍵盤上的「＝ 算出」換成乘號');
+    a.$('step1CategoryGrid').querySelectorAll('button')[3].click();
+    for (const key of ['5', '5', '+', '×', '3']) a.d.querySelector(`#builtInKeypad [data-key="${key}"]`).click();
+    eq(a.$('inputAmountExpr').value, '55×3', '連按兩個符號時換成後按的');
+    eq(a.text('calcPreviewBadge'), '= NT$ 165');
+    a.click('calcPreviewBadge');
+    eq(a.$('inputAmountExpr').value, '165');
+    assert(!a.visible('calcPreviewBadge'), '換成金額後不再顯示算式結果');
+    a.click('btnSaveRecord');
+    eq((await a.stored()).records[0].amount, 165);
+  });
+
+  // ---------- 退款 ----------
+  test('退款｜記成負數的支出：從分類與店家扣掉、不算收入；首頁、搜尋、統計、明細、CSV 都看得出來', async () => {
+    const a = await personalApp();
+    addRecord(a, { cat: 4, amount: '1290', merchant: '蝦皮', note: '吹風機' });
+    a.click('btnOpenAddModal');
+    a.click('modalTypeRefund');
+    eq(a.$('modalTypeRefund').getAttribute('aria-pressed'), 'true');
+    eq(a.text('amountLabel'), '退回的金額');
+    eq([...a.$('step1CategoryGrid').querySelectorAll('button')].slice(0, 5).map(b => b.textContent.trim()), ['早餐', '午餐', '晚餐', '飲料', '日用品'], '退款用支出的分類');
+    a.$('step1CategoryGrid').querySelectorAll('button')[4].click();
+    a.type('inputAmountExpr', '1000');
+    a.type('inputMerchantSearch', '蝦皮');
+    a.type('inputRecordNote', '退貨');
+    a.click('btnSaveRecord');
+    const saved = (await a.stored()).records.find(r => r.note === '退貨');
+    eq([saved.type, saved.categoryId, saved.amount, saved.merchant], ['expense', 'cat_daily', -1000, '蝦皮']);
+
+    eq(a.text('homeTotalExpense'), '290', '本月支出扣掉退款');
+    const day = a.$('homeRecordList').firstElementChild;
+    eq(day.querySelector('.day-total').textContent.replace(/\s+/g, ' ').trim(), '支出 $1,290 退款 -$1,000');
+    const refundRow = [...day.querySelectorAll('.record-item-btn')].find(b => b.textContent.includes('退貨'));
+    assert(refundRow.querySelector('.refund-badge'), '標示「退款」');
+    assert(refundRow.textContent.includes('-$1,000'), refundRow.textContent);
+
+    a.type('recordSearch', '蝦皮');
+    eq(a.text('searchSummary'), '全部月份找到 2 筆・支出合計 NT$ 290（已扣退款 NT$ 1,000）');
+    a.type('recordSearch', '退款');
+    eq(a.text('searchSummary'), '全部月份找到 1 筆・退款合計 NT$ 1,000', '搜尋「退款」找得到所有退款');
+    a.type('recordSearch', '');
+
+    a.click('navBtnStats');
+    eq(a.text('statsTotalValue'), 'NT$ 290');
+    assert(a.$('statsCategoryList').firstElementChild.textContent.includes('NT$ 290'));
+    a.click('statsTabIncome');
+    eq(a.text('statsTotalValue'), 'NT$ 0', '退款不算收入');
+    a.click('statsTabExpense');
+    a.ev("openMerchantHistory('蝦皮', { type: 'expense' })");
+    eq(a.text('drilldownSubtitle'), '共 2 筆（含 1 筆退款）・合計 NT$ 290・平均每筆 NT$ 1,290', '平均只算買東西的那幾筆');
+    assert(a.$('drilldownList').textContent.includes('-NT$ 1,000'));
+    a.click('btnCloseDrilldown');
+    assert(a.ev('recordsCsv(state.records)').includes(',退款,日用品,-1000,蝦皮,退貨'), 'CSV 的類型寫退款、金額是負數');
+
+    a.click('navBtnHome');
+    a.click([...a.$('homeRecordList').querySelectorAll('.record-item-btn')].find(b => b.textContent.includes('退貨')));
+    eq(a.$('modalTypeRefund').getAttribute('aria-pressed'), 'true', '修改時打開的是退款');
+    eq(a.$('inputAmountExpr').value, '1000', '金額顯示正數');
+    a.click('modalTypeExpense');
+    eq([a.ev('modalState.categoryId'), a.ev('modalState.selectedMerchant')], ['cat_daily', '蝦皮'], '支出和退款之間切換保留分類與店家');
+    a.click('modalTypeIncome');
+    eq(a.ev('modalState.categoryId'), '', '切到收入時要重選分類');
+    a.click('btnCloseRecordModal');
+    eq(a.ev("state.records.find(r => r.note === '退貨').amount"), -1000, '沒儲存就離開，原紀錄不變');
+  });
+
+  test('退款｜預算扣掉退款；備份與匯入保留負數的支出，收入不能是負數', async () => {
+    const a = await personalApp();
+    const month = a.ev('today()').slice(0, 7);
+    const rec = (id, type, categoryId, amount) => ({ id, seq: 1, type, date: `${month}-01`, categoryId, amount, merchant: '', note: '' });
+    const cats = defaultCategories(a).map(c => (c.id === 'cat_daily' ? { ...c, budget: 1000 } : c));
+    await importBackup(a, { records: [rec('rec_b', 'expense', 'cat_daily', 1200), rec('rec_r', 'expense', 'cat_daily', -500)], categories: cats, merchants: [] }, { replace: true });
+    eq(a.ev("state.records.find(r => r.id === 'rec_r').amount"), -500, '匯入保留退款');
+    eq(a.ev(`budgetItems('${month}')`).map(i => [i.key, i.used]), [['cat_daily', 700]], '預算的已用金額扣掉退款');
+    const backup = a.ev('backupEnvelope()');
+    eq(a.ev('validateBackup')(backup).records.find(r => r.id === 'rec_r').amount, -500, '下載的備份可以再匯入');
+    let error = '';
+    try {
+      a.ev('validateBackup')({ records: [rec('rec_x', 'income', 'cat_salary', -300)], categories: defaultCategories(a), merchants: [] });
+    } catch (e) {
+      error = e.message;
+    }
+    eq(error, '第 1 筆紀錄內容不完整、日期或金額無效。');
   });
 })();

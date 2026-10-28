@@ -38,21 +38,33 @@ function validDate(s) {
   const date = new Date(y, m - 1, d);
   return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
+// 金額可以打加、減、乘的算式，例如 85＋35、55×3＋20（先乘後加減）；鍵盤打 * 或 x 也算乘號。
+const AMOUNT_EXPR = (() => {
+  const num = '(?:\\d+|\\d{1,3}(?:,\\d{3})+)',
+    term = `${num}(?:×${num})*`;
+  return new RegExp(`^${term}(?:[+-]${term})*$`);
+})();
 function evaluateSimpleMath(expr) {
   const invalid = { valid: false, value: 0, isExpression: false };
   if (typeof expr !== 'string' || expr.length > 100) return invalid;
-  let s = expr.replace(/＋/g, '+').replace(/－/g, '-').replace(/\s/g, '');
-  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:[+-](?:\d+|\d{1,3}(?:,\d{3})+))*$/.test(s)) return invalid;
+  let s = expr
+    .replace(/＋/g, '+')
+    .replace(/－/g, '-')
+    .replace(/[xX*＊]/g, '×')
+    .replace(/\s/g, '');
+  if (!AMOUNT_EXPR.test(s)) return invalid;
   s = s.replace(/,/g, '');
-  const tokens = s.match(/[+-]?\d+/g);
   let value = 0;
-  for (const token of tokens) {
-    const number = Number(token);
-    if (!Number.isSafeInteger(number) || Math.abs(number) > MAX_AMOUNT) return invalid;
-    value += number;
+  for (const token of s.match(/[+-]?[\d×]+/g)) {
+    let product = 1;
+    for (const factor of token.replace(/^[+-]/, '').split('×')) {
+      product *= Number(factor);
+      if (!Number.isSafeInteger(product) || product > MAX_AMOUNT) return invalid;
+    }
+    value += token.startsWith('-') ? -product : product;
     if (!Number.isSafeInteger(value) || Math.abs(value) > MAX_AMOUNT) return invalid;
   }
-  return { valid: value > 0, value, isExpression: /[+-]/.test(s) };
+  return { valid: value > 0, value, isExpression: /[+\-×]/.test(s) };
 }
 function uid(prefix = 'rec') {
   return (
@@ -76,6 +88,38 @@ function removeSampleBook() {
     for (const key of ['demo', 'demo_before_import', 'demo_last_backup', 'active'])
       localStorage.removeItem(BOOK_PREFIX + key);
   } catch {}
+}
+// 預設分類改成兩個字的短名稱（記帳頁一格放不下四個字，會斷成兩行）。舊帳本裡還是原本的預設名稱、
+// 而且改版前沒改過的，開啟時換成短名稱一次。修改時間不變：其他裝置改過這個分類時以那邊為準；
+// 改版後自己改回原本的名稱，修改時間比改版晚，也不會再被換掉。
+const SHORT_CATEGORY_NAMES = {
+  cat_drink: ['飲料點心', '飲料'],
+  cat_bills: ['帳單固定', '帳單'],
+  cat_medical: ['醫療保健', '醫療'],
+  cat_entertainment: ['娛樂休閒', '娛樂'],
+  cat_other_exp: ['其他支出', '其他'],
+  cat_bonus: ['獎金補助', '獎金'],
+  cat_other_inc: ['其他收入', '其他'],
+};
+const SHORT_NAMES_SINCE = Date.UTC(2026, 9, 28, 18); // 改版時間：2026/10/29 02:00（台灣時間）
+function shortenDefaultCategoryNames() {
+  if (storageBlocked) return;
+  const due = state.categories.filter(c => {
+    const pair = SHORT_CATEGORY_NAMES[c.id];
+    return (
+      pair &&
+      c.name === pair[0] &&
+      !(ownTime(state.entityTimes, 'cat:' + c.id) > SHORT_NAMES_SINCE) &&
+      !state.categories.some(x => x.type === c.type && x.name === pair[1])
+    );
+  });
+  if (!due.length) return;
+  commit(
+    s => {
+      for (const { id } of due) s.categories.find(c => c.id === id).name = SHORT_CATEGORY_NAMES[id][1];
+    },
+    { stamp: false }
+  );
 }
 function validateBackup(input) {
   if (input?.format && input.format !== 'daily-ledger') throw new Error('這不是支援的記帳備份格式。');
@@ -124,8 +168,9 @@ function validateBackup(input) {
       !dateOk(r.date) ||
       cats.get(r.categoryId)?.type !== r.type ||
       !Number.isSafeInteger(r.amount) ||
-      r.amount <= 0 ||
-      r.amount > MAX_AMOUNT ||
+      r.amount === 0 ||
+      Math.abs(r.amount) > MAX_AMOUNT ||
+      (r.amount < 0 && r.type !== 'expense') || // 退款記成負數的支出；收入一定是正數
       !safeString(r.merchant, 100) ||
       !safeString(r.note, 1000)
     )
@@ -320,12 +365,16 @@ function homeFilterActive() {
 function filteredHomeRecords() {
   if (!homeFilterActive()) return getMonthRecords(homeListStart());
   const q = searchQuery.trim().toLocaleLowerCase();
+  // 退款的金額是負數，「金額至少」比的是退回多少；搜尋「退款」找得到所有退款。
   return state.records
     .filter(
       r =>
         (!searchCategory || r.categoryId === searchCategory) &&
-        r.amount >= searchMinAmount &&
-        (!q || [r.merchant, r.note, getCategoryById(r.categoryId).name].some(t => t.toLocaleLowerCase().includes(q)))
+        Math.abs(r.amount) >= searchMinAmount &&
+        (!q ||
+          [r.merchant, r.note, getCategoryById(r.categoryId).name, r.amount < 0 ? '退款' : ''].some(t =>
+            t.toLocaleLowerCase().includes(q)
+          ))
     )
     .sort((a, b) => b.date.localeCompare(a.date) || a.seq - b.seq);
 }
@@ -375,8 +424,9 @@ function discardForm() {
   });
   closeCategoryEditor();
 }
-function emptyForm(type = 'expense', date = today()) {
-  return { editingRecordId: null, type, categoryId: '', date, amountExpr: '', selectedMerchant: '', note: '' };
+// refund：退款或別人還錢。用支出的分類，金額存成負數，從那個分類的支出扣掉。
+function emptyForm(type = 'expense', date = today(), refund = false) {
+  return { editingRecordId: null, type, refund, categoryId: '', date, amountExpr: '', selectedMerchant: '', note: '' };
 }
 function openNewRecordModal(type = 'expense') {
   state.previousView = state.activeView === 'record' ? 'home' : state.activeView;
@@ -394,9 +444,10 @@ function openEditRecordModal(id) {
   modalState = {
     editingRecordId: id,
     type: rec.type,
+    refund: rec.amount < 0,
     categoryId: rec.categoryId,
     date: rec.date,
-    amountExpr: String(rec.amount),
+    amountExpr: String(Math.abs(rec.amount)),
     selectedMerchant: rec.merchant,
     note: rec.note,
   };
@@ -448,10 +499,14 @@ function renderRecordModal() {
     isEdit = Boolean(d.editingRecordId),
     cat = state.categories.find(c => c.id === d.categoryId);
   $('modalTitleText').textContent = isEdit ? '編輯紀錄' : '記一筆';
-  ['expense', 'income'].forEach(t => {
-    const b = $(t === 'expense' ? 'modalTypeExpense' : 'modalTypeIncome');
-    b.className = 'px-3 py-1 rounded-lg font-semibold ' + (t === d.type ? 'bg-accent text-bgMain' : 'text-textMuted');
-    b.setAttribute('aria-pressed', String(t === d.type));
+  const mode = d.refund ? 'refund' : d.type;
+  [
+    ['modalTypeExpense', 'expense'],
+    ['modalTypeIncome', 'income'],
+    ['modalTypeRefund', 'refund'],
+  ].forEach(([id, m]) => {
+    $(id).className = 'px-3 py-1 rounded-lg font-semibold ' + (m === mode ? 'bg-accent text-bgMain' : 'text-textMuted');
+    $(id).setAttribute('aria-pressed', String(m === mode));
   });
   $('step1CategoryGrid').innerHTML = '';
   getCategoriesByType(d.type).forEach(c => {
@@ -482,7 +537,11 @@ function renderRecordModal() {
   $('step1CategoryGrid').appendChild(add);
   $('step1CategoryGrid').classList.remove('hidden');
   $('categoryPrompt').classList.toggle('hidden', Boolean(cat));
-  $('categoryPrompt').textContent = '選擇分類，填入金額';
+  $('categoryPrompt').textContent = d.refund ? '選擇要扣掉的分類，填入退回的金額' : '選擇分類，填入金額';
+  $('amountLabel').textContent = d.refund ? '退回的金額' : '金額';
+  $('amountHint').textContent = d.refund
+    ? '退貨退款、朋友還你代墊的錢：會從這個分類的支出扣掉，不算收入'
+    : '可以打算式，例如 85＋35、55×3';
   $('step2CatIcon').innerHTML = cat ? ICONS[cat.icon] || ICONS.other : '';
   $('step2CatName').textContent = cat?.name || '尚未選擇';
   $('step2DetailSection').classList.remove('hidden');
@@ -494,7 +553,8 @@ function renderRecordModal() {
   renderDateChips();
   $('merchantFieldLabel').textContent = d.type === 'income' ? '收入來源' : '店家';
   $('inputMerchantSearch').placeholder = d.type === 'income' ? '搜尋或輸入收入來源' : '搜尋或輸入店家名稱';
-  $('inputRecordNote').placeholder = d.type === 'income' ? '例如：十月份薪資' : '例如：大麥克套餐、衛生紙';
+  $('inputRecordNote').placeholder =
+    d.type === 'income' ? '例如：十月份薪資' : d.refund ? '例如：退貨、小明還晚餐的錢' : '例如：大麥克套餐、衛生紙';
   $('btnDeleteRecordInModal').classList.toggle('hidden', !isEdit);
   $('btnSaveAndNextRecord').classList.toggle('hidden', isEdit || !state.preferences.enableSaveAndNext);
   $('recordFormError').classList.add('hidden');
@@ -515,7 +575,8 @@ function getRecommendedMerchants(categoryId, amount, keyword = '') {
   const amounts = new Map(),
     recent = new Map();
   for (const r of state.records) {
-    if (r.categoryId !== categoryId || !r.merchant || archived.has(r.merchant)) continue;
+    // 退款不算一次消費，也不拿來比金額。
+    if (r.categoryId !== categoryId || !r.merchant || archived.has(r.merchant) || r.amount < 0) continue;
     if (!amounts.has(r.merchant)) amounts.set(r.merchant, []);
     amounts.get(r.merchant).push(r.amount);
     if (r.date >= since) recent.set(r.merchant, (recent.get(r.merchant) || 0) + 1);
@@ -780,7 +841,7 @@ function handleSaveRecord(keepOpenForNext = false) {
     type: d.type,
     date: d.date,
     categoryId: d.categoryId,
-    amount: parsed.value,
+    amount: d.refund ? -parsed.value : parsed.value,
     merchant: d.selectedMerchant.trim(),
     note: d.note.trim(),
   };
@@ -807,7 +868,7 @@ function handleSaveRecord(keepOpenForNext = false) {
   showToast(notice ? `${LedgerSync.savedMessage()}。${notice}` : LedgerSync.savedMessage(), notice ? 5000 : undefined);
   clearHomeSearch();
   if (keepOpenForNext) {
-    modalState = emptyForm(d.type, d.date);
+    modalState = emptyForm(d.type, d.date, d.refund);
     renderAll();
     renderRecordModal();
     window.scrollTo({ top: 0 });
@@ -1056,6 +1117,7 @@ function renderSettings() {
 }
 let dialogReturnFocus = null;
 // danger：刪除資料這類一次改掉很多的動作，確認鍵用紅色，一開始停在「取消」，直接按 Enter 不會刪除。
+// select：從清單選一個（例如合併分類時選要併到哪裡），選的值是 onConfirm 的第三個參數。
 function openDialog({
   title,
   message,
@@ -1064,6 +1126,7 @@ function openDialog({
   textareaValue,
   hideCancel = false,
   checkbox,
+  select,
   confirmText = '確認',
   danger = false,
   onConfirm,
@@ -1074,6 +1137,9 @@ function openDialog({
   $('dialogInput').classList.toggle('hidden', inputValue === undefined);
   $('dialogInput').value = inputValue || '';
   $('dialogInput').inputMode = inputMode;
+  $('dialogSelectWrap').classList.toggle('hidden', !select);
+  $('dialogSelectLabel').textContent = select?.label || '';
+  $('dialogSelect').replaceChildren(...(select?.options || []).map(o => new Option(o.label, o.value)));
   $('dialogTextarea').classList.toggle('hidden', textareaValue === undefined);
   $('dialogTextarea').value = textareaValue || '';
   $('dialogCheckWrap').classList.toggle('hidden', !checkbox);
@@ -1083,11 +1149,19 @@ function openDialog({
   $('dialogBtnConfirm').textContent = confirmText;
   $('dialogBtnConfirm').classList.toggle('dialog-danger', danger);
   $('dialogBtnConfirm').onclick = async () => {
-    if (onConfirm && (await onConfirm($('dialogInput').value, $('dialogCheck').checked)) === false) return;
+    const values = [$('dialogInput').value, $('dialogCheck').checked, $('dialogSelect').value];
+    if (onConfirm && (await onConfirm(...values)) === false) return;
     closeDialog();
   };
   $('modalDialog').classList.remove('hidden');
-  (inputValue !== undefined ? $('dialogInput') : danger ? $('dialogBtnCancel') : $('dialogBtnConfirm')).focus();
+  (inputValue !== undefined
+    ? $('dialogInput')
+    : select
+      ? $('dialogSelect')
+      : danger
+        ? $('dialogBtnCancel')
+        : $('dialogBtnConfirm')
+  ).focus();
 }
 function closeDialog() {
   $('modalDialog').classList.add('hidden');
@@ -1130,6 +1204,7 @@ function exportBackup() {
   }
 }
 // CSV 給試算表看：日期由舊到新，同一天依記帳先後。文字開頭是 = + - @ 時前面加 '，避免試算表把它當成公式執行。
+// 退款的類型寫「退款」、金額是負數，和支出加起來就是扣掉退款後的花費。
 const CSV_HEADER = ['日期', '類型', '分類', '金額', '店家／收入來源', '備註'];
 function csvCell(value) {
   let s = String(value ?? '');
@@ -1142,7 +1217,7 @@ function recordsCsv(records) {
     .sort((a, b) => a.date.localeCompare(b.date) || (Number(a.seq) || 0) - (Number(b.seq) || 0))
     .map(r => [
       r.date,
-      r.type === 'income' ? '收入' : '支出',
+      r.type === 'income' ? '收入' : r.amount < 0 ? '退款' : '支出',
       getCategoryById(r.categoryId)?.name || '',
       r.amount,
       r.merchant,
@@ -1348,13 +1423,14 @@ function importSummary(imported, plan, origin) {
   lines.push('合併不會刪除目前的紀錄；匯入前的帳本會保留一份，可在設定還原。');
   return lines.join('\n');
 }
-// 匯入、還原、刪除所有紀錄、全部重置會一次改掉整本帳：改之前先把目前的帳本存一份（只留最近一份），存不了就不改。
+// 匯入、還原、刪除所有紀錄、全部重置、合併分類會一次改掉很多：改之前先把目前的帳本存一份（只留最近一份），存不了就不改。
 // 「資料與備份」的還原按鈕依存下的原因顯示。
 const UNDO_KINDS = {
   import: { verb: '匯入', button: '還原匯入前帳本' },
   restore: { verb: '還原', button: '回到還原前帳本' },
   clear: { verb: '刪除', button: '還原刪除前帳本' },
   reset: { verb: '重置', button: '還原重置前帳本' },
+  merge: { verb: '合併', button: '還原合併前帳本' },
 };
 const undoKind = () => UNDO_KINDS[LedgerStore.snapshotReason('before_import')] || UNDO_KINDS.import;
 let replacingLedger = false;
@@ -1525,7 +1601,7 @@ function removeRecord() {
   state.activeView = state.previousView || 'home';
   renderAll();
   $('undoBarText').textContent =
-    `已刪除 ${rec.merchant || getCategoryById(rec.categoryId).name} $${formatMoney(rec.amount)}`;
+    `已刪除 ${rec.merchant || getCategoryById(rec.categoryId).name} ${rec.amount < 0 ? '退款 ' : ''}$${formatMoney(Math.abs(rec.amount))}`;
   $('undoBar').classList.remove('hidden');
   clearTimeout(window.__undoTimer);
   window.__undoTimer = setTimeout(() => {
@@ -1537,9 +1613,9 @@ function handleKeypadInput(key) {
   let s = modalState.amountExpr;
   if (key === 'CLEAR') s = '';
   else if (key === 'BACK') s = s.slice(0, -1);
-  else if (key === '+' || key === '-') {
+  else if (key === '+' || key === '-' || key === '×') {
     if (!s) return;
-    s = /[+-]$/.test(s) ? s.slice(0, -1) + key : s + key;
+    s = /[+\-×*xX]$/.test(s) ? s.slice(0, -1) + key : s + key;
   } else if (s.length < 100) s = s === '0' ? key : s + key;
   modalState.amountExpr = s;
   $('inputAmountExpr').value = s;
@@ -1637,12 +1713,20 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   on('btnOpenAddModal', 'click', () => openNewRecordModal());
   on('btnCloseRecordModal', 'click', closeRecordPage);
-  ['expense', 'income'].forEach(t =>
-    on(t === 'expense' ? 'modalTypeExpense' : 'modalTypeIncome', 'click', () => {
-      if (modalState.type === t) return;
-      modalState.type = t;
-      modalState.categoryId = '';
-      modalState.selectedMerchant = '';
+  // 支出、收入、退款：退款也用支出的分類，在支出和退款之間切換時保留已選的分類與店家。
+  [
+    ['modalTypeExpense', 'expense', false],
+    ['modalTypeIncome', 'income', false],
+    ['modalTypeRefund', 'expense', true],
+  ].forEach(([id, type, refund]) =>
+    on(id, 'click', () => {
+      if (modalState.type === type && modalState.refund === refund) return;
+      if (modalState.type !== type) {
+        modalState.categoryId = '';
+        modalState.selectedMerchant = '';
+      }
+      modalState.type = type;
+      modalState.refund = refund;
       renderRecordModal();
     })
   );
@@ -1656,9 +1740,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   document.querySelectorAll('.keypad-btn').forEach(b => (b.onclick = () => handleKeypadInput(b.dataset.key)));
   on('btnKeypadBackspaceTop', 'click', () => handleKeypadInput('BACK'));
-  on('btnApplyCalcNow', 'click', () => {
+  // 點算式結果「= NT$ …」：把算式換成算好的金額（只有算式有效時才會顯示）。
+  on('calcPreviewBadge', 'click', () => {
     const p = evaluateSimpleMath(modalState.amountExpr);
-    if (!p.valid) return formError('請先完成有效算式。');
+    if (!p.valid) return;
     modalState.amountExpr = String(p.value);
     $('inputAmountExpr').value = modalState.amountExpr;
     updateCalcPreviewAndRecommendations();
@@ -1790,6 +1875,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     compareShowAll = !compareShowAll;
     renderStats();
   });
+  on('btnMerchantRankMore', 'click', () => {
+    merchantRankShowAll = !merchantRankShowAll;
+    renderStats();
+  });
   setupTrendTooltip();
   setupRecurringForm();
   on('btnExportJsonDemo', 'click', exportBackup);
@@ -1830,8 +1919,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       else if (state.activeView === 'record') closeRecordPage();
     }
     if (e.key === 'Tab' && modal) {
-      const nodes = [...modal.querySelectorAll('button,input,textarea')].filter(
-        x => !x.hidden && !x.classList.contains('hidden') && !x.disabled
+      // 只算看得到的（例如藏起來的勾選框、清單外框裡面的欄位不算）。
+      const nodes = [...modal.querySelectorAll('button,input,select,textarea')].filter(
+        x => x.getClientRects().length && !x.disabled
       );
       const first = nodes[0],
         last = nodes.at(-1);
@@ -1854,6 +1944,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       renderAll();
     }
   });
+  shortenDefaultCategoryNames();
   renderAll();
   if (loadIssue) showStorageError(loadIssue);
   openFromShortcut();

@@ -456,7 +456,7 @@
   test('核心｜格式錯誤的雲端資料會略過，其餘照常套用', async () => {
     const cloud = createFakeCloud();
     const a = device(cloud, 'A');
-    cloud.put('rec:rec_bad', rec('rec_bad', { amount: -5 }));
+    cloud.put('rec:rec_bad', rec('rec_bad', { amount: 0 }));
     cloud.put('rec:rec_ok', rec('rec_ok'));
     cloud.put('mer:麥當勞', { name: '麥當勞', type: 'expense', archived: false });
     await a.sync();
@@ -491,5 +491,27 @@
     cloud.push = push;
     eq(a.pending().length, 0, '同步中新增的紀錄也應上傳');
     assert(cloud.docs.has('rec:rec_during'));
+  });
+
+  test('核心｜退款（負數的支出）會同步；舊版略過的退款，換新版後第一次同步會補回來', async () => {
+    assert(Core.validEntityData('rec', 'r1', rec('r1', { amount: -500 })), '負數的支出是退款');
+    assert(!Core.validEntityData('rec', 'r1', rec('r1', { type: 'income', categoryId: 'cat_salary', amount: -500 })), '收入不能是負數');
+    assert(!Core.validEntityData('rec', 'r1', rec('r1', { amount: 0 })), '金額不能是 0');
+    assert(!Core.validEntityData('rec', 'r1', rec('r1', { amount: -1000000000 })), '退款也有金額上限');
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B');
+    await a.sync(); await b.sync();
+    addRecord(a, rec('rec_refund', { amount: -500, note: '退貨' }));
+    await a.sync();
+    // 舊版的 B：看不懂負數的金額，略過這筆，讀取位置也已經往後。
+    const meta = b.meta();
+    meta.cursor = [...cloud.docs.values()].map(d => d.ts).sort(Core.cmpTs).at(-1);
+    meta.skipped = 1;
+    meta.format = 2;
+    b.setMeta(meta);
+    await b.sync();
+    eq(find(b, 'rec_refund').amount, -500, '換新版後補回略過的退款');
+    eq([b.meta().format, b.meta().skipped, b.meta().conflicts.length, b.pending().length], [Core.FORMAT, 0, 0, 0]);
+    checkInvariants(b.state);
   });
 })();

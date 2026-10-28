@@ -34,12 +34,14 @@ function monthPace(month) {
 }
 // 進度條的顏色代表狀態（紫＝正常、黃＝快用完、紅＝超出），旁邊一定有文字，不只靠顏色。
 function budgetMeter(item, pace = null) {
-  const pct = Math.min(100, (item.used / item.limit) * 100).toFixed(1);
+  // 已用金額扣掉退款後可能是負數（例如這個月只有退款），進度條從 0 算起。
+  const used = Math.max(0, item.used),
+    pct = Math.min(100, (used / item.limit) * 100).toFixed(1);
   const tick =
     pace === null
       ? ''
       : `<span class="budget-pace" style="left:${(pace * 100).toFixed(1)}%"></span><span class="budget-pace-label" style="left:${Math.min(92, Math.max(8, pace * 100)).toFixed(1)}%">今天</span>`;
-  return `<div class="budget-meter${pace === null ? '' : ' has-pace'}" data-status="${budgetStatus(item)}" role="img" aria-label="已用 ${Math.round((item.used * 100) / item.limit)}%"><div class="budget-track"><div class="budget-fill" style="width:${pct}%"></div></div>${tick}</div>`;
+  return `<div class="budget-meter${pace === null ? '' : ' has-pace'}" data-status="${budgetStatus(item)}" role="img" aria-label="已用 ${Math.round((used * 100) / item.limit)}%"><div class="budget-track"><div class="budget-fill" style="width:${pct}%"></div></div>${tick}</div>`;
 }
 function budgetNote(item) {
   const status = budgetStatus(item),
@@ -51,7 +53,7 @@ function budgetNote(item) {
 function budgetRow(item, pace = null, extra = '') {
   const icon = item.icon ? `<span class="text-accent">${ICONS[item.icon] || ICONS.other}</span>` : '';
   return `<div class="budget-row">
-    <div class="budget-row-head"><span class="budget-name">${icon}<span class="truncate">${escapeHtml(item.name)}</span></span><span class="budget-amount">NT$ ${formatMoney(item.used)}<span class="text-textMuted"> / ${formatMoney(item.limit)}</span></span></div>
+    <div class="budget-row-head"><span class="budget-name">${icon}<span class="truncate">${escapeHtml(item.name)}</span></span><span class="budget-amount">${moneyText(item.used)}<span class="text-textMuted"> / ${formatMoney(item.limit)}</span></span></div>
     ${budgetMeter(item, pace)}
     <div class="budget-note">${budgetNote(item)}${extra}</div>
   </div>`;

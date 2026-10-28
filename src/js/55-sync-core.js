@@ -11,9 +11,9 @@ const LedgerSyncCore = (() => {
   const HEADER_MODES = ['expense_only', 'expense_and_income', 'full_net'];
   const MAX_AMOUNT = 999999999;
   const MAX_CONFLICTS = 30;
-  // 同步格式版本：2 起有預算欄位與固定收支規則。舊版程式會略過或去掉這些資料，
-  // 所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
-  const FORMAT = 2;
+  // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）。
+  // 舊版程式會略過或去掉這些資料，所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
+  const FORMAT = 3;
   // 固定收支規則沿用偏好設定的類別（pref:rule_…），雲端安全規則不需要修改。
   const RULE_PREFIX = 'rule_';
 
@@ -260,8 +260,9 @@ const LedgerSyncCore = (() => {
   function validEntityData(kind, id, d) {
     if (!d || typeof d !== 'object') return false;
     if (kind === 'rec') {
+      // 退款記成負數的支出；收入一定是正數。
       return d.id === id && isId(d.id) && isType(d.type) && validDate(d.date) && isId(d.categoryId)
-        && Number.isSafeInteger(d.amount) && d.amount > 0 && d.amount <= MAX_AMOUNT
+        && Number.isSafeInteger(d.amount) && d.amount !== 0 && Math.abs(d.amount) <= MAX_AMOUNT && (d.amount > 0 || d.type === 'expense')
         && isStr(d.merchant, 100) && isStr(d.note, 1000) && Number.isFinite(d.seq);
     }
     if (kind === 'cat') {

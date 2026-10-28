@@ -59,8 +59,8 @@ function sumByCategory(type, [start, end]) {
 const deltaTone = (delta, type) => (!delta ? 'flat' : delta > 0 === (type === 'expense') ? 'bad' : 'good');
 function deltaChip(cur, prev, type) {
   const d = cur - prev;
-  if (!prev || !d) return '';
-  return `<span class="stats-delta" data-tone="${deltaTone(d, type)}">${d > 0 ? '▲' : '▼'} ${Math.round((Math.abs(d) * 100) / prev)}%</span>`;
+  if (!(prev > 0) || !d) return '';
+  return `<span class="stats-delta" data-tone="${deltaTone(d, type)}">${d > 0 ? '▲' : '▼'} ${percentText((Math.abs(d) * 100) / prev)}</span>`;
 }
 function renderStatsCompare(yearMode) {
   const type = state.statsType,
@@ -77,7 +77,7 @@ function renderStatsCompare(yearMode) {
       ? `和${name}一樣`
       : `比${name}${d > 0 ? '多' : '少'} NT$ ${formatMoney(Math.abs(d))}`;
   $('statsCompareText').innerHTML = `${deltaChip(cur.total, prev.total, type)}<span>${text}</span>`;
-  $('statsAverage').textContent = `${p.avgWord} NT$ ${formatMoney(cur.total / p.units)}`;
+  $('statsAverage').textContent = `${p.avgWord} ${moneyText(cur.total / p.units)}`;
 
   const rows = getCategoriesByType(type)
     .map(c => ({ c, cur: cur.map.get(c.id) || 0, prev: prev.map.get(c.id) || 0 }))
@@ -95,7 +95,7 @@ function renderStatsCompare(yearMode) {
     btn.className = 'compare-row';
     btn.innerHTML = `<span class="compare-name"><span class="text-accent">${ICONS[c.icon] || ICONS.other}</span><span class="truncate">${escapeHtml(c.name)}</span></span>
       <span class="compare-delta" data-tone="${deltaTone(diff, type)}">${diff ? `${diff > 0 ? '▲' : '▼'} NT$ ${formatMoney(Math.abs(diff))}` : '持平'}</span>
-      <span class="compare-detail">${p.curLabel} NT$ ${formatMoney(a)}・${p.prevLabel} NT$ ${formatMoney(b)}</span>`;
+      <span class="compare-detail">${p.curLabel} ${moneyText(a)}・${p.prevLabel} ${moneyText(b)}</span>`;
     btn.addEventListener('click', () => openDrilldownModal('category', c.id, c.name));
     list.appendChild(btn);
   });
@@ -103,8 +103,12 @@ function renderStatsCompare(yearMode) {
   more.classList.toggle('hidden', rows.length <= COMPARE_TOP);
   more.textContent = compareShowAll ? `只顯示變化最大的 ${COMPARE_TOP} 個` : `顯示全部 ${rows.length} 個分類`;
 }
+// 長條：以最高的為滿格；扣掉退款後是 0 或負數時不畫。
+function trendBar(v, max) {
+  return `<span class="trend-bar" style="height:${max > 0 && v > 0 ? ((v / max) * 100).toFixed(1) : 0}%${v > 0 ? ';min-height:2px' : ''}"></span>`;
+}
 // 近 12 個月的走勢：目前月份用主色，其他月份用灰色；點長條切換到那個月。
-// 近 12 個月可以只看一個分類（例如「飲料點心」每個月花多少）；換支出／收入時，分類不在清單裡就回到全部分類。
+// 近 12 個月可以只看一個分類（例如「飲料」每個月花多少）；換支出／收入時，分類不在清單裡就回到全部分類。
 let trendCategory = '';
 function renderTrendCategories(type) {
   const select = $('statsTrendCategory'),
@@ -149,9 +153,9 @@ function renderStatsTrend(yearMode) {
     btn.className = 'trend-col';
     btn.dataset.month = k;
     btn.dataset.value = v;
-    btn.setAttribute('aria-label', `${ky} 年 ${km} 月 NT$ ${formatMoney(v)}`);
+    btn.setAttribute('aria-label', `${ky} 年 ${km} 月 ${moneyText(v)}`);
     btn.setAttribute('aria-current', String(k === state.currentMonth));
-    btn.innerHTML = `<span class="trend-plot"><span class="trend-bar" style="height:${max ? ((v / max) * 100).toFixed(1) : 0}%${v ? ';min-height:2px' : ''}"></span></span><span class="trend-label">${km}</span>`;
+    btn.innerHTML = `<span class="trend-plot">${trendBar(v, max)}</span><span class="trend-label">${km}</span>`;
     btn.addEventListener('click', () => {
       state.currentMonth = k;
       renderAll();
@@ -169,12 +173,17 @@ function renderStatsDaily(yearMode) {
     [y, m] = month.split('-').map(Number),
     days = new Date(y, m, 0).getDate(),
     now = today();
-  const sums = new Array(days).fill(0);
+  // 每天的支出扣掉當天的退款；counts 是當天有幾筆，有紀錄的日子才能點開。
+  const sums = new Array(days).fill(0),
+    counts = new Array(days).fill(0);
   for (const r of state.records)
-    if (r.type === 'expense' && r.date.startsWith(month + '-')) sums[Number(r.date.slice(8)) - 1] += r.amount;
+    if (r.type === 'expense' && r.date.startsWith(month + '-')) {
+      sums[Number(r.date.slice(8)) - 1] += r.amount;
+      counts[Number(r.date.slice(8)) - 1]++;
+    }
   const max = Math.max(...sums);
   $('statsDailyTitle').textContent = `${m} 月每日支出`;
-  $('statsDailyMax').textContent = max ? `最多 ${m}/${sums.indexOf(max) + 1} NT$ ${formatMoney(max)}` : '';
+  $('statsDailyMax').textContent = max > 0 ? `最多 ${m}/${sums.indexOf(max) + 1} NT$ ${formatMoney(max)}` : '';
   const chart = $('statsDailyChart');
   chart.innerHTML = '';
   chart.style.gridTemplateColumns = `repeat(${days},minmax(0,1fr))`;
@@ -188,11 +197,11 @@ function renderStatsDaily(yearMode) {
     btn.className = 'trend-col';
     btn.dataset.date = date;
     btn.dataset.value = v;
-    btn.setAttribute('aria-label', `${m} 月 ${d} 日 NT$ ${formatMoney(v)}`);
+    btn.setAttribute('aria-label', `${m} 月 ${d} 日 ${moneyText(v)}`);
     btn.setAttribute('aria-current', String(date === now));
-    btn.innerHTML = `<span class="trend-plot"><span class="trend-bar" style="height:${max ? ((v / max) * 100).toFixed(1) : 0}%${v ? ';min-height:2px' : ''}"></span></span><span class="trend-label">${label}</span>`;
+    btn.innerHTML = `<span class="trend-plot">${trendBar(v, max)}</span><span class="trend-label">${label}</span>`;
     // 有紀錄的日子：點長條列出那天的紀錄（沒有紀錄的日子只顯示 NT$ 0）。
-    if (v)
+    if (counts[i])
       btn.addEventListener('click', e => {
         e.stopPropagation();
         $('statsDailyTip').classList.add('hidden');
@@ -206,7 +215,7 @@ function setupChartTooltip(chart, tip, label, tapToShow) {
   const show = e => {
     const col = e.target.closest('.trend-col');
     if (!col) return;
-    tip.innerHTML = `<strong>NT$ ${formatMoney(Number(col.dataset.value))}</strong><span>${label(col)}</span>`;
+    tip.innerHTML = `<strong>${moneyText(Number(col.dataset.value))}</strong><span>${label(col)}</span>`;
     tip.classList.remove('hidden');
     const half = tip.offsetWidth / 2,
       x = col.offsetLeft + col.offsetWidth / 2;
