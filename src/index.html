@@ -232,6 +232,9 @@
             <input id="inputMerchantSearch" type="text" maxlength="100" placeholder="搜尋或輸入店家名稱" class="w-full bg-bgInput border border-borderSubtle rounded-xl px-3.5 py-2.5 text-sm text-textMain focus:outline-none focus:border-accent" />
           </div>
 
+          <!-- 輸入的名稱沒記過、但有相似的名稱時，提示改用（見 60-app.js 的 similarMerchants） -->
+          <div id="merchantSimilar" class="hidden merchant-similar" role="status"></div>
+
           <!-- 這家店（收入來源）以前的所有紀錄 -->
           <button id="btnMerchantHistory" type="button" class="hidden merchant-history-link"></button>
 

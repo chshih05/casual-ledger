@@ -805,6 +805,29 @@
     eq(a.$('drilldownList').children.length, 1, '切回這段期間');
   });
 
+  test('店家｜記帳時輸入沒記過、但相似的名稱，提示改用以前的名稱；點一下就換過去', async () => {
+    const a = await personalApp();
+    const rec = (id, merchant, type = 'expense') => ({ id, seq: 1, type, date: a.ev('today()'), categoryId: type === 'income' ? 'cat_salary' : 'cat_lunch', amount: 100, merchant, note: '' });
+    await importBackup(a, { records: [
+      rec('s1', '全家'), rec('s2', '全家'), rec('s3', '全家'), rec('s4', '全聯'), rec('s5', '路易莎'), rec('s6', '7-11'), rec('s7', '八方雲集'), rec('s8', '公司', 'income'),
+    ], categories: defaultCategories(a), merchants: [] });
+    a.click('btnOpenAddModal');
+    a.$('step1CategoryGrid').querySelectorAll('button')[1].click();
+    const hint = () => a.visible('merchantSimilar') ? [...a.$('merchantSimilar').querySelectorAll('button')].map(b => b.textContent) : [];
+    const typeName = v => { a.type('inputMerchantSearch', v); return hint(); };
+    eq(typeName('全家便利商店'), ['全家（3 筆）'], '包含記過的名稱');
+    eq(typeName('路易沙'), ['路易莎（1 筆）'], '3 個字以上只差一個字');
+    eq(typeName('７－１１ 中山門市'), ['7-11（1 筆）'], '全形、分店整理後相同');
+    eq(typeName('八方雲集(中山店)'), ['八方雲集（1 筆）'], '括號裡的分店');
+    eq(typeName('全福'), [], '2 個字只差一個字不算');
+    eq(typeName('全聯'), [], '已經記過的名稱不提示');
+    eq(typeName('公司薪轉'), [], '只比同一種類型（收入來源不提示）');
+    typeName('全家便利商店');
+    a.click(a.$('merchantSimilar').querySelector('button'));
+    eq([a.$('inputMerchantSearch').value, a.ev('modalState.selectedMerchant'), hint()], ['全家', '全家', []]);
+    assert(a.text('btnMerchantHistory').includes('3 筆'), '改用後可以看以前的紀錄');
+  });
+
   test('店家｜設定頁點名稱與記帳頁的連結都能看到以前的紀錄；記帳頁開的只能看，不會打斷正在記的這一筆', async () => {
     const { a } = await historyApp();
     openSettings(a, 'merchants');

@@ -332,6 +332,47 @@ function updateCalcPreviewAndRecommendations() {
   $('calcPreviewBadge').textContent=`= NT$ ${formatMoney(parsed.value)}`;
   renderMerchantChips(parsed.valid?parsed.value:0);
 }
+// 相似的店家名稱：比之前先整理名稱（全形半形、大小寫、空白標點、括號裡的分店、「便利商店」這類結尾）。
+// 整理後相同、一個包含另一個（短的至少 2 個字），或都至少 3 個字且只差一個字（打錯字）時算相似。
+// 2 個字的名稱差一個字常常是不同的店（例如全家、全聯），所以不比打錯字。
+function merchantKey(name) {
+  let s=name.normalize('NFKC').toLocaleLowerCase().replace(/[（(][^）)]*[）)]/g,' ').trim();
+  s=s.replace(/\s+\S*(店|門市)$/u,'');
+  s=s.replace(/[\s\p{P}\p{S}]/gu,'');
+  const short=s.replace(/(股份有限公司|有限公司|便利商店|福利中心|門市|分店)$/u,'');
+  return short.length>=2?short:s;
+}
+function oneEditApart(a,b) {
+  if(Math.abs(a.length-b.length)>1)return false;
+  let i=0;while(i<a.length&&a[i]===b[i])i++;
+  return a.length===b.length?a.slice(i+1)===b.slice(i+1):a.length>b.length?a.slice(i+1)===b.slice(i):a.slice(i)===b.slice(i+1);
+}
+function similarMerchants(input,type) {
+  const key=merchantKey(input);
+  if(key.length<2||state.merchants.includes(input))return [];
+  const archived=new Set(state.archivedMerchants);
+  const names=state.merchants.filter(m=>!archived.has(m)&&(state.merchantTypes[m]||'expense')===type).filter(m=>{
+    const k=merchantKey(m),[short,long]=k.length<=key.length?[k,key]:[key,k];
+    return k===key||(short.length>=2&&long.includes(short))||(short.length>=3&&oneEditApart(k,key));
+  });
+  if(!names.length)return [];
+  const counts=new Map(names.map(n=>[n,0]));
+  for(const r of state.records)if(r.type===type&&counts.has(r.merchant))counts.set(r.merchant,counts.get(r.merchant)+1);
+  return names.map(name=>({name,count:counts.get(name)})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'zh-TW'));
+}
+function renderSimilarMerchants(input,shown,amount) {
+  const box=$('merchantSimilar'),list=input?similarMerchants(input,modalState.type).filter(m=>!shown.has(m.name)).slice(0,2):[];
+  box.classList.toggle('hidden',!list.length);box.innerHTML='';
+  if(!list.length)return;
+  const p=document.createElement('p');p.textContent=`以前記過相似的${modalState.type==='income'?'來源':'店家'}，要改用嗎？`;
+  const options=document.createElement('div');options.className='merchant-similar-options';
+  for(const m of list){
+    const b=document.createElement('button');b.type='button';b.textContent=m.count?`${m.name}（${m.count} 筆）`:m.name;
+    b.onclick=()=>{modalState.selectedMerchant=m.name;$('inputMerchantSearch').value=m.name;renderMerchantChips(amount);};
+    options.appendChild(b);
+  }
+  box.append(p,options);
+}
 function renderMerchantChips(amount) {
   const input=$('inputMerchantSearch').value.trim(),source=modalState.type==='income';
   $('btnClearMerchant').classList.toggle('hidden',!input);
@@ -347,6 +388,8 @@ function renderMerchantChips(amount) {
     b.onclick=()=>{modalState.selectedMerchant=item.name;$('inputMerchantSearch').value=item.name;renderMerchantChips(amount);};box.appendChild(b);
   });
   if (!input && !results.length) { const p=document.createElement('p');p.className='text-xs text-textMuted';p.textContent='累積紀錄後，這裡會出現推薦。也可以留白。';box.appendChild(p); }
+  // 下面的搜尋結果已經列出的名稱不再重複提示。
+  renderSimilarMerchants(input,new Set(results.map(r=>r.name)),amount);
 }
 function formError(msg) { $('recordFormError').textContent=msg;$('recordFormError').classList.remove('hidden'); }
 function handleSaveRecord(keepOpenForNext=false) {

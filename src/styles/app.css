@@ -196,6 +196,10 @@ select.rule-input { color-scheme:dark; }
 .drilldown-scope button { min-height:36px; border-radius:9px; font-size:13px; color:#9CA3AF; }
 .drilldown-scope button[aria-pressed=true] { background:var(--accent); color:#14161B; font-weight:600; }
 .drilldown-month { display:flex; justify-content:space-between; gap:8px; padding:6px 2px 0; font-size:12px; color:#9CA3AF; font-weight:600; font-variant-numeric:tabular-nums; }
+/* 記帳頁：相似的店家名稱提示 */
+.merchant-similar { display:grid; gap:8px; padding:10px 12px; border-radius:12px; background:rgba(var(--accent-rgb),.1); border:1px solid rgba(var(--accent-rgb),.35); font-size:13px; color:#D1D5DB; }
+.merchant-similar-options { display:flex; flex-wrap:wrap; gap:6px; }
+.merchant-similar-options button { min-height:36px; padding:6px 12px; border-radius:10px; background:var(--accent); color:#14161B; font-size:13px; font-weight:600; }
 .merchant-history-link { display:block; font-size:13px; color:var(--accent); text-align:left; min-height:32px; }
 /* 分類編輯：新增與修改共用的畫面 */
 .cat-sheet { width:100%; max-width:520px; max-height:92dvh; display:flex; flex-direction:column; background:#1E2028; border:1px solid #2E323E; border-radius:24px 24px 0 0; overflow:hidden; }
