@@ -205,16 +205,22 @@ function renderStatsDaily(yearMode) {
       btn.addEventListener('click', e => {
         e.stopPropagation();
         $('statsDailyTip').classList.add('hidden');
+        btn.classList.remove('is-active');
         openDrilldownModal('date', date, `${m} 月 ${d} 日`, { type: 'expense', switchable: false });
       });
     chart.appendChild(btn);
   });
 }
-// 滑鼠移到長條、用鍵盤選到（每日支出也可以點一下）時，在長條上方顯示金額。
-function setupChartTooltip(chart, tip, label, tapToShow) {
-  const show = e => {
-    const col = e.target.closest('.trend-col');
-    if (!col) return;
+const SCRUB_SLOP = 8; // 手指左右移動超過這麼多（px）才算滑動；點一下時的小晃動不算
+// 滑鼠移到長條、用鍵盤選到時，在長條上方顯示金額（顯示中的那一欄標成 is-active）。
+// tapToShow（每日支出）：點一下也顯示（近 12 個月點一下是切換月份，不用）。
+// scrub：手指按住圖表左右滑，金額跟著手指下面的那一欄，放開後留著；上下滑照常捲動頁面
+// （.trend-chart 的 touch-action）。滑過之後放開不算點那一欄，點一下才打開那天的紀錄或切換月份。
+function setupChartTooltip(chart, tip, label, { tapToShow = false, scrub = false } = {}) {
+  const showCol = col => {
+    if (!col || !col.isConnected) return; // 點長條切換月份後圖表已經重畫，舊的那一欄不在畫面上
+    chart.querySelectorAll('.trend-col.is-active').forEach(c => c !== col && c.classList.remove('is-active'));
+    col.classList.add('is-active');
     tip.innerHTML = `<strong>${moneyText(Number(col.dataset.value))}</strong><span>${label(col)}</span>`;
     tip.classList.remove('hidden');
     const half = tip.offsetWidth / 2,
@@ -223,23 +229,74 @@ function setupChartTooltip(chart, tip, label, tapToShow) {
     // 最高的長條上方沒有空間：提示最高只到圖表頂端（蓋住長條頂端），不蓋到上面的標題。
     tip.style.top = `${Math.max(col.querySelector('.trend-bar').offsetTop - 6, tip.offsetHeight)}px`;
   };
-  const hide = () => tip.classList.add('hidden');
+  const show = e => showCol(e.target.closest('.trend-col'));
+  const hide = () => {
+    tip.classList.add('hidden');
+    chart.querySelectorAll('.trend-col.is-active').forEach(c => c.classList.remove('is-active'));
+  };
   chart.addEventListener('pointerover', show);
   chart.addEventListener('focusin', show);
-  chart.addEventListener('pointerleave', hide);
+  // 手指離開螢幕也會觸發 pointerleave：可以滑的圖表讓金額留著，看得到最後停在哪一欄。
+  chart.addEventListener('pointerleave', e => {
+    if (!(scrub && e.pointerType === 'touch')) hide();
+  });
   chart.addEventListener('focusout', hide);
-  // 手機點一下時，手指離開就會觸發 pointerleave；click 在那之後，再顯示一次讓金額留著。
   if (tapToShow) chart.addEventListener('click', show);
+  if (!scrub) return;
+  // 每一欄一樣寬：用手指的左右位置算出是第幾欄；滑出圖表時停在第一欄或最後一欄。
+  // 手機上手指一直算在第一個按到的長條（瀏覽器的預設），所以不能看事件發生在哪個長條上。
+  const columnAt = x => {
+    const r = chart.getBoundingClientRect(),
+      cols = chart.children;
+    return cols[Math.min(cols.length - 1, Math.max(0, Math.floor(((x - r.left) / r.width) * cols.length)))];
+  };
+  let press = null,
+    slid = false;
+  chart.addEventListener('pointerdown', e => {
+    slid = false;
+    press = e.button > 0 ? null : { id: e.pointerId, x: e.clientX, moved: false };
+  });
+  chart.addEventListener('pointermove', e => {
+    if (!press || e.pointerId !== press.id) return;
+    if (!press.moved && Math.abs(e.clientX - press.x) < SCRUB_SLOP) return;
+    press.moved = true;
+    showCol(columnAt(e.clientX));
+  });
+  chart.addEventListener('pointerup', e => {
+    if (press && e.pointerId === press.id) slid = press.moved;
+    press = null;
+  });
+  // 往上下滑、頁面開始捲動時，瀏覽器會取消這次按住：收起金額。
+  chart.addEventListener('pointercancel', () => {
+    press = null;
+    hide();
+  });
+  // 滑過之後放開：攔下接著來的 click（在長條自己的 click 之前），不打開那天的紀錄、不切換月份。
+  chart.addEventListener(
+    'click',
+    e => {
+      if (!slid) return;
+      slid = false;
+      e.stopPropagation();
+      e.preventDefault();
+    },
+    true
+  );
 }
 function setupTrendTooltip() {
   $('statsTrendCategory').addEventListener('change', e => {
     trendCategory = e.target.value;
     renderStatsTrend(false);
   });
-  setupChartTooltip($('statsTrendChart'), $('statsTrendTip'), col => {
-    const [y, m] = col.dataset.month.split('-').map(Number);
-    return `${y} 年 ${m} 月`;
-  });
+  setupChartTooltip(
+    $('statsTrendChart'),
+    $('statsTrendTip'),
+    col => {
+      const [y, m] = col.dataset.month.split('-').map(Number);
+      return `${y} 年 ${m} 月`;
+    },
+    { scrub: true }
+  );
   setupChartTooltip(
     $('statsDailyChart'),
     $('statsDailyTip'),
@@ -247,6 +304,6 @@ function setupTrendTooltip() {
       const [, m, d] = col.dataset.date.split('-').map(Number);
       return `${m} 月 ${d} 日`;
     },
-    true
+    { tapToShow: true, scrub: true }
   );
 }

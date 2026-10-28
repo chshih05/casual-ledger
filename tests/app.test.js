@@ -1127,6 +1127,46 @@
     assert(!a.visible('statsDailySection'), '整年不顯示');
   });
 
+  test('統計｜每日支出：手指按住左右滑，金額跟著手指下面的那一天；滑過放開不打開紀錄，點一下才會', async () => {
+    const a = await compareApp();
+    const chart = a.$('statsDailyChart'), cols = [...chart.children];
+    const x = i => { const r = cols[i].getBoundingClientRect(); return r.left + r.width / 2; };
+    const y = chart.getBoundingClientRect().top + 40;
+    // 手機上手指一直算在第一個按到的長條：之後的事件都送到那個長條，只有位置會變。
+    const finger = (el, type, clientX) => el.dispatchEvent(new a.w.PointerEvent(type, { bubbles: true, cancelable: true, clientX, clientY: y, pointerId: 9, button: 0, isPrimary: true, pointerType: 'touch' }));
+    const tip = () => (a.visible('statsDailyTip') ? a.text('statsDailyTip') : '');
+    const active = () => cols.map((c, i) => (c.classList.contains('is-active') ? i : -1)).filter(i => i >= 0);
+    eq(a.w.getComputedStyle(chart).touchAction, 'pan-y', '上下滑照常捲動頁面');
+    finger(cols[2], 'pointerover', x(2));
+    finger(cols[2], 'pointerdown', x(2));
+    eq(tip(), 'NT$ 30010 月 3 日', '先顯示按到的那一天');
+    finger(cols[2], 'pointermove', x(2) + 3);
+    eq(tip(), 'NT$ 30010 月 3 日', '小晃動不算滑動');
+    finger(cols[2], 'pointermove', x(6));
+    eq([tip(), active()], ['NT$ 010 月 7 日', [6]], '滑到哪一天就顯示哪一天，只標出那一欄');
+    finger(cols[2], 'pointermove', x(9));
+    eq(tip(), 'NT$ 50010 月 10 日');
+    finger(cols[2], 'pointermove', chart.getBoundingClientRect().right + 50);
+    eq(tip(), 'NT$ 010 月 31 日', '滑出圖表右邊時停在最後一天');
+    finger(cols[2], 'pointermove', x(9));
+    finger(cols[2], 'pointerup', x(9));
+    finger(cols[2], 'pointerleave', x(9));
+    eq(tip(), 'NT$ 50010 月 10 日', '放開後金額留著');
+    a.click(cols[2]);
+    assert(!a.visible('modalDrilldown'), '滑過之後放開不打開紀錄');
+    finger(cols[9], 'pointerdown', x(9));
+    finger(cols[9], 'pointerup', x(9));
+    a.click(cols[9]);
+    assert(a.visible('modalDrilldown'), '點一下照常打開那天的紀錄');
+    eq(active(), [], '打開紀錄時收起標示');
+    a.click('btnCloseDrilldown');
+    finger(cols[4], 'pointerdown', x(4));
+    finger(cols[4], 'pointermove', x(8));
+    assert(tip(), '滑動中顯示金額');
+    finger(cols[4], 'pointercancel', x(8));
+    eq([tip(), active()], ['', []], '頁面開始上下捲動時收起金額');
+  });
+
   test('統計｜近 12 個月可以只看一個分類，換成收入時回到全部分類', async () => {
     const a = await compareApp();
     const select = a.$('statsTrendCategory');
@@ -1213,6 +1253,34 @@
     eq(a.text('statsTrendTitle'), '近 12 個月收入');
     a.click('statsPeriodYear');
     assert(!a.visible('statsTrendSection'));
+  });
+
+  test('統計比較｜近 12 個月：手指按住左右滑，金額跟著手指下面的月份；滑過放開不切換，點一下才切換', async () => {
+    const a = await compareApp();
+    const chart = a.$('statsTrendChart'), cols = [...chart.children];
+    const x = i => { const r = cols[i].getBoundingClientRect(); return r.left + r.width / 2; };
+    const y = chart.getBoundingClientRect().top + 40;
+    const finger = (el, type, clientX) => el.dispatchEvent(new a.w.PointerEvent(type, { bubbles: true, cancelable: true, clientX, clientY: y, pointerId: 9, button: 0, isPrimary: true, pointerType: 'touch' }));
+    const tip = () => (a.visible('statsTrendTip') ? a.text('statsTrendTip') : '');
+    eq(a.w.getComputedStyle(chart).touchAction, 'pan-y', '上下滑照常捲動頁面');
+    finger(cols[11], 'pointerover', x(11));
+    finger(cols[11], 'pointerdown', x(11));
+    eq(tip(), 'NT$ 8002026 年 10 月', '先顯示按到的那個月');
+    finger(cols[11], 'pointermove', x(10));
+    eq(tip(), 'NT$ 1,6002026 年 9 月', '滑到哪個月就顯示哪個月');
+    assert(cols[10].classList.contains('is-active') && !cols[11].classList.contains('is-active'), '只標出手指下面的月份');
+    finger(cols[11], 'pointermove', chart.getBoundingClientRect().left - 30);
+    eq(tip(), 'NT$ 9,9992025 年 11 月', '滑出圖表左邊時停在第一個月');
+    finger(cols[11], 'pointerup', chart.getBoundingClientRect().left - 30);
+    finger(cols[11], 'pointerleave', chart.getBoundingClientRect().left - 30);
+    eq(tip(), 'NT$ 9,9992025 年 11 月', '放開後金額留著');
+    a.click(cols[11]);
+    eq(a.ev('state.currentMonth'), '2026-10', '滑過之後放開不切換月份');
+    finger(cols[10], 'pointerdown', x(10));
+    finger(cols[10], 'pointerup', x(10));
+    a.click(cols[10]);
+    eq(a.ev('state.currentMonth'), '2026-09', '點一下照常切換到那個月');
+    assert(!a.visible('statsTrendTip'), '切換後收起金額');
   });
 
   // ---------- 固定收支 ----------
