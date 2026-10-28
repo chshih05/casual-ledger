@@ -122,8 +122,9 @@
   // 目前停在第幾層的瀏覽紀錄（68-back-nav.js 加的；網頁原本那一筆是 0）。
   const layerDepth = a => Number(a.w.history.state && a.w.history.state.ledgerLayer) || 0;
   // 模擬 Android 返回手勢：真人不會在同一瞬間點完就按返回，先等開著的畫面都有對應的瀏覽紀錄。
+  // 也要等網頁自己收回紀錄的移動完成（例如匯入確認視窗剛關掉），否則按返回會和它疊在一起，多退一頁。
   async function goBack(a, until, message) {
-    await waitFor(() => layerDepth(a) === a.ev('LedgerBack.openCount()'), { message: '瀏覽紀錄沒有跟上開著的畫面' });
+    await waitFor(() => !a.ev('LedgerBack.busy()') && layerDepth(a) === a.ev('LedgerBack.openCount()'), { message: '瀏覽紀錄沒有跟上開著的畫面' });
     a.w.history.back();
     await waitFor(until, { message });
   }

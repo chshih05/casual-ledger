@@ -30,6 +30,11 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 /* 首頁清單往前補的上個月紀錄前面的分隔線 */
 .home-month-divider { display:flex; align-items:center; gap:10px; padding:4px 2px 0; font-size:12px; color:#9CA3AF; }
 .home-month-divider::before, .home-month-divider::after { content:""; flex:1; height:1px; background:#2E323E; }
+/* 設定頁「首頁摘要顯示設定」的選項：沒選的用暗色框線（原本是預設的亮白色），選中的用主題顏色 */
+.setting-header-btn { border-color:#2E323E; }
+.setting-header-btn[aria-pressed=true] { border-color:var(--accent); }
+.mode-check { border-color:#4B5262; }
+.setting-header-btn[aria-pressed=true] .mode-check { border-color:var(--accent); color:var(--accent); }
 /* 設定頁的主題顏色選項 */
 .theme-options { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
 .theme-option { display:flex; flex-direction:column; align-items:center; gap:6px; min-height:64px; padding:10px 4px; border-radius:12px; border:1px solid #2E323E; background:#191B22; color:#D1D5DB; font-size:13px; }

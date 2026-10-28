@@ -69,5 +69,6 @@ const LedgerBack = (() => {
     sync();
   }
 
-  return { init, openCount };
+  // busy：自己呼叫的 history.go() 還沒抵達（測試按返回前先等它，兩次移動才不會疊在一起）。
+  return { init, openCount, busy: () => moving };
 })();

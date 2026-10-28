@@ -62,6 +62,11 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 /* 首頁清單往前補的上個月紀錄前面的分隔線 */
 .home-month-divider { display:flex; align-items:center; gap:10px; padding:4px 2px 0; font-size:12px; color:#9CA3AF; }
 .home-month-divider::before, .home-month-divider::after { content:""; flex:1; height:1px; background:#2E323E; }
+/* 設定頁「首頁摘要顯示設定」的選項：沒選的用暗色框線（原本是預設的亮白色），選中的用主題顏色 */
+.setting-header-btn { border-color:#2E323E; }
+.setting-header-btn[aria-pressed=true] { border-color:var(--accent); }
+.mode-check { border-color:#4B5262; }
+.setting-header-btn[aria-pressed=true] .mode-check { border-color:var(--accent); color:var(--accent); }
 /* 設定頁的主題顏色選項 */
 .theme-options { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
 .theme-option { display:flex; flex-direction:column; align-items:center; gap:6px; min-height:64px; padding:10px 4px; border-radius:12px; border:1px solid #2E323E; background:#191B22; color:#D1D5DB; font-size:13px; }
@@ -883,7 +888,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">036194c0ce31</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">a16c3322d9f4</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -4053,7 +4058,8 @@ const LedgerBack = (() => {
     sync();
   }
 
-  return { init, openCount };
+  // busy：自己呼叫的 history.go() 還沒抵達（測試按返回前先等它，兩次移動才不會疊在一起）。
+  return { init, openCount, busy: () => moving };
 })();
 // Firebase 連線：Google 登入（Firebase Authentication）與雲端資料庫（Cloud Firestore Lite）。
 // 只有在同步設定完成、且使用者開啟同步時才會從 Google 官方網址載入元件；
@@ -4816,7 +4822,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = '036194c0ce31';
+  const APP_VERSION = 'a16c3322d9f4';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -5037,7 +5043,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '036194c0ce31';
+  const APP_VERSION = 'a16c3322d9f4';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');
