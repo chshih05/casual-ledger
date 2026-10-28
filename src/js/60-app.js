@@ -13,7 +13,7 @@ const MAX_AMOUNT = 999999999;
 const BOOK_PREFIX = 'minimal_expense_v3_';
 // Only the personal book remains; `book` keeps the existing storage key (minimal_expense_v3_personal).
 let book = 'personal', storageBlocked = false, persistedRaw = null, loadIssue = '';
-let state, modalState = null, searchQuery = '', searchAcrossMonths = false;
+let state, modalState = null, searchQuery = '';
 let merchantMgrQuery = '', merchantMgrShowAll = false;
 let keypadOpen = true, lastDeletedRecord = null;
 window.__selectedIconKey = 'dinner';
@@ -170,8 +170,8 @@ function showToast(msg,ms=2800) {
 function filteredHomeRecords() {
   const q=searchQuery.trim().toLocaleLowerCase();
   if(!q)return getMonthRecords(homeListStart());
-  // 搜尋只找選的月份（不含往前補的上個月），勾「搜尋全部月份」時找全部。
-  const rows=searchAcrossMonths ? state.records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.seq-b.seq):getMonthRecords();
+  // 搜尋一律找全部月份；單月某家店的合計在統計頁點店家看。
+  const rows=state.records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.seq-b.seq);
   return rows.filter(r=>[r.merchant,r.note,getCategoryById(r.categoryId).name].some(t=>t.toLocaleLowerCase().includes(q)));
 }
 function renderAll() {
@@ -766,7 +766,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
   on('currentMonthLabel','click',()=>{const now=today().slice(0,7);if(state.currentMonth!==now){state.currentMonth=now;renderAll();}});
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
-  on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
+  on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});
   on('btnOpenAddModal','click',()=>openNewRecordModal());
   on('btnCloseRecordModal','click',closeRecordPage);
   ['expense','income'].forEach(t=>on(t==='expense'?'modalTypeExpense':'modalTypeIncome','click',()=>{

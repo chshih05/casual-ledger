@@ -205,8 +205,8 @@
     eq(a.text('homeRecordCount'), '共 5 筆');
 
     a.type('recordSearch', '星巴克');
-    eq(items(), ['11 月 1 日（週日） 支出 $50'], '搜尋只找選的月份，不含往前補的');
-    eq(a.text('searchSummary'), '11 月找到 1 筆・支出合計 NT$ 50');
+    eq(items(), ['11 月 1 日（週日） 支出 $50', '10 月 4 日（週日） 支出 $70'], '搜尋找全部月份，搜尋時沒有分隔線');
+    eq(a.text('searchSummary'), '全部月份找到 2 筆・支出合計 NT$ 120');
     a.type('recordSearch', '');
 
     a.click('btnPrevMonth');
@@ -2013,12 +2013,11 @@
     addRecord(a, { amount: '50', merchant: '全家' });
     addRecord(a, { amount: '300', merchant: '星巴克', type: 'income' });
     assert(!a.visible('searchSummary'), '沒有搜尋時不顯示');
+    a.ev(`commit(s => s.records.push({ id: 'rec_old_sb', seq: 1, type: 'expense', date: '2020-01-05', categoryId: 'cat_lunch', amount: 40, merchant: '星巴克', note: '' }))`);
     a.type('recordSearch', '星巴克');
-    const month = Number(a.ev('state.currentMonth').slice(5));
-    eq(a.text('searchSummary'), `${month} 月找到 3 筆・支出合計 NT$ 205・收入合計 NT$ 300`);
+    eq(a.text('searchSummary'), '全部月份找到 4 筆・支出合計 NT$ 245・收入合計 NT$ 300', '一律找全部月份');
     a.type('recordSearch', '找不到的店');
     assert(!a.visible('searchSummary'), '找不到時只顯示「沒有符合的紀錄」');
-    a.click('searchAllMonths');
     a.type('recordSearch', '全家');
     eq(a.text('searchSummary'), '全部月份找到 1 筆・支出合計 NT$ 50');
   });

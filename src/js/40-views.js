@@ -277,7 +277,7 @@
       if (!show) return;
       const sumOf = type => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
       const expense = sumOf('expense'), income = sumOf('income');
-      const parts = [`${searchAcrossMonths ? '全部月份' : `${Number(state.currentMonth.slice(5))} 月`}找到 ${records.length} 筆`];
+      const parts = [`全部月份找到 ${records.length} 筆`];
       if (expense) parts.push(`支出合計 NT$ ${formatMoney(expense)}`);
       if (income) parts.push(`收入合計 NT$ ${formatMoney(income)}`);
       el.textContent = parts.join('・');

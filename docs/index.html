@@ -404,8 +404,7 @@ select.rule-input { color-scheme:dark; }
           <span id="homeRecordCount" class="text-xs text-textDim">共 0 筆</span>
         </div>
         <div class="flex gap-2 flex-wrap">
-<input id="recordSearch" type="search" aria-label="搜尋紀錄" placeholder="搜尋店家、備註或分類" class="search-input" />
-<label class="text-xs flex items-center gap-2"><input id="searchAllMonths" type="checkbox" />搜尋全部月份</label></div>
+<input id="recordSearch" type="search" aria-label="搜尋紀錄（全部月份）" placeholder="搜尋全部月份的店家、備註或分類" class="search-input" /></div>
 <p id="searchSummary" class="hidden search-summary" role="status"></p>
 <div id="homeRecordList" class="space-y-3"></div>
       </section>
@@ -888,7 +887,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">9e3bf3104de9</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">7e262fc479cd</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1396,7 +1395,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       if (!show) return;
       const sumOf = type => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
       const expense = sumOf('expense'), income = sumOf('income');
-      const parts = [`${searchAcrossMonths ? '全部月份' : `${Number(state.currentMonth.slice(5))} 月`}找到 ${records.length} 筆`];
+      const parts = [`全部月份找到 ${records.length} 筆`];
       if (expense) parts.push(`支出合計 NT$ ${formatMoney(expense)}`);
       if (income) parts.push(`收入合計 NT$ ${formatMoney(income)}`);
       el.textContent = parts.join('・');
@@ -2758,7 +2757,7 @@ const MAX_AMOUNT = 999999999;
 const BOOK_PREFIX = 'minimal_expense_v3_';
 // Only the personal book remains; `book` keeps the existing storage key (minimal_expense_v3_personal).
 let book = 'personal', storageBlocked = false, persistedRaw = null, loadIssue = '';
-let state, modalState = null, searchQuery = '', searchAcrossMonths = false;
+let state, modalState = null, searchQuery = '';
 let merchantMgrQuery = '', merchantMgrShowAll = false;
 let keypadOpen = true, lastDeletedRecord = null;
 window.__selectedIconKey = 'dinner';
@@ -2915,8 +2914,8 @@ function showToast(msg,ms=2800) {
 function filteredHomeRecords() {
   const q=searchQuery.trim().toLocaleLowerCase();
   if(!q)return getMonthRecords(homeListStart());
-  // 搜尋只找選的月份（不含往前補的上個月），勾「搜尋全部月份」時找全部。
-  const rows=searchAcrossMonths ? state.records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.seq-b.seq):getMonthRecords();
+  // 搜尋一律找全部月份；單月某家店的合計在統計頁點店家看。
+  const rows=state.records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.seq-b.seq);
   return rows.filter(r=>[r.merchant,r.note,getCategoryById(r.categoryId).name].some(t=>t.toLocaleLowerCase().includes(q)));
 }
 function renderAll() {
@@ -3511,7 +3510,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
   on('currentMonthLabel','click',()=>{const now=today().slice(0,7);if(state.currentMonth!==now){state.currentMonth=now;renderAll();}});
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
-  on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
+  on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});
   on('btnOpenAddModal','click',()=>openNewRecordModal());
   on('btnCloseRecordModal','click',closeRecordPage);
   ['expense','income'].forEach(t=>on(t==='expense'?'modalTypeExpense':'modalTypeIncome','click',()=>{
@@ -4824,7 +4823,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = '9e3bf3104de9';
+  const APP_VERSION = '7e262fc479cd';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -5045,7 +5044,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '9e3bf3104de9';
+  const APP_VERSION = '7e262fc479cd';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');
