@@ -82,6 +82,7 @@
       const [y, m] = state.currentMonth.split('-');
       const yearMode = isYearStats();
       document.getElementById('currentMonthLabel').textContent = yearMode ? `${y} 年` : `${y} 年 ${parseInt(m, 10)} 月`;
+      document.getElementById('currentMonthLabel').title = yearMode ? '回到今年' : '回到本月';
       document.getElementById('btnPrevMonth').title = yearMode ? '上一年' : '上個月';
       document.getElementById('btnNextMonth').title = yearMode ? '下一年' : '下個月';
       const monthWrap = document.getElementById('monthSelectorWrap');
@@ -219,7 +220,7 @@
         ].filter(Boolean).join(' ');
         const headerHtml = `
           <div class="day-head bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between">
-            <span class="day-head-date">${mm} 月 ${dd} 日（週${wk}）<span class="day-head-count">・${items.length} 筆</span></span>
+            <span class="day-head-date">${mm} 月 ${dd} 日（週${wk}）</span>
             <span class="day-total">${dayTotals}</span>
           </div>
         `;

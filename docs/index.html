@@ -73,11 +73,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .theme-option[aria-pressed=true] { border-color:var(--accent); background:rgba(var(--accent-rgb),.125); color:#F3F4F6; font-weight:600; }
 .theme-swatch { width:22px; height:22px; border-radius:50%; }
 /* 首頁每天的標題列：日期與當天合計比下面的紀錄醒目；各自不換行，太窄時合計換到下一行並靠右 */
-.day-head { flex-wrap:wrap; column-gap:12px; row-gap:2px; padding:10px 16px; font-size:14px; }
+.day-head { flex-wrap:wrap; column-gap:8px; row-gap:2px; padding:10px 14px; font-size:14px; }
 .day-head span { white-space:nowrap; }
 .day-head-date { font-weight:600; color:#E5E7EB; }
-.day-head-count { font-size:12px; font-weight:400; color:#6B7280; }
-.day-total { display:flex; gap:10px; margin-left:auto; font-size:15px; font-weight:700; }
+.day-total { display:flex; gap:8px; margin-left:auto; font-size:15px; font-weight:700; }
 /* 首頁的備份提醒 */
 .backup-reminder { display:grid; gap:10px; padding:14px 16px; border-radius:16px; background:#1E2028; border:1px solid rgba(var(--accent-rgb),.4); }
 .backup-reminder-title { font-size:14px; font-weight:600; color:#F3F4F6; }
@@ -306,7 +305,8 @@ select.rule-input { color-scheme:dark; }
         <button id="btnPrevMonth" type="button" class="p-1 text-textMuted hover:text-textMain rounded-lg active:scale-95 transition" title="上個月">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <span id="currentMonthLabel" class="text-sm font-semibold px-2 num-tabular">2026 年 10 月</span>
+        <!-- 點月份回到這個月（整年時回到今年） -->
+        <button id="currentMonthLabel" type="button" class="text-sm font-semibold px-2 num-tabular" title="回到本月">2026 年 10 月</button>
         <button id="btnNextMonth" type="button" class="p-1 text-textMuted hover:text-textMain rounded-lg active:scale-95 transition" title="下個月">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </button>
@@ -888,7 +888,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">a16c3322d9f4</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">9e3bf3104de9</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1201,6 +1201,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       const [y, m] = state.currentMonth.split('-');
       const yearMode = isYearStats();
       document.getElementById('currentMonthLabel').textContent = yearMode ? `${y} 年` : `${y} 年 ${parseInt(m, 10)} 月`;
+      document.getElementById('currentMonthLabel').title = yearMode ? '回到今年' : '回到本月';
       document.getElementById('btnPrevMonth').title = yearMode ? '上一年' : '上個月';
       document.getElementById('btnNextMonth').title = yearMode ? '下一年' : '下個月';
       const monthWrap = document.getElementById('monthSelectorWrap');
@@ -1338,7 +1339,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         ].filter(Boolean).join(' ');
         const headerHtml = `
           <div class="day-head bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between">
-            <span class="day-head-date">${mm} 月 ${dd} 日（週${wk}）<span class="day-head-count">・${items.length} 筆</span></span>
+            <span class="day-head-date">${mm} 月 ${dd} 日（週${wk}）</span>
             <span class="day-total">${dayTotals}</span>
           </div>
         `;
@@ -3508,6 +3509,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   LedgerBack.init();
   setupCategoryDrag();
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
+  on('currentMonthLabel','click',()=>{const now=today().slice(0,7);if(state.currentMonth!==now){state.currentMonth=now;renderAll();}});
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
   on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
   on('btnOpenAddModal','click',()=>openNewRecordModal());
@@ -4822,7 +4824,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = 'a16c3322d9f4';
+  const APP_VERSION = '9e3bf3104de9';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -5043,7 +5045,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = 'a16c3322d9f4';
+  const APP_VERSION = '9e3bf3104de9';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

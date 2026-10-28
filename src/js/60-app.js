@@ -764,6 +764,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   LedgerBack.init();
   setupCategoryDrag();
   const monthStep=n=>{const [y,m]=state.currentMonth.split('-').map(Number),d=new Date(y,m-1+n*(isYearStats()?12:1),1);state.currentMonth=today(d).slice(0,7);renderAll();};
+  on('currentMonthLabel','click',()=>{const now=today().slice(0,7);if(state.currentMonth!==now){state.currentMonth=now;renderAll();}});
   on('btnPrevMonth','click',()=>monthStep(-1));on('btnNextMonth','click',()=>monthStep(1));
   on('recordSearch','input',e=>{searchQuery=e.target.value;renderHome();});on('searchAllMonths','change',e=>{searchAcrossMonths=e.target.checked;renderHome();});
   on('btnOpenAddModal','click',()=>openNewRecordModal());
