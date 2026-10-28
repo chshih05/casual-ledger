@@ -457,8 +457,8 @@ function setupCategoryDrag() {
   });
 }
 // 主題顏色只存在這台裝置（不同步、不在備份裡）；<head> 開頭的小程式會在畫面出現前先套用。
-const THEMES=['purple','blue','sky','mono'];
-function currentTheme() { const t=document.documentElement.dataset.theme;return THEMES.includes(t)?t:'purple'; }
+const THEMES=['blue','sky','mono','purple'];
+function currentTheme() { const t=document.documentElement.dataset.theme;return THEMES.includes(t)?t:'blue'; }
 function setTheme(t) {
   if(!THEMES.includes(t))return;
   document.documentElement.dataset.theme=t;

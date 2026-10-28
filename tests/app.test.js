@@ -351,20 +351,20 @@
     let a = await personalApp();
     const accent = () => a.w.getComputedStyle(a.$('btnOpenAddModal')).backgroundColor;
     const pressed = () => [...a.d.querySelectorAll('[data-theme-option]')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.themeOption);
-    eq(accent(), 'rgb(167, 139, 250)', '預設紫色');
-    openSettings(a, 'general');
-    eq(pressed(), ['purple']);
-    a.click(a.d.querySelector('[data-theme-option="blue"]'));
-    eq(pressed(), ['blue']);
-    // 按鈕的顏色有 0.15 秒的漸變，等漸變結束再讀。
-    await waitFor(() => accent() === 'rgb(138, 180, 248)', { message: `選了立刻換色：${accent()}` });
-    assert(!('theme' in a.ev('state.preferences')), '不寫進帳本，也不同步');
-    a = await reloadApp();
-    eq(accent(), 'rgb(138, 180, 248)', '重新開啟後保留');
+    eq(accent(), 'rgb(138, 180, 248)', '預設霧藍');
     openSettings(a, 'general');
     eq(pressed(), ['blue']);
     a.click(a.d.querySelector('[data-theme-option="purple"]'));
-    await waitFor(() => accent() === 'rgb(167, 139, 250)', { message: `換回紫色：${accent()}` });
+    eq(pressed(), ['purple']);
+    // 按鈕的顏色有 0.15 秒的漸變，等漸變結束再讀。
+    await waitFor(() => accent() === 'rgb(167, 139, 250)', { message: `選了立刻換色：${accent()}` });
+    assert(!('theme' in a.ev('state.preferences')), '不寫進帳本，也不同步');
+    a = await reloadApp();
+    eq(accent(), 'rgb(167, 139, 250)', '重新開啟後保留');
+    openSettings(a, 'general');
+    eq(pressed(), ['purple']);
+    a.click(a.d.querySelector('[data-theme-option="blue"]'));
+    await waitFor(() => accent() === 'rgb(138, 180, 248)', { message: `換回霧藍：${accent()}` });
   });
 
   test('設定｜Android 返回手勢從分頁回到設定第一頁', async () => {

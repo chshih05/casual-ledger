@@ -1,6 +1,6 @@
-/* 主題顏色：預設紫色，設定 →「記帳與首頁」可以換（<html data-theme>，只存在這台裝置）。tailwind.css 的 accent 也用這些變數。 */
-:root { --accent:#A78BFA; --accent-rgb:167,139,250; --accent-hover:#8B5CF6; --accent-light:#C4B5FD; --accent-border:#B7A0FC; --accent-ink:#D4C4FF; --accent-muted:#8573AD; --accent-muted-text:#AFA8BE; --accent-scroll:#555065; }
-:root[data-theme=blue] { --accent:#8AB4F8; --accent-rgb:138,180,248; --accent-hover:#669DF6; --accent-light:#AECBFA; --accent-border:#9DC0F9; --accent-ink:#D2E3FC; --accent-muted:#6F86A8; --accent-muted-text:#A9B2C0; --accent-scroll:#4E5866; }
+/* 主題顏色：預設霧藍，設定 →「記帳與首頁」可以換（<html data-theme>，只存在這台裝置）。tailwind.css 的 accent 也用這些變數。 */
+:root { --accent:#8AB4F8; --accent-rgb:138,180,248; --accent-hover:#669DF6; --accent-light:#AECBFA; --accent-border:#9DC0F9; --accent-ink:#D2E3FC; --accent-muted:#6F86A8; --accent-muted-text:#A9B2C0; --accent-scroll:#4E5866; }
+:root[data-theme=purple] { --accent:#A78BFA; --accent-rgb:167,139,250; --accent-hover:#8B5CF6; --accent-light:#C4B5FD; --accent-border:#B7A0FC; --accent-ink:#D4C4FF; --accent-muted:#8573AD; --accent-muted-text:#AFA8BE; --accent-scroll:#555065; }
 :root[data-theme=sky] { --accent:#38BDF8; --accent-rgb:56,189,248; --accent-hover:#0EA5E9; --accent-light:#7DD3FC; --accent-border:#5CCBF9; --accent-ink:#C8EEFE; --accent-muted:#5F94AD; --accent-muted-text:#A6B8C2; --accent-scroll:#4C5C66; }
 :root[data-theme=mono] { --accent:#E5E7EB; --accent-rgb:229,231,235; --accent-hover:#D1D5DB; --accent-light:#F3F4F6; --accent-border:#D1D5DB; --accent-ink:#F9FAFB; --accent-muted:#6B7280; --accent-muted-text:#AEB3BC; --accent-scroll:#4B5262; }
 [hidden], .hidden { display: none !important; }

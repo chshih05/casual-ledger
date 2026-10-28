@@ -27,7 +27,7 @@
     }
     .animate-fade { animation: fadeIn 0.16s ease-out forwards; }
   </style>
-<!-- 主題顏色（設定 →「記帳與首頁」）：在畫面出現前套用，開啟時不會先閃一下預設的紫色 -->
+<!-- 主題顏色（設定 →「記帳與首頁」）：在畫面出現前套用，開啟時不會先閃一下預設的霧藍 -->
   <script>try{var t=localStorage.getItem('minimal_expense_v3_theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <!-- @inline-css styles/tailwind.css -->
 <!-- @inline-css styles/app.css -->
@@ -463,10 +463,10 @@
           <p class="text-xs text-textMuted mt-0.5">按鈕、圖示與選取時的顏色。只套用在這台裝置，不會同步。</p>
         </div>
         <div class="theme-options" role="group" aria-label="主題顏色">
-          <button type="button" class="theme-option" data-theme-option="purple" aria-pressed="true"><span class="theme-swatch" style="background:#A78BFA"></span>紫</button>
-          <button type="button" class="theme-option" data-theme-option="blue" aria-pressed="false"><span class="theme-swatch" style="background:#8AB4F8"></span>霧藍</button>
+          <button type="button" class="theme-option" data-theme-option="blue" aria-pressed="true"><span class="theme-swatch" style="background:#8AB4F8"></span>霧藍</button>
           <button type="button" class="theme-option" data-theme-option="sky" aria-pressed="false"><span class="theme-swatch" style="background:#38BDF8"></span>天青</button>
           <button type="button" class="theme-option" data-theme-option="mono" aria-pressed="false"><span class="theme-swatch" style="background:#E5E7EB"></span>灰白</button>
+          <button type="button" class="theme-option" data-theme-option="purple" aria-pressed="false"><span class="theme-swatch" style="background:#A78BFA"></span>紫</button>
         </div>
       </section>
 
