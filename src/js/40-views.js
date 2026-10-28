@@ -214,12 +214,12 @@
         // 當天合計：支出一律顯示，有收入時另外列出。
         const dayExp = sumOf(items, 'expense'), dayInc = sumOf(items, 'income');
         const dayTotals = [
-          dayExp || !dayInc ? `<span class="text-textMain font-semibold num-tabular">支出 $${formatMoney(dayExp)}</span>` : '',
-          dayInc ? `<span class="text-incomeGreen font-semibold num-tabular">收入 +$${formatMoney(dayInc)}</span>` : ''
+          dayExp || !dayInc ? `<span class="text-textMain num-tabular">支出 $${formatMoney(dayExp)}</span>` : '',
+          dayInc ? `<span class="text-incomeGreen num-tabular">收入 +$${formatMoney(dayInc)}</span>` : ''
         ].filter(Boolean).join(' ');
         const headerHtml = `
-          <div class="day-head px-4 py-2 bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between text-xs text-textMuted">
-            <span class="font-medium">${mm} 月 ${dd} 日（週${wk}）<span class="text-[11px] text-textDim font-normal">・${items.length} 筆</span></span>
+          <div class="day-head bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between">
+            <span class="day-head-date">${mm} 月 ${dd} 日（週${wk}）<span class="day-head-count">・${items.length} 筆</span></span>
             <span class="day-total">${dayTotals}</span>
           </div>
         `;
@@ -243,7 +243,7 @@
                 </div>
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
-                    <span class="text-sm font-semibold text-textMain truncate">${escapeHtml(primaryTitle)}</span>
+                    <span class="text-sm font-medium text-textMain truncate">${escapeHtml(primaryTitle)}</span>
                     ${categoryBadge}
                     ${fixedBadge}
                     ${pendingBadge}
@@ -252,7 +252,7 @@
                 </div>
               </div>
               <div class="text-right shrink-0">
-                <span class="text-base font-bold num-tabular ${amountColor}">${amountPrefix}$${formatMoney(rec.amount)}</span>
+                <span class="text-sm font-semibold num-tabular ${amountColor}">${amountPrefix}$${formatMoney(rec.amount)}</span>
               </div>
             </button>
           `;

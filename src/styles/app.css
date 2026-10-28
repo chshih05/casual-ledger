@@ -25,10 +25,12 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 /* 首頁清單往前補的上個月紀錄前面的分隔線 */
 .home-month-divider { display:flex; align-items:center; gap:10px; padding:4px 2px 0; font-size:12px; color:#9CA3AF; }
 .home-month-divider::before, .home-month-divider::after { content:""; flex:1; height:1px; background:#2E323E; }
-/* 首頁每天的標題列：日期與當天合計各自不換行，太窄時合計換到下一行並靠右 */
-.day-head { flex-wrap:wrap; column-gap:12px; row-gap:2px; }
+/* 首頁每天的標題列：日期與當天合計比下面的紀錄醒目；各自不換行，太窄時合計換到下一行並靠右 */
+.day-head { flex-wrap:wrap; column-gap:12px; row-gap:2px; padding:10px 16px; font-size:14px; }
 .day-head span { white-space:nowrap; }
-.day-total { display:flex; gap:8px; margin-left:auto; }
+.day-head-date { font-weight:600; color:#E5E7EB; }
+.day-head-count { font-size:12px; font-weight:400; color:#6B7280; }
+.day-total { display:flex; gap:10px; margin-left:auto; font-size:15px; font-weight:700; }
 /* 首頁的備份提醒 */
 .backup-reminder { display:grid; gap:10px; padding:14px 16px; border-radius:16px; background:#1E2028; border:1px solid #A78BFA66; }
 .backup-reminder-title { font-size:14px; font-weight:600; color:#F3F4F6; }

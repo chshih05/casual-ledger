@@ -55,10 +55,12 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 /* 首頁清單往前補的上個月紀錄前面的分隔線 */
 .home-month-divider { display:flex; align-items:center; gap:10px; padding:4px 2px 0; font-size:12px; color:#9CA3AF; }
 .home-month-divider::before, .home-month-divider::after { content:""; flex:1; height:1px; background:#2E323E; }
-/* 首頁每天的標題列：日期與當天合計各自不換行，太窄時合計換到下一行並靠右 */
-.day-head { flex-wrap:wrap; column-gap:12px; row-gap:2px; }
+/* 首頁每天的標題列：日期與當天合計比下面的紀錄醒目；各自不換行，太窄時合計換到下一行並靠右 */
+.day-head { flex-wrap:wrap; column-gap:12px; row-gap:2px; padding:10px 16px; font-size:14px; }
 .day-head span { white-space:nowrap; }
-.day-total { display:flex; gap:8px; margin-left:auto; }
+.day-head-date { font-weight:600; color:#E5E7EB; }
+.day-head-count { font-size:12px; font-weight:400; color:#6B7280; }
+.day-total { display:flex; gap:10px; margin-left:auto; font-size:15px; font-weight:700; }
 /* 首頁的備份提醒 */
 .backup-reminder { display:grid; gap:10px; padding:14px 16px; border-radius:16px; background:#1E2028; border:1px solid #A78BFA66; }
 .backup-reminder-title { font-size:14px; font-weight:600; color:#F3F4F6; }
@@ -855,7 +857,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">e8540c78b319</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">43c3b0e196a0</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1300,12 +1302,12 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         // 當天合計：支出一律顯示，有收入時另外列出。
         const dayExp = sumOf(items, 'expense'), dayInc = sumOf(items, 'income');
         const dayTotals = [
-          dayExp || !dayInc ? `<span class="text-textMain font-semibold num-tabular">支出 $${formatMoney(dayExp)}</span>` : '',
-          dayInc ? `<span class="text-incomeGreen font-semibold num-tabular">收入 +$${formatMoney(dayInc)}</span>` : ''
+          dayExp || !dayInc ? `<span class="text-textMain num-tabular">支出 $${formatMoney(dayExp)}</span>` : '',
+          dayInc ? `<span class="text-incomeGreen num-tabular">收入 +$${formatMoney(dayInc)}</span>` : ''
         ].filter(Boolean).join(' ');
         const headerHtml = `
-          <div class="day-head px-4 py-2 bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between text-xs text-textMuted">
-            <span class="font-medium">${mm} 月 ${dd} 日（週${wk}）<span class="text-[11px] text-textDim font-normal">・${items.length} 筆</span></span>
+          <div class="day-head bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between">
+            <span class="day-head-date">${mm} 月 ${dd} 日（週${wk}）<span class="day-head-count">・${items.length} 筆</span></span>
             <span class="day-total">${dayTotals}</span>
           </div>
         `;
@@ -1329,7 +1331,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
                 </div>
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
-                    <span class="text-sm font-semibold text-textMain truncate">${escapeHtml(primaryTitle)}</span>
+                    <span class="text-sm font-medium text-textMain truncate">${escapeHtml(primaryTitle)}</span>
                     ${categoryBadge}
                     ${fixedBadge}
                     ${pendingBadge}
@@ -1338,7 +1340,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
                 </div>
               </div>
               <div class="text-right shrink-0">
-                <span class="text-base font-bold num-tabular ${amountColor}">${amountPrefix}$${formatMoney(rec.amount)}</span>
+                <span class="text-sm font-semibold num-tabular ${amountColor}">${amountPrefix}$${formatMoney(rec.amount)}</span>
               </div>
             </button>
           `;
@@ -4777,7 +4779,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = 'e8540c78b319';
+  const APP_VERSION = '43c3b0e196a0';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -4998,7 +5000,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = 'e8540c78b319';
+  const APP_VERSION = '43c3b0e196a0';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');
