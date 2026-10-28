@@ -27,6 +27,8 @@
     }
     .animate-fade { animation: fadeIn 0.16s ease-out forwards; }
   </style>
+<!-- 主題顏色（設定 →「記帳與首頁」）：在畫面出現前套用，開啟時不會先閃一下預設的紫色 -->
+  <script>try{var t=localStorage.getItem('minimal_expense_v3_theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <!-- @inline-css styles/tailwind.css -->
 <!-- @inline-css styles/app.css -->
 </head>
@@ -392,7 +394,7 @@
           </div>
         </section>
         <nav class="settings-menu" aria-label="設定項目">
-          <button type="button" class="settings-menu-item" data-settings-page="general"><span><span class="settings-menu-title">記帳與首頁</span><span class="settings-menu-desc">首頁摘要、儲存並再記一筆</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="settings-menu-item" data-settings-page="general"><span><span class="settings-menu-title">記帳與首頁</span><span class="settings-menu-desc">首頁摘要、儲存並再記一筆、主題顏色</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="budget"><span><span class="settings-menu-title">預算</span><span class="settings-menu-desc">每月總預算、分類預算</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="recurring"><span><span class="settings-menu-title">固定收支</span><span class="settings-menu-desc">房租、訂閱、薪水到期自動記帳</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
           <button type="button" class="settings-menu-item" data-settings-page="categories"><span><span class="settings-menu-title">分類</span><span class="settings-menu-desc">拖曳排序、圖示、新增分類</span></span><span class="settings-menu-arrow" aria-hidden="true">›</span></button>
@@ -451,6 +453,20 @@
           <button id="toggleSaveAndNext" role="switch" aria-label="儲存並再記一筆" type="button" class="w-11 h-6 rounded-full transition relative bg-bgElevated border border-borderSubtle shrink-0">
             <span id="toggleSaveAndNextDot" class="w-4 h-4 rounded-full bg-textMuted absolute top-0.5 left-1 transition-all"></span>
           </button>
+        </div>
+      </section>
+
+      <!-- 3. 主題顏色（只存在這台裝置，見 60-app.js 的 setTheme） -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
+        <div>
+          <h3 class="text-sm font-semibold text-textMain">主題顏色</h3>
+          <p class="text-xs text-textMuted mt-0.5">按鈕、圖示與選取時的顏色。只套用在這台裝置，不會同步。</p>
+        </div>
+        <div class="theme-options" role="group" aria-label="主題顏色">
+          <button type="button" class="theme-option" data-theme-option="purple" aria-pressed="true"><span class="theme-swatch" style="background:#A78BFA"></span>紫</button>
+          <button type="button" class="theme-option" data-theme-option="blue" aria-pressed="false"><span class="theme-swatch" style="background:#8AB4F8"></span>霧藍</button>
+          <button type="button" class="theme-option" data-theme-option="sky" aria-pressed="false"><span class="theme-swatch" style="background:#38BDF8"></span>天青</button>
+          <button type="button" class="theme-option" data-theme-option="mono" aria-pressed="false"><span class="theme-swatch" style="background:#E5E7EB"></span>灰白</button>
         </div>
       </section>
 

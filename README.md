@@ -42,7 +42,7 @@
 
 ### 設定頁
 - **第一頁：** 上方是雲端同步狀態與「下載完整備份」，下方是各分頁。分頁可以用手機的返回手勢回到第一頁。
-- **記帳與首頁：** 首頁只顯示支出，或一併顯示收入與結餘；可開啟「儲存並再記一筆」。
+- **記帳與首頁：** 首頁只顯示支出，或一併顯示收入與結餘；可開啟「儲存並再記一筆」；主題顏色可以選紫、霧藍、天青或灰白（只套用在這台裝置，不會同步）。
 - **分類：** 點分類可以改名、換圖示或刪除（沒有紀錄與固定收支使用的才能刪除）；按住左邊的把手拖曳調整順序（用鍵盤時在把手上按上下鍵）。
 - **新增分類：** 按「＋ 新增支出分類」（或記帳頁分類最後一格「＋ 新增」）。名稱和圖示都由你決定：先打名稱，會依名稱自動選一個相近的圖示（例如打「加油」就選加油的圖示、打「宵夜」就選串燒），也可以直接在下面挑；先挑圖示時，名稱會帶入圖示的名稱。上方預覽在記帳頁的樣子。自己挑過圖示後，改名稱就不會再換圖示。
 - **店家與收入來源：** 分兩頁，只列最近 6 個月最常用的 12 個，其他的用搜尋或「顯示全部」找。每個名稱一行，點一下打開以前的所有紀錄；紀錄上方可以改名、合併重複的名稱，或停用（不再推薦，歷史紀錄保留）。
@@ -91,7 +91,7 @@
 - **預算以月為單位、只算支出：** 沒有年度預算，沒用完的金額也不會留到下個月。
 - **店家的紀錄只認完全相同的名稱：** 「全家」和「全家便利商店」會分開算，可以在設定頁點名稱後按「合併」，把重複的名稱合在一起。
 - **還沒更新的裝置：** 舊版網頁看不到預算與固定收支，同步分頁可能顯示「雲端資料格式不符，已略過」；在舊版改了有預算的分類，會把那個分類的預算清掉。更新後第一次同步會從頭讀一次雲端，自動補回略過的資料（多用一次讀取額度）。
-- **主畫面的名稱與圖示：** 改版後由 Chrome 自己更新，可能會先詢問；iPhone 要刪掉重新加入（刪除前先下載備份）。
+- **主畫面的名稱與圖示：** 改版後由 Chrome 自己更新，可能會先詢問；iPhone 要刪掉重新加入（刪除前先下載備份）。圖示固定是紫色，不會跟著主題顏色改變。
 - **直接開啟 `docs/index.html` 檔案時：** 可以記帳，但不能同步，也不會離線快取或自動更新。
 - **從捷徑打開記帳頁時：** 按返回手勢可能會直接回到手機桌面（Chrome 會略過還沒點過的畫面），要回首頁請按左上角「返回」。
 
@@ -113,7 +113,7 @@
 - 測試：執行 `python tools/run_tests.py`，會先建置，再用電腦上的 Chrome（或 Edge）在背景跑全部測試，結果印在終端機。也可以執行 `python -m http.server 8765 --bind 127.0.0.1` 後開啟 <http://localhost:8765/tests/run.html> 看每一項。另外執行 `python tools/check_classes.py` 檢查樣式名稱。
 - **GitHub 自動測試：** 每次推送到 `main` 或開 Pull Request，GitHub Actions（`.github/workflows/test.yml`）會檢查 `docs/` 有沒有重新建置、樣式名稱，並跑全部測試；結果在儲存庫的「Actions」分頁，失敗時 GitHub 會寄信通知。
 - 推送到 `main` 後，GitHub Pages 幾分鐘內更新，手機下次開啟會自動換成新版。
-- 其他位置：主畫面圖示 `tools/make_icons.py`（捷徑圖示：`python tools/make_icons.py shortcuts`）；返回手勢 `src/js/68-back-nav.js`；備份提醒與雲端自動備份 `src/js/85-backup.js`；Firebase 設定 `src/firebase-config.js`（公開值，改成 `null` 可停用同步）；安全規則 `firestore.rules`；常用店家數量 `src/js/60-app.js` 的 `SETTINGS_FREQUENT_LIMIT`、`RECORD_SUGGEST_LIMIT`；分類圖示（名稱、大分類、依名稱建議圖示用的關鍵字與圖案）`src/js/30-icon-catalog.js`；帳本儲存（資料庫、變更日誌、搬家）`src/js/58-store.js`。
+- 其他位置：主畫面圖示 `tools/make_icons.py`（捷徑圖示：`python tools/make_icons.py shortcuts`）；返回手勢 `src/js/68-back-nav.js`；備份提醒與雲端自動備份 `src/js/85-backup.js`；Firebase 設定 `src/firebase-config.js`（公開值，改成 `null` 可停用同步）；安全規則 `firestore.rules`；常用店家數量 `src/js/60-app.js` 的 `SETTINGS_FREQUENT_LIMIT`、`RECORD_SUGGEST_LIMIT`；分類圖示（名稱、大分類、依名稱建議圖示用的關鍵字與圖案）`src/js/30-icon-catalog.js`；帳本儲存（資料庫、變更日誌、搬家）`src/js/58-store.js`；主題顏色 `src/styles/app.css` 開頭的 `--accent` 等變數（`tailwind.css` 的 accent 也用這些變數）。
 - **開放同步給其他人：** Firebase 主控台 → Firestore Database →「規則」，在 `isOwner` 的 Gmail 清單加入對方的 Gmail（全部小寫，例如 `['me@gmail.com', 'family@gmail.com']`）後發布。每個帳號的帳本各自獨立。
   真實的 Gmail 只填在主控台；GitHub 上的 `firestore.rules` 保留範例文字。
 - **不要上傳到 GitHub：** 帳本備份（`.json`）、匯出的 CSV 和 `reference/`。`.gitignore` 已排除它們，但用 GitHub 網頁上傳時不會套用。

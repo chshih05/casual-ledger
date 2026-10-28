@@ -456,6 +456,15 @@ function setupCategoryDrag() {
     saveCategoryOrder(ids,id);
   });
 }
+// 主題顏色只存在這台裝置（不同步、不在備份裡）；<head> 開頭的小程式會在畫面出現前先套用。
+const THEMES=['purple','blue','sky','mono'];
+function currentTheme() { const t=document.documentElement.dataset.theme;return THEMES.includes(t)?t:'purple'; }
+function setTheme(t) {
+  if(!THEMES.includes(t))return;
+  document.documentElement.dataset.theme=t;
+  try{localStorage.setItem(BOOK_PREFIX+'theme',t);}catch{}
+  renderSettings();
+}
 function renderSettings() {
   $('settingsHome').classList.toggle('hidden',Boolean(state.settingsPage));
   document.querySelectorAll('.settings-page').forEach(el=>el.classList.toggle('hidden',el.dataset.page!==state.settingsPage));
@@ -463,6 +472,7 @@ function renderSettings() {
   $('toggleSaveAndNext').setAttribute('aria-checked',String(state.preferences.enableSaveAndNext));
   $('toggleSaveAndNext').classList.toggle('bg-accent',state.preferences.enableSaveAndNext);
   $('toggleSaveAndNextDot').style.left=state.preferences.enableSaveAndNext?'22px':'4px';
+  document.querySelectorAll('[data-theme-option]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.themeOption===currentTheme())));
   ['expense','income'].forEach(t=>{$(t==='expense'?'catMgrTabExpense':'catMgrTabIncome').classList.toggle('bg-accent',state.catMgrType===t);$(t==='expense'?'catMgrTabExpense':'catMgrTabIncome').classList.toggle('text-bgMain',state.catMgrType===t);});
   const list=$('settingsCategoryList');list.innerHTML='';
   getCategoriesByType(state.catMgrType).forEach(c=>{
@@ -784,6 +794,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   ['month','year'].forEach(p=>on(p==='month'?'statsPeriodMonth':'statsPeriodYear','click',()=>{state.statsPeriod=p;renderAll();}));
   on('btnCloseDrilldown','click',closeDrilldown);
   document.querySelectorAll('.setting-header-btn').forEach(b=>b.onclick=()=>{if(commit(s=>s.preferences.homeHeaderMode=b.dataset.mode))renderAll();});
+  document.querySelectorAll('[data-theme-option]').forEach(b=>b.onclick=()=>setTheme(b.dataset.themeOption));
   on('toggleSaveAndNext','click',()=>{if(commit(s=>s.preferences.enableSaveAndNext=!s.preferences.enableSaveAndNext))renderSettings();});
   on('btnManageAddMerchant','click',()=>{const name=$('inputManageNewMerchant').value.trim();if(!name||name.length>100||state.merchants.includes(name))return showToast('請輸入尚未存在的名稱（最多 100 字）。');const type=state.merchantMgrType==='income'?'income':'expense';if(commit(s=>{s.merchants.push(name);Object.defineProperty(s.merchantTypes,name,{value:type,enumerable:true,writable:true,configurable:true});})){$('inputManageNewMerchant').value='';renderSettings();showToast(`已新增「${name}」`);}});
   ['expense','income'].forEach(t=>on(t==='expense'?'merMgrTabExpense':'merMgrTabIncome','click',()=>{state.merchantMgrType=t;merchantMgrShowAll=false;renderMerchantManager();}));
