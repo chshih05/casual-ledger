@@ -140,7 +140,7 @@
       </section>
       </div>
 
-      <!-- 2. 最近消費紀錄 (依日期分組；同一天內依新增先後由上往下排，新記的排在當天最後一筆) -->
+      <!-- 2. 最近消費紀錄 (依日期分組，每天標出支出合計；同一天內依新增先後由上往下排，新記的排在當天最後一筆。停在這個月時往前補上個月最後幾天，見 homeListStart) -->
       <section class="space-y-3">
         <div class="flex items-center justify-between px-0.5">
           <div class="flex items-center gap-2">
@@ -151,7 +151,7 @@
         </div>
         <div class="flex gap-2 flex-wrap">
 <input id="recordSearch" type="search" aria-label="搜尋紀錄" placeholder="搜尋店家、備註或分類" class="search-input" />
-<label class="text-xs flex items-center gap-2"><input id="searchAllMonths" type="checkbox" />跨月搜尋</label></div>
+<label class="text-xs flex items-center gap-2"><input id="searchAllMonths" type="checkbox" />搜尋全部月份</label></div>
 <p id="searchSummary" class="hidden search-summary" role="status"></p>
 <div id="homeRecordList" class="space-y-3"></div>
       </section>

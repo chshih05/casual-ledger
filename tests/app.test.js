@@ -181,6 +181,45 @@
     eq(a.$('homeRecordList').children.length, 2, '兩天的紀錄應分成兩組');
   });
 
+  test('畫面｜首頁每天標出支出合計；停在這個月時往前補上個月最後幾天，補到和這個月一樣多天，不算進本月合計', async () => {
+    const a = await personalApp();
+    const real = a.w.today;
+    const setToday = date => { a.w.today = d => d ? real(d) : date; };
+    setToday('2026-11-02');
+    const rec = (id, date, amount, type = 'expense', merchant = '') => ({ id, seq: 1, type, date, categoryId: type === 'income' ? 'cat_salary' : 'cat_lunch', amount, merchant, note: '' });
+    await importBackup(a, { records: [
+      rec('n2', '2026-11-02', 100), rec('n1a', '2026-11-01', 50, 'expense', '星巴克'), rec('n1b', '2026-11-01', 30), rec('n1i', '2026-11-01', 300, 'income'),
+      rec('o4', '2026-10-04', 70, 'expense', '星巴克'), rec('o3', '2026-10-03', 999), rec('s30', '2026-09-30', 20),
+    ], categories: defaultCategories(a), merchants: [] });
+    a.ev("state.currentMonth = '2026-11'; renderAll()");
+    const items = () => [...a.$('homeRecordList').children].map(el => el.classList.contains('home-month-divider')
+      ? el.textContent : el.firstElementChild.textContent.replace(/\s+/g, ' ').trim());
+    eq(a.text('homeTotalExpense'), '180', '本月合計不含上個月');
+    eq(items(), [
+      '11 月 2 日（週一）・1 筆 支出 $100',
+      '11 月 1 日（週日）・3 筆 支出 $80 收入 +$300',
+      '10 月・不計入本月合計',
+      '10 月 4 日（週日）・1 筆 支出 $70',
+    ], '11 月有 30 天：往前補到 10/4，10/3 不列出');
+    eq(a.text('homeRecordCount'), '共 5 筆');
+
+    a.type('recordSearch', '星巴克');
+    eq(items(), ['11 月 1 日（週日）・1 筆 支出 $50'], '搜尋只找選的月份，不含往前補的');
+    eq(a.text('searchSummary'), '11 月找到 1 筆・支出合計 NT$ 50');
+    a.type('recordSearch', '');
+
+    a.click('btnPrevMonth');
+    eq(items(), ['10 月 4 日（週日）・1 筆 支出 $70', '10 月 3 日（週六）・1 筆 支出 $999'], '以前的月份只列那個月，沒有分隔線');
+    eq(a.text('homeTotalExpense'), '1,069');
+
+    setToday('2026-10-30');
+    a.ev('renderAll()');
+    eq(items().slice(2), ['9 月・不計入本月合計', '9 月 30 日（週三）・1 筆 支出 $20'], '10 月有 31 天：10/30 往前補到 9/30');
+    setToday('2026-10-31');
+    a.ev('renderAll()');
+    eq(items().length, 2, '月底剛好是整個月，不往前補');
+  });
+
   test('畫面｜記一筆：分類與金額在同一張卡片，且不預先選分類', async () => {
     const a = await personalApp();
     a.click('btnOpenAddModal');

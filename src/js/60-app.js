@@ -169,8 +169,10 @@ function showToast(msg,ms=2800) {
 }
 function filteredHomeRecords() {
   const q=searchQuery.trim().toLocaleLowerCase();
-  const rows=searchAcrossMonths && q ? state.records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.seq-b.seq):getMonthRecords();
-  return q?rows.filter(r=>[r.merchant,r.note,getCategoryById(r.categoryId).name].some(t=>t.toLocaleLowerCase().includes(q))):rows;
+  if(!q)return getMonthRecords(homeListStart());
+  // 搜尋只找選的月份（不含往前補的上個月），勾「搜尋全部月份」時找全部。
+  const rows=searchAcrossMonths ? state.records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.seq-b.seq):getMonthRecords();
+  return rows.filter(r=>[r.merchant,r.note,getCategoryById(r.categoryId).name].some(t=>t.toLocaleLowerCase().includes(q)));
 }
 function renderAll() {
   // 只重畫目前看得到的頁面，其他頁面切過去時才重畫；帳本大時切換與儲存比較快。

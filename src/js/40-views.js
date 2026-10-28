@@ -109,14 +109,25 @@
         monthWrap.classList.remove('hidden');
       }
     }
-    function getMonthRecords() {
+    // 選的月份的紀錄；from 可以往前延伸到上個月（首頁清單用，見 homeListStart）。
+    function getMonthRecords(from = state.currentMonth + '-01') {
+      const end = state.currentMonth + '-31';
       return state.records
-        .filter(r => r.date.startsWith(state.currentMonth))
+        .filter(r => r.date >= from && r.date <= end)
         .sort((a, b) => {
           const dateDiff = b.date.localeCompare(a.date);
           if (dateDiff !== 0) return dateDiff;
           return (Number(a.seq) || 0) - (Number(b.seq) || 0);
         });
+    }
+    // 首頁停在這個月時，清單往前補上個月最後幾天，補到和這個月一樣多天（例如 11/2 列出 10/4～11/2），
+    // 月初也看得到前幾天記了什麼；補上的紀錄不算進上方的本月合計。其他月份只列那個月。
+    function homeListStart() {
+      const monthStart = state.currentMonth + '-01', now = today();
+      if (!now.startsWith(state.currentMonth)) return monthStart;
+      const [y, m, d] = now.split('-').map(Number);
+      const from = today(new Date(y, m - 1, d - new Date(y, m, 0).getDate() + 1));
+      return from < monthStart ? from : monthStart;
     }
     // 統計頁的紀錄：按月為目前選擇的月份，整年度為該月份所在的整個年份。
     function getStatsRecords() {
@@ -128,8 +139,9 @@
     function renderHome() {
       renderHomeBudget();
       const monthRecords = filteredHomeRecords();
-      const totalExp = getMonthRecords().filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
-      const totalInc = getMonthRecords().filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0);
+      const sumOf = (records, type) => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
+      const totalExp = sumOf(getMonthRecords(), 'expense');
+      const totalInc = sumOf(getMonthRecords(), 'income');
       const net = totalInc - totalExp;
 
       document.getElementById('homeTotalExpense').textContent = formatMoney(totalExp);
@@ -179,7 +191,16 @@
       }
 
       const weekNames = ['日', '一', '二', '三', '四', '五', '六'];
+      // 沒有搜尋時，往前補的上個月紀錄（見 homeListStart）前面加一條分隔線。
+      let dividerShown = Boolean(searchQuery.trim());
       Object.keys(groups).sort((a, b) => b.localeCompare(a)).forEach(dateStr => {
+        if (!dividerShown && !dateStr.startsWith(state.currentMonth)) {
+          dividerShown = true;
+          const divider = document.createElement('div');
+          divider.className = 'home-month-divider';
+          divider.textContent = `${parseInt(dateStr.slice(5, 7), 10)} 月・不計入本月合計`;
+          listEl.appendChild(divider);
+        }
         // 確保同一天內依 seq 由小到大（舊 -> 新），新加入的在當天最後面
         const items = groups[dateStr].slice().sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0));
         const dObj = new Date(dateStr + 'T00:00:00');
@@ -190,10 +211,16 @@
         const groupCard = document.createElement('div');
         groupCard.className = 'bg-bgCard border border-borderSubtle rounded-2xl overflow-hidden';
 
+        // 當天合計：支出一律顯示，有收入時另外列出。
+        const dayExp = sumOf(items, 'expense'), dayInc = sumOf(items, 'income');
+        const dayTotals = [
+          dayExp || !dayInc ? `<span class="text-textMain font-semibold num-tabular">支出 $${formatMoney(dayExp)}</span>` : '',
+          dayInc ? `<span class="text-incomeGreen font-semibold num-tabular">收入 +$${formatMoney(dayInc)}</span>` : ''
+        ].filter(Boolean).join(' ');
         const headerHtml = `
-          <div class="px-4 py-2 bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between text-xs text-textMuted">
-            <span class="font-medium">${mm} 月 ${dd} 日（週${wk}）</span>
-            <span class="text-[11px] text-textDim">${items.length} 筆</span>
+          <div class="day-head px-4 py-2 bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between text-xs text-textMuted">
+            <span class="font-medium">${mm} 月 ${dd} 日（週${wk}）<span class="text-[11px] text-textDim font-normal">・${items.length} 筆</span></span>
+            <span class="day-total">${dayTotals}</span>
           </div>
         `;
 
