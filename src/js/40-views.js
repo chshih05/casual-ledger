@@ -139,6 +139,7 @@
     }
     function renderHome() {
       renderHomeBudget();
+      renderSearchFilters();
       const monthRecords = filteredHomeRecords();
       const sumOf = (records, type) => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
       const totalExp = sumOf(getMonthRecords(), 'expense');
@@ -193,7 +194,7 @@
 
       const weekNames = ['日', '一', '二', '三', '四', '五', '六'];
       // 沒有搜尋時，往前補的上個月紀錄（見 homeListStart）前面加一條分隔線。
-      let dividerShown = Boolean(searchQuery.trim());
+      let dividerShown = homeFilterActive();
       Object.keys(groups).sort((a, b) => b.localeCompare(a)).forEach(dateStr => {
         if (!dividerShown && !dateStr.startsWith(state.currentMonth)) {
           dividerShown = true;
@@ -272,7 +273,7 @@
     // 搜尋時列出找到幾筆與合計（支出、收入分開算），例如查「星巴克」這個月或全部月份花了多少。
     function renderSearchSummary(records) {
       const el = document.getElementById('searchSummary');
-      const show = Boolean(searchQuery.trim()) && records.length > 0;
+      const show = homeFilterActive() && records.length > 0;
       el.classList.toggle('hidden', !show);
       if (!show) return;
       const sumOf = type => records.reduce((s, r) => s + (r.type === type ? r.amount : 0), 0);
@@ -426,7 +427,7 @@
     // 從設定頁的店家清單打開時（manage），上方另有改名、合併、停用。
     let drilldown = null;
     function openDrilldownModal(filterType, filterValue, titleName, opts = {}) {
-      drilldown = { filterType, filterValue, titleName, scope: opts.scope || 'period', switchable: opts.scope !== 'all', readOnly: Boolean(opts.readOnly), manage: Boolean(opts.manage), type: opts.type || state.statsType };
+      drilldown = { filterType, filterValue, titleName, scope: opts.scope || 'period', switchable: opts.switchable ?? opts.scope !== 'all', readOnly: Boolean(opts.readOnly), manage: Boolean(opts.manage), type: opts.type || state.statsType };
       renderDrilldown();
       document.getElementById('modalDrilldown').classList.remove('hidden');
       document.getElementById('drilldownList').scrollTop = 0;
@@ -439,7 +440,9 @@
     }
     function drilldownRecords() {
       const d = drilldown;
-      const match = r => d.filterType === 'category' ? r.categoryId === d.filterValue : ((r.merchant && r.merchant.trim()) || '__BLANK__') === d.filterValue;
+      const match = r => d.filterType === 'category' ? r.categoryId === d.filterValue
+        : d.filterType === 'date' ? r.date === d.filterValue
+        : ((r.merchant && r.merchant.trim()) || '__BLANK__') === d.filterValue;
       if (d.scope === 'period') return getStatsRecords().filter(match);
       return state.records.filter(r => r.type === d.type && match(r))
         .sort((a, b) => b.date.localeCompare(a.date) || (Number(a.seq) || 0) - (Number(b.seq) || 0));
@@ -450,7 +453,7 @@
       const sum = records.reduce((s, r) => s + r.amount, 0);
       document.getElementById('drilldownTitle').textContent = `${d.titleName} — ${all ? '所有紀錄' : '明細紀錄'}`;
       const parts = [];
-      if (!all) parts.push(isYearStats() ? `${state.currentMonth.slice(0, 4)} 年` : state.currentMonth);
+      if (!all && d.filterType !== 'date') parts.push(isYearStats() ? `${state.currentMonth.slice(0, 4)} 年` : state.currentMonth);
       parts.push(`共 ${records.length} 筆`, `合計 NT$ ${formatMoney(sum)}`);
       if (all && records.length) parts.push(`平均每筆 NT$ ${formatMoney(sum / records.length)}`);
       document.getElementById('drilldownSubtitle').textContent = parts.join('・');

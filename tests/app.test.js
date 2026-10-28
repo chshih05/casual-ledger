@@ -1108,14 +1108,37 @@
     eq(cols().map(c => c.querySelector('.trend-label').textContent).filter(Boolean), ['1', '5', '10', '15', '20', '25', '31']);
     eq([2, 9, 4].map(i => cols()[i].querySelector('.trend-bar').style.height), ['60%', '100%', '0%']);
     eq(cols().map(c => c.getAttribute('aria-current')).indexOf('true'), 14, '今天（15 日）用主色');
+    cols()[9].dispatchEvent(new a.w.PointerEvent('pointerover', { bubbles: true }));
+    eq(a.text('statsDailyTip'), 'NT$ 50010 月 10 日', '滑鼠移過去顯示金額');
+    a.click(cols()[4]);
+    assert(!a.visible('modalDrilldown'), '沒有紀錄的日子不打開明細');
     a.click(cols()[9]);
-    assert(a.visible('statsDailyTip'), '點長條顯示金額');
-    eq(a.text('statsDailyTip'), 'NT$ 50010 月 10 日');
+    assert(a.visible('modalDrilldown'), '點長條列出那天的紀錄');
+    assert(!a.visible('statsDailyTip'));
+    eq([a.text('drilldownTitle'), a.text('drilldownSubtitle')], ['10 月 10 日 — 明細紀錄', '共 1 筆・合計 NT$ 500']);
+    assert(!a.visible('drilldownScope'), '不能切換到全部時間');
+    a.click('btnCloseDrilldown');
     a.click('statsTabIncome');
     assert(!a.visible('statsDailySection'), '收入不顯示');
     a.click('statsTabExpense');
     a.click('statsPeriodYear');
     assert(!a.visible('statsDailySection'), '整年不顯示');
+  });
+
+  test('統計｜近 12 個月可以只看一個分類，換成收入時回到全部分類', async () => {
+    const a = await compareApp();
+    const select = a.$('statsTrendCategory');
+    const pick = v => { select.value = v; select.dispatchEvent(new a.w.Event('change', { bubbles: true })); };
+    const label = i => a.$('statsTrendChart').children[i].getAttribute('aria-label');
+    eq([...select.options].map(o => o.textContent).slice(0, 3), ['全部分類', '早餐', '午餐']);
+    eq([label(10), label(11)], ['2026 年 9 月 NT$ 1,600', '2026 年 10 月 NT$ 800']);
+    pick('cat_dinner');
+    eq([label(10), label(11)], ['2026 年 9 月 NT$ 1,400', '2026 年 10 月 NT$ 500'], '只算晚餐');
+    eq(a.text('statsTrendAvg'), '月平均 NT$ 1,400');
+    a.click(a.$('statsTrendChart').children[10]);
+    eq([a.ev('state.currentMonth'), select.value], ['2026-09', 'cat_dinner'], '切換月份後仍只看晚餐');
+    a.click('statsTabIncome');
+    eq(select.value, '', '收入沒有晚餐，回到全部分類');
   });
 
   const compareRows = a => [...a.$('statsCompareList').querySelectorAll('.compare-row')].map(r => [
@@ -2062,6 +2085,35 @@
     assert(!a.visible('searchSummary'), '找不到時只顯示「沒有符合的紀錄」');
     a.type('recordSearch', '全家');
     eq(a.text('searchSummary'), '全部月份找到 1 筆・支出合計 NT$ 50');
+  });
+
+  test('搜尋｜篩選分類與最低金額，可以和關鍵字一起用；一律找全部月份，儲存紀錄後清掉', async () => {
+    const a = await personalApp();
+    const rec = (id, date, categoryId, amount, merchant) => ({ id, seq: 1, type: 'expense', date, categoryId, amount, merchant, note: '' });
+    const now = a.ev('today()');
+    await importBackup(a, { records: [
+      rec('f1', now, 'cat_lunch', 120, '星巴克'), rec('f2', now, 'cat_dinner', 300, '麥當勞'), rec('f3', now, 'cat_lunch', 80, '全家'), rec('f4', '2020-01-05', 'cat_lunch', 500, '便當店'),
+    ], categories: defaultCategories(a), merchants: [] });
+    assert(!a.visible('searchFilters'));
+    a.click('btnSearchFilter');
+    assert(a.visible('searchFilters'));
+    eq(a.$('btnSearchFilter').getAttribute('aria-expanded'), 'true');
+    a.$('searchCategory').value = 'cat_lunch';
+    a.$('searchCategory').dispatchEvent(new a.w.Event('change', { bubbles: true }));
+    eq(a.text('searchSummary'), '全部月份找到 3 筆・支出合計 NT$ 700', '只看午餐，包含以前的月份');
+    a.type('searchMinAmount', '1,00');
+    eq(a.text('searchSummary'), '全部月份找到 2 筆・支出合計 NT$ 620', '金額至少 100');
+    eq(a.text('btnSearchFilter'), '篩選・2');
+    a.type('recordSearch', '星巴克');
+    eq(a.text('searchSummary'), '全部月份找到 1 筆・支出合計 NT$ 120', '和關鍵字一起用');
+    a.click('btnClearSearchFilter');
+    eq([a.text('searchSummary'), a.text('btnSearchFilter')], ['全部月份找到 1 筆・支出合計 NT$ 120', '篩選'], '清除篩選，關鍵字保留');
+    a.$('searchCategory').value = 'cat_dinner';
+    a.$('searchCategory').dispatchEvent(new a.w.Event('change', { bubbles: true }));
+    a.type('recordSearch', '');
+    addRecord(a, { amount: '50' });
+    assert(!a.visible('searchSummary'), '儲存後清掉搜尋與篩選');
+    eq([a.$('searchCategory').value, a.text('btnSearchFilter')], ['', '篩選']);
   });
 
   test('捷徑｜主畫面圖示長按的「記一筆支出／收入」直接打開記帳頁，網址恢復原樣', async () => {

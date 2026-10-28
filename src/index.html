@@ -153,7 +153,14 @@
           <span id="homeRecordCount" class="text-xs text-textDim">共 0 筆</span>
         </div>
         <div class="flex gap-2 flex-wrap">
-<input id="recordSearch" type="search" aria-label="搜尋紀錄（全部月份）" placeholder="搜尋全部月份的店家、備註或分類" class="search-input" /></div>
+<input id="recordSearch" type="search" aria-label="搜尋紀錄（全部月份）" placeholder="搜尋店家、備註或分類" class="search-input" />
+<button id="btnSearchFilter" type="button" class="search-filter-btn" aria-expanded="false" aria-controls="searchFilters">篩選</button></div>
+<!-- 篩選：只看某個分類、金額至少多少；和關鍵字一起用，一律找全部月份 -->
+<div id="searchFilters" class="hidden search-filters">
+<select id="searchCategory" aria-label="篩選分類" class="search-filter-field"></select>
+<input id="searchMinAmount" type="text" inputmode="numeric" maxlength="11" aria-label="金額至少" placeholder="金額至少" class="search-filter-field" />
+<button id="btnClearSearchFilter" type="button" class="search-filter-clear">清除</button>
+</div>
 <p id="searchSummary" class="hidden search-summary" role="status"></p>
 <div id="homeRecordList" class="space-y-3"></div>
       </section>
@@ -331,7 +338,7 @@
           <div id="statsDailyChart" class="trend-chart daily-chart"></div>
           <div id="statsDailyTip" class="trend-tip hidden"></div>
         </div>
-        <p class="text-[11px] text-textMuted">點長條看那天的金額</p>
+        <p class="text-[11px] text-textMuted">點長條看那天的紀錄</p>
       </section>
 
       <!-- 按月：近 12 個月走勢 -->
@@ -340,6 +347,7 @@
           <h3 id="statsTrendTitle" class="text-sm font-semibold text-textMain">近 12 個月支出</h3>
           <span id="statsTrendAvg" class="text-[11px] text-textMuted num-tabular"></span>
         </div>
+        <select id="statsTrendCategory" class="trend-category" aria-label="近 12 個月只看這個分類"></select>
         <div class="trend-wrap">
           <div id="statsTrendChart" class="trend-chart"></div>
           <div id="statsTrendTip" class="trend-tip hidden"></div>
