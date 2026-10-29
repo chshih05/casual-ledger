@@ -468,8 +468,9 @@ function setKeypad(open) {
   $('btnToggleKeypad').textContent = open ? '收起數字鍵盤' : '展開數字鍵盤';
   $('btnToggleKeypad').setAttribute('aria-expanded', String(open));
 }
-// 日期：「今天」「昨天」點一下就選好；其他日期用日曆選，選好後按鈕顯示日期與星期。
+// 日期：「今天」「昨天」「明天」點一下就選好；其他日期用日曆選，選好後按鈕顯示日期與星期。
 const WEEKDAY_NAMES = '日一二三四五六';
+// n 是負數時往後算，daysAgo(-1) 是明天。
 function daysAgo(n, now = new Date()) {
   return today(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n));
 }
@@ -477,10 +478,12 @@ function renderDateChips() {
   const date = modalState.date,
     isToday = date === today(),
     isYesterday = date === daysAgo(1),
-    other = !isToday && !isYesterday && validDate(date);
+    isTomorrow = date === daysAgo(-1),
+    other = !isToday && !isYesterday && !isTomorrow && validDate(date);
   [
     ['btnDateToday', isToday],
     ['btnDateYesterday', isYesterday],
+    ['btnDateTomorrow', isTomorrow],
     ['btnDateToggle', other],
   ].forEach(([id, on]) => $(id).setAttribute('aria-pressed', String(on)));
   const [, m, d] = date.split('-').map(Number);
@@ -1768,6 +1771,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   on('btnDateToday', 'click', () => pickRecordDate(today()));
   on('btnDateYesterday', 'click', () => pickRecordDate(daysAgo(1)));
+  on('btnDateTomorrow', 'click', () => pickRecordDate(daysAgo(-1)));
   // 其他日期：打開日曆（不支援時至少把日期欄位顯示出來）。
   on('btnDateToggle', 'click', () => {
     const input = $('inputRecordDate');

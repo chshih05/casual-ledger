@@ -2112,9 +2112,10 @@
     assert(Math.abs(bottom() - a.w.innerHeight) <= 1, '往下捲之後仍在畫面底部');
   });
 
-  test('日期｜今天、昨天點一下就選好；其他日期顯示日期與星期，修改舊紀錄時也看得出來', async () => {
+  test('日期｜今天、昨天、明天點一下就選好；其他日期顯示日期與星期，修改舊紀錄時也看得出來', async () => {
     const a = await personalApp();
-    const pressed = () => ['btnDateToday', 'btnDateYesterday', 'btnDateToggle'].filter(id => a.$(id).getAttribute('aria-pressed') === 'true');
+    const pressed = () =>
+      ['btnDateToday', 'btnDateYesterday', 'btnDateTomorrow', 'btnDateToggle'].filter(id => a.$(id).getAttribute('aria-pressed') === 'true');
     a.click('btnOpenAddModal');
     eq(pressed(), ['btnDateToday'], '預設是今天');
     eq(a.text('btnDateToggle'), '其他日期 ▾');
@@ -2125,6 +2126,9 @@
     a.click('btnSaveRecord');
     eq(a.ev('state.records[0].date'), a.ev('daysAgo(1)'), '存成昨天');
     a.click('btnOpenAddModal');
+    a.click('btnDateTomorrow');
+    eq([pressed(), a.text('btnDateToggle')], [['btnDateTomorrow'], '其他日期 ▾']);
+    eq(a.ev('modalState.date'), a.ev('daysAgo(-1)'), '選成明天');
     a.click('btnDateToggle');
     assert(a.visible('inputRecordDate'), '其他日期：顯示日期欄位');
     const input = a.$('inputRecordDate');

@@ -22,7 +22,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 /* 記帳頁只淡入、不位移：外層有位移（transform）時，底部的儲存列會跟著頁面捲動，而不是固定在畫面底部 */
 #modalRecord.animate-fade { animation-name:fadeInOnly; }
 @keyframes fadeInOnly { from { opacity:0; } to { opacity:1; } }
-/* 記帳頁的日期：今天、昨天、其他日期 */
+/* 記帳頁的日期：今天、昨天、明天、其他日期 */
 .date-chips { display:flex; flex-wrap:wrap; gap:6px; }
 .date-chip { min-height:40px; padding:8px 14px; border-radius:12px; border:1px solid #3D4251; background:#262934; color:#D1D5DB; font-size:14px; font-variant-numeric:tabular-nums; }
 .date-chip[aria-pressed=true] { background:var(--accent); border-color:var(--accent); color:#14161B; font-weight:600; }

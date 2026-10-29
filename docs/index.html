@@ -54,7 +54,7 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 /* 記帳頁只淡入、不位移：外層有位移（transform）時，底部的儲存列會跟著頁面捲動，而不是固定在畫面底部 */
 #modalRecord.animate-fade { animation-name:fadeInOnly; }
 @keyframes fadeInOnly { from { opacity:0; } to { opacity:1; } }
-/* 記帳頁的日期：今天、昨天、其他日期 */
+/* 記帳頁的日期：今天、昨天、明天、其他日期 */
 .date-chips { display:flex; flex-wrap:wrap; gap:6px; }
 .date-chip { min-height:40px; padding:8px 14px; border-radius:12px; border:1px solid #3D4251; background:#262934; color:#D1D5DB; font-size:14px; font-variant-numeric:tabular-nums; }
 .date-chip[aria-pressed=true] { background:var(--accent); border-color:var(--accent); color:#14161B; font-weight:600; }
@@ -550,10 +550,11 @@ select.rule-input { color-scheme:dark; }
             </div>
             <div>
               <span id="recordDateLabel" class="block text-xs font-medium text-textMuted mb-1">日期</span>
-              <!-- 今天、昨天點一下就選好；其他日期打開日曆 -->
+              <!-- 今天、昨天、明天點一下就選好；其他日期打開日曆 -->
               <div class="date-chips" role="group" aria-labelledby="recordDateLabel">
                 <button id="btnDateToday" type="button" class="date-chip" aria-pressed="true">今天</button>
                 <button id="btnDateYesterday" type="button" class="date-chip" aria-pressed="false">昨天</button>
+                <button id="btnDateTomorrow" type="button" class="date-chip" aria-pressed="false">明天</button>
                 <button id="btnDateToggle" type="button" class="date-chip" aria-pressed="false">其他日期 ▾</button>
               </div>
               <input id="inputRecordDate" hidden type="date" aria-labelledby="recordDateLabel" class="w-full px-3 py-2 rounded-xl bg-bgInput border border-borderSubtle text-sm text-textMain focus:outline-none focus:border-accent num-tabular" />
@@ -949,7 +950,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">da92bc761085</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">e38f9ac16257</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -3358,8 +3359,9 @@ function setKeypad(open) {
   $('btnToggleKeypad').textContent = open ? '收起數字鍵盤' : '展開數字鍵盤';
   $('btnToggleKeypad').setAttribute('aria-expanded', String(open));
 }
-// 日期：「今天」「昨天」點一下就選好；其他日期用日曆選，選好後按鈕顯示日期與星期。
+// 日期：「今天」「昨天」「明天」點一下就選好；其他日期用日曆選，選好後按鈕顯示日期與星期。
 const WEEKDAY_NAMES = '日一二三四五六';
+// n 是負數時往後算，daysAgo(-1) 是明天。
 function daysAgo(n, now = new Date()) {
   return today(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n));
 }
@@ -3367,10 +3369,12 @@ function renderDateChips() {
   const date = modalState.date,
     isToday = date === today(),
     isYesterday = date === daysAgo(1),
-    other = !isToday && !isYesterday && validDate(date);
+    isTomorrow = date === daysAgo(-1),
+    other = !isToday && !isYesterday && !isTomorrow && validDate(date);
   [
     ['btnDateToday', isToday],
     ['btnDateYesterday', isYesterday],
+    ['btnDateTomorrow', isTomorrow],
     ['btnDateToggle', other],
   ].forEach(([id, on]) => $(id).setAttribute('aria-pressed', String(on)));
   const [, m, d] = date.split('-').map(Number);
@@ -4658,6 +4662,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   on('btnDateToday', 'click', () => pickRecordDate(today()));
   on('btnDateYesterday', 'click', () => pickRecordDate(daysAgo(1)));
+  on('btnDateTomorrow', 'click', () => pickRecordDate(daysAgo(-1)));
   // 其他日期：打開日曆（不支援時至少把日期欄位顯示出來）。
   on('btnDateToggle', 'click', () => {
     const input = $('inputRecordDate');
@@ -6553,7 +6558,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = 'da92bc761085';
+  const APP_VERSION = 'e38f9ac16257';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -6774,7 +6779,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = 'da92bc761085';
+  const APP_VERSION = 'e38f9ac16257';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');
