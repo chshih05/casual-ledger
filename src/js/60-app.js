@@ -152,6 +152,7 @@ function validateBackup(input) {
         Object.hasOwn(ICONS, c.icon) || (typeof c.icon === 'string' && /^[\w-]{1,60}$/.test(c.icon)) ? c.icon : 'other',
       order: c.order,
       ...(c.type === 'expense' && LedgerSyncCore.validBudget(c.budget) ? { budget: c.budget } : {}),
+      ...(c.type === 'expense' && c.skipDaily === true ? { skipDaily: true } : {}),
     });
   }
   if (!['expense', 'income'].every(t => [...cats.values()].some(c => c.type === t)))
@@ -1130,6 +1131,7 @@ function openDialog({
   hideCancel = false,
   checkbox,
   select,
+  checklist,
   confirmText = '確認',
   danger = false,
   onConfirm,
@@ -1148,11 +1150,25 @@ function openDialog({
   $('dialogCheckWrap').classList.toggle('hidden', !checkbox);
   $('dialogCheck').checked = Boolean(checkbox?.checked);
   $('dialogCheckLabel').textContent = checkbox?.label || '';
+  // 勾選清單：每一項 {value, label, icon, detail, checked}；按確認時傳出打勾的 value。
+  $('dialogChecklist').classList.toggle('hidden', !checklist);
+  $('dialogChecklist').innerHTML = (checklist || [])
+    .map(
+      item =>
+        `<label><input type="checkbox" value="${escapeHtml(item.value)}"${item.checked ? ' checked' : ''} />${item.icon ? `<span class="text-accent">${item.icon}</span>` : ''}<span class="dialog-checklist-name">${escapeHtml(item.label)}</span>${item.detail ? `<span class="dialog-checklist-detail">${escapeHtml(item.detail)}</span>` : ''}</label>`
+    )
+    .join('');
+  $('dialogChecklist').scrollTop = 0;
   $('dialogBtnCancel').classList.toggle('hidden', hideCancel);
   $('dialogBtnConfirm').textContent = confirmText;
   $('dialogBtnConfirm').classList.toggle('dialog-danger', danger);
   $('dialogBtnConfirm').onclick = async () => {
-    const values = [$('dialogInput').value, $('dialogCheck').checked, $('dialogSelect').value];
+    const values = [
+      $('dialogInput').value,
+      $('dialogCheck').checked,
+      $('dialogSelect').value,
+      [...$('dialogChecklist').querySelectorAll('input:checked')].map(x => x.value),
+    ];
     if (onConfirm && (await onConfirm(...values)) === false) return;
     closeDialog();
   };
@@ -1322,6 +1338,7 @@ function planImportMerge(current, imported, origin) {
       icon: c.icon,
       order,
       ...(c.budget ? { budget: c.budget } : {}),
+      ...(c.skipDaily ? { skipDaily: true } : {}),
     });
     setTime('cat:' + id, importedTime('cat:' + c.id));
     catMap.set(c.id, id);

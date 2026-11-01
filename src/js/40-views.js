@@ -559,6 +559,7 @@
               ${rec.amount < 0 ? '<span class="refund-badge">退款</span>' : ''}
             </div>
             ${rec.note ? `<div class="text-xs text-textMuted mt-1">${escapeHtml(rec.note)}</div>` : ''}
+            ${d.filterType === 'date' && cat.skipDaily ? '<div class="text-[11px] text-textMuted mt-1">不算進每日支出</div>' : ''}
           </div>
           <div class="text-sm font-bold num-tabular ${rec.amount < 0 ? 'text-incomeGreen' : 'text-textMain'}">${moneyText(rec.amount)}</div>
         `;

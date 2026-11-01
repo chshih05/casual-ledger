@@ -11,9 +11,10 @@ const LedgerSyncCore = (() => {
   const HEADER_MODES = ['expense_only', 'expense_and_income', 'full_net'];
   const MAX_AMOUNT = 999999999;
   const MAX_CONFLICTS = 30;
-  // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）。
+  // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）；
+  // 4 起支出分類可以設定不算進每日支出長條圖（skipDaily）。
   // 舊版程式會略過或去掉這些資料，所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
-  const FORMAT = 3;
+  const FORMAT = 4;
   // 固定收支規則沿用偏好設定的類別（pref:rule_…），雲端安全規則不需要修改。
   const RULE_PREFIX = 'rule_';
 
@@ -46,6 +47,7 @@ const LedgerSyncCore = (() => {
   }
 
   // 每月預算：1～999,999,999 的整數；沒有設定時不寫入欄位，舊資料的雜湊因此不會改變。
+  // 不算進每日支出（skipDaily）也一樣：只有勾掉的支出分類才寫入 true。
   const validBudget = v => Number.isSafeInteger(v) && v > 0 && v <= MAX_AMOUNT;
 
   const canon = {
@@ -53,6 +55,7 @@ const LedgerSyncCore = (() => {
     cat: c => {
       const out = { id: String(c.id), type: c.type, name: c.name, icon: c.icon, order: c.order };
       if (c.type === 'expense' && validBudget(c.budget)) out.budget = c.budget;
+      if (c.type === 'expense' && c.skipDaily === true) out.skipDaily = true;
       return out;
     },
     mer: m => ({ name: m.name, type: m.type === 'income' ? 'income' : 'expense', archived: Boolean(m.archived) }),
@@ -267,7 +270,8 @@ const LedgerSyncCore = (() => {
     }
     if (kind === 'cat') {
       return d.id === id && isId(d.id) && isType(d.type) && isStr(d.name, 40) && d.name.trim() !== ''
-        && isStr(d.icon, 80) && Number.isFinite(d.order) && (d.budget === undefined || validBudget(d.budget));
+        && isStr(d.icon, 80) && Number.isFinite(d.order) && (d.budget === undefined || validBudget(d.budget))
+        && (d.skipDaily === undefined || d.skipDaily === true);
     }
     if (kind === 'mer') {
       return d.name === id && isStr(d.name, 100) && d.name.trim() !== '' && isType(d.type) && typeof d.archived === 'boolean';

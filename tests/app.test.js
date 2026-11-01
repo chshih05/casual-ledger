@@ -1167,6 +1167,51 @@
     eq([tip(), active()], ['', []], '頁面開始上下捲動時收起金額');
   });
 
+  test('統計｜每日支出可以不算某些分類：長條、最多金額、按鈕文字跟著變，總支出照算；那天的紀錄照樣點得開', async () => {
+    const a = await compareApp();
+    const cols = () => [...a.$('statsDailyChart').children];
+    const box = id => a.$('dialogChecklist').querySelector(`input[value="${id}"]`);
+    const total = a.text('statsTotalValue');
+    eq(a.text('dailyCategoriesText'), '全部分類');
+    a.click('btnDailyCategories');
+    assert(a.visible('modalDialog'));
+    eq(a.text('dialogTitle'), '每日支出要算哪些分類');
+    const rows = [...a.$('dialogChecklist').querySelectorAll('label')];
+    eq(rows.length, a.ev("getCategoriesByType('expense').length"), '列出全部支出分類');
+    assert(rows.every(r => r.querySelector('input').checked), '一開始全部打勾');
+    eq(['.dialog-checklist-name', '.dialog-checklist-detail'].map(s => rows[2].querySelector(s).textContent), ['晚餐', 'NT$ 500'], '附上這個月花了多少');
+    box('cat_dinner').checked = false;
+    a.click('dialogBtnConfirm');
+    await waitFor(() => !a.visible('modalDialog'));
+    eq([a.text('dailyCategoriesText'), a.text('statsDailyMax')], ['不含 晚餐', '最多 10/3 NT$ 300']);
+    eq([2, 9].map(i => cols()[i].querySelector('.trend-bar').style.height), ['100%', '0%'], '晚餐那天不畫長條');
+    eq(a.text('statsTotalValue'), total, '總支出照算');
+    eq((await a.stored()).categories.find(c => c.id === 'cat_dinner').skipDaily, true, '設定存在分類上');
+    a.click(cols()[9]);
+    assert(a.visible('modalDrilldown'), '只有晚餐的那天也點得開');
+    eq(a.text('drilldownSubtitle'), '共 1 筆・合計 NT$ 500');
+    assert(a.text('drilldownList').includes('不算進每日支出'), '標出沒算進圖的紀錄');
+    a.click('btnCloseDrilldown');
+    a.click('btnDailyCategories');
+    a.$('dialogChecklist').querySelectorAll('input').forEach(x => { x.checked = false; });
+    a.click('dialogBtnConfirm');
+    await sleep(50);
+    assert(a.visible('modalDialog'), '全部取消時不能儲存');
+    eq(a.text('toastBox'), '至少要勾一個分類。');
+    a.click('dialogBtnCancel');
+    eq(a.text('dailyCategoriesText'), '不含 晚餐', '取消不改設定');
+    eq(a.ev("dailyCategoriesText([{ name: '房租' }, { name: '保險' }, { name: '學費' }])"), '不含 房租、保險 等 3 個分類');
+    a.ev("openCategoryEditor({ mode: 'edit', id: 'cat_dinner' })");
+    a.click('btnCatEditorMerge');
+    assert(a.text('dialogMessage').includes('「晚餐」原本不算進每日支出，合併後照選的分類的設定。'), '合併前說明');
+    a.click('dialogBtnCancel');
+    a.click('btnCatEditorClose');
+    const env = a.ev('backupEnvelope()');
+    const b = await personalApp();
+    await importBackup(b, env, { replace: true });
+    eq(b.ev('getCategoryById("cat_dinner").skipDaily'), true, '還原備份後設定還在');
+  });
+
   test('統計｜近 12 個月可以只看一個分類，換成收入時回到全部分類', async () => {
     const a = await compareApp();
     const select = a.$('statsTrendCategory');
