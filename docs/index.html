@@ -66,6 +66,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .search-filter-field { min-width:0; min-height:40px; padding:8px 10px; border-radius:10px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:14px; }
 .search-filter-clear { min-height:40px; padding:0 10px; font-size:13px; color:#9CA3AF; }
 .trend-category { justify-self:start; min-height:36px; padding:6px 10px; border-radius:10px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:13px; }
+/* 每日支出要算哪些分類：外觀和近 12 個月的分類選單一樣，按了打開勾選清單；分類名稱太長時以「…」結尾 */
+.daily-categories { display:flex; align-items:center; gap:6px; width:fit-content; max-width:100%; text-align:left; }
+.daily-categories span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.daily-categories svg { width:14px; height:14px; flex-shrink:0; color:#9CA3AF; }
 .search-summary { padding:0 2px; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
 /* 退款（負數的支出）的標籤：首頁紀錄與明細 */
 .refund-badge { flex-shrink:0; font-size:11px; font-weight:500; padding:2px 6px; border-radius:4px; background:#34D3991F; color:#34D399; }
@@ -292,6 +296,12 @@ select.rule-input { color-scheme:dark; }
 .dialog-field { display:grid; gap:4px; font-size:13px; color:#9CA3AF; }
 .dialog-select { width:100%; min-height:44px; padding:9px 12px; border-radius:12px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:16px; color-scheme:dark; }
 .dialog-select:focus { border-color:var(--accent); }
+/* 對話框裡的勾選清單（例如每日支出要算哪些分類）：分類多時清單自己捲動，下面的按鈕一直看得到 */
+.dialog-checklist { max-height:min(50vh,340px); overflow-y:auto; overscroll-behavior:contain; border-top:1px solid #2E323E; }
+.dialog-checklist label { display:flex; align-items:center; gap:10px; min-height:44px; padding:4px 2px; border-bottom:1px solid #2E323E; font-size:14px; color:#F3F4F6; cursor:pointer; }
+.dialog-checklist input { width:18px; height:18px; flex-shrink:0; accent-color:var(--accent); }
+.dialog-checklist-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dialog-checklist-detail { flex-shrink:0; font-size:12px; color:#9CA3AF; font-variant-numeric:tabular-nums; }
 .action:disabled { opacity:.6; }
 .csv-range { flex:1; min-width:0; max-width:100%; color:#F3F4F6; }
 .sync-chip { font-size:12px; padding:3px 10px; border-radius:999px; background:#262934; border:1px solid #3D4251; color:#D1D5DB; white-space:nowrap; }
@@ -621,6 +631,11 @@ select.rule-input { color-scheme:dark; }
           <h3 id="statsDailyTitle" class="text-sm font-semibold text-textMain">每日支出</h3>
           <span id="statsDailyMax" class="text-[11px] text-textMuted num-tabular"></span>
         </div>
+        <!-- 選哪些支出分類算進這張圖，例如不算房租、保險，免得一天的大筆金額把其他天壓扁 -->
+        <button id="btnDailyCategories" type="button" class="trend-category daily-categories">
+          <span id="dailyCategoriesText">全部分類</span>
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+        </button>
         <div class="trend-wrap">
           <div id="statsDailyChart" class="trend-chart daily-chart"></div>
           <div id="statsDailyTip" class="trend-tip hidden"></div>
@@ -950,7 +965,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">e38f9ac16257</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">bc887deebc31</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1066,6 +1081,7 @@ select.rule-input { color-scheme:dark; }
       <label id="dialogSelectWrap" class="hidden dialog-field"><span id="dialogSelectLabel"></span><select id="dialogSelect" class="dialog-select"></select></label>
       <textarea id="dialogTextarea" rows="7" readonly class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl p-2.5 text-[11px] font-mono text-textMuted focus:outline-none"></textarea>
       <label id="dialogCheckWrap" class="hidden dialog-check"><input id="dialogCheck" type="checkbox" /><span id="dialogCheckLabel"></span></label>
+      <div id="dialogChecklist" class="hidden dialog-checklist"></div>
       <div class="flex justify-end gap-2 pt-1">
         <button id="dialogBtnCancel" type="button" class="px-3.5 py-2 rounded-xl bg-bgElevated text-xs font-medium text-textMuted hover:text-textMain">取消</button>
         <button id="dialogBtnConfirm" type="button" class="px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">確認</button>
@@ -1743,6 +1759,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
               ${rec.amount < 0 ? '<span class="refund-badge">退款</span>' : ''}
             </div>
             ${rec.note ? `<div class="text-xs text-textMuted mt-1">${escapeHtml(rec.note)}</div>` : ''}
+            ${d.filterType === 'date' && cat.skipDaily ? '<div class="text-[11px] text-textMuted mt-1">不算進每日支出</div>' : ''}
           </div>
           <div class="text-sm font-bold num-tabular ${rec.amount < 0 ? 'text-incomeGreen' : 'text-textMain'}">${moneyText(rec.amount)}</div>
         `;
@@ -1962,6 +1979,7 @@ function mergeFromCategoryEditor() {
     message:[
       records||rules?`「${cat.name}」的${records?` ${records.toLocaleString('zh-TW')} 筆紀錄`:''}${records&&rules?'和':''}${rules?` ${rules} 項固定收支`:''}會搬到下面選的分類，然後刪除「${cat.name}」。`:`「${cat.name}」沒有紀錄，合併後直接刪除。`,
       cat.budget?`「${cat.name}」的每月預算 NT$ ${formatMoney(cat.budget)} 會一起刪除，選的分類預算不變。`:'',
+      cat.skipDaily?`「${cat.name}」原本不算進每日支出，合併後照選的分類的設定。`:'',
       '合併後沒辦法再分開；合併前的帳本會保留一份，可以在「資料與備份」還原。',
     ].filter(Boolean).join('\n'),
     // 一開始沒有選：直接按「合併」不會併到清單第一個分類。
@@ -2003,9 +2021,10 @@ const LedgerSyncCore = (() => {
   const HEADER_MODES = ['expense_only', 'expense_and_income', 'full_net'];
   const MAX_AMOUNT = 999999999;
   const MAX_CONFLICTS = 30;
-  // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）。
+  // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）；
+  // 4 起支出分類可以設定不算進每日支出長條圖（skipDaily）。
   // 舊版程式會略過或去掉這些資料，所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
-  const FORMAT = 3;
+  const FORMAT = 4;
   // 固定收支規則沿用偏好設定的類別（pref:rule_…），雲端安全規則不需要修改。
   const RULE_PREFIX = 'rule_';
 
@@ -2038,6 +2057,7 @@ const LedgerSyncCore = (() => {
   }
 
   // 每月預算：1～999,999,999 的整數；沒有設定時不寫入欄位，舊資料的雜湊因此不會改變。
+  // 不算進每日支出（skipDaily）也一樣：只有勾掉的支出分類才寫入 true。
   const validBudget = v => Number.isSafeInteger(v) && v > 0 && v <= MAX_AMOUNT;
 
   const canon = {
@@ -2045,6 +2065,7 @@ const LedgerSyncCore = (() => {
     cat: c => {
       const out = { id: String(c.id), type: c.type, name: c.name, icon: c.icon, order: c.order };
       if (c.type === 'expense' && validBudget(c.budget)) out.budget = c.budget;
+      if (c.type === 'expense' && c.skipDaily === true) out.skipDaily = true;
       return out;
     },
     mer: m => ({ name: m.name, type: m.type === 'income' ? 'income' : 'expense', archived: Boolean(m.archived) }),
@@ -2259,7 +2280,8 @@ const LedgerSyncCore = (() => {
     }
     if (kind === 'cat') {
       return d.id === id && isId(d.id) && isType(d.type) && isStr(d.name, 40) && d.name.trim() !== ''
-        && isStr(d.icon, 80) && Number.isFinite(d.order) && (d.budget === undefined || validBudget(d.budget));
+        && isStr(d.icon, 80) && Number.isFinite(d.order) && (d.budget === undefined || validBudget(d.budget))
+        && (d.skipDaily === undefined || d.skipDaily === true);
     }
     if (kind === 'mer') {
       return d.name === id && isStr(d.name, 100) && d.name.trim() !== '' && isType(d.type) && typeof d.archived === 'boolean';
@@ -3043,6 +3065,7 @@ function validateBackup(input) {
         Object.hasOwn(ICONS, c.icon) || (typeof c.icon === 'string' && /^[\w-]{1,60}$/.test(c.icon)) ? c.icon : 'other',
       order: c.order,
       ...(c.type === 'expense' && LedgerSyncCore.validBudget(c.budget) ? { budget: c.budget } : {}),
+      ...(c.type === 'expense' && c.skipDaily === true ? { skipDaily: true } : {}),
     });
   }
   if (!['expense', 'income'].every(t => [...cats.values()].some(c => c.type === t)))
@@ -4021,6 +4044,7 @@ function openDialog({
   hideCancel = false,
   checkbox,
   select,
+  checklist,
   confirmText = '確認',
   danger = false,
   onConfirm,
@@ -4039,11 +4063,25 @@ function openDialog({
   $('dialogCheckWrap').classList.toggle('hidden', !checkbox);
   $('dialogCheck').checked = Boolean(checkbox?.checked);
   $('dialogCheckLabel').textContent = checkbox?.label || '';
+  // 勾選清單：每一項 {value, label, icon, detail, checked}；按確認時傳出打勾的 value。
+  $('dialogChecklist').classList.toggle('hidden', !checklist);
+  $('dialogChecklist').innerHTML = (checklist || [])
+    .map(
+      item =>
+        `<label><input type="checkbox" value="${escapeHtml(item.value)}"${item.checked ? ' checked' : ''} />${item.icon ? `<span class="text-accent">${item.icon}</span>` : ''}<span class="dialog-checklist-name">${escapeHtml(item.label)}</span>${item.detail ? `<span class="dialog-checklist-detail">${escapeHtml(item.detail)}</span>` : ''}</label>`
+    )
+    .join('');
+  $('dialogChecklist').scrollTop = 0;
   $('dialogBtnCancel').classList.toggle('hidden', hideCancel);
   $('dialogBtnConfirm').textContent = confirmText;
   $('dialogBtnConfirm').classList.toggle('dialog-danger', danger);
   $('dialogBtnConfirm').onclick = async () => {
-    const values = [$('dialogInput').value, $('dialogCheck').checked, $('dialogSelect').value];
+    const values = [
+      $('dialogInput').value,
+      $('dialogCheck').checked,
+      $('dialogSelect').value,
+      [...$('dialogChecklist').querySelectorAll('input:checked')].map(x => x.value),
+    ];
     if (onConfirm && (await onConfirm(...values)) === false) return;
     closeDialog();
   };
@@ -4213,6 +4251,7 @@ function planImportMerge(current, imported, origin) {
       icon: c.icon,
       order,
       ...(c.budget ? { budget: c.budget } : {}),
+      ...(c.skipDaily ? { skipDaily: true } : {}),
     });
     setTime('cat:' + id, importedTime('cat:' + c.id));
     catMap.set(c.id, id);
@@ -5194,6 +5233,50 @@ function renderStatsTrend(yearMode) {
     chart.appendChild(btn);
   });
 }
+// 每日支出要算哪些分類：沒勾的分類（例如房租、保險）不畫進長條圖，免得一天的大筆金額把其他天壓扁。
+// 只影響這張圖，總支出、預算、分類占比等照常計算。設定存在支出分類上（skipDaily），跟著同步與備份。
+const dailySkipped = () => getCategoriesByType('expense').filter(c => c.skipDaily);
+function dailyCategoriesText(skipped) {
+  const names = skipped.map(c => c.name);
+  if (!names.length) return '全部分類';
+  return names.length > 2 ? `不含 ${names.slice(0, 2).join('、')} 等 ${names.length} 個分類` : `不含 ${names.join('、')}`;
+}
+// 打開時一起列出每個分類這個月花了多少，看得出是哪個分類把圖撐高；至少要留一個分類。
+function chooseDailyCategories() {
+  const month = state.currentMonth,
+    cats = getCategoriesByType('expense'),
+    spent = sumByCategory('expense', [`${month}-01`, `${month}-31`]).map;
+  openDialog({
+    title: '每日支出要算哪些分類',
+    message: `沒勾的分類不畫進每日支出長條圖，總支出、預算、分類占比都照常計算。右邊是 ${Number(month.slice(5))} 月的支出。`,
+    checklist: cats.map(c => ({
+      value: c.id,
+      label: c.name,
+      icon: ICONS[c.icon] || ICONS.other,
+      detail: moneyText(spent.get(c.id) || 0),
+      checked: !c.skipDaily,
+    })),
+    confirmText: '儲存',
+    onConfirm: (_, __, ___, checked) => {
+      if (!checked.length) return showToast('至少要勾一個分類。'), false;
+      // 只改清單上列出的分類：打開之後才從其他裝置同步進來的分類維持原樣。
+      const listed = new Set(cats.map(c => c.id)),
+        keep = new Set(checked);
+      if (
+        !commit(s => {
+          for (const c of s.categories) {
+            if (!listed.has(c.id)) continue;
+            if (keep.has(c.id)) delete c.skipDaily;
+            else c.skipDaily = true;
+          }
+        })
+      )
+        return false;
+      renderAll();
+      showToast('已更新每日支出要算的分類');
+    },
+  });
+}
 // 這個月每天的支出：一天一根長條，今天用主色，還沒到的日子留空。
 function renderStatsDaily(yearMode) {
   const show = !yearMode && state.statsType === 'expense';
@@ -5203,16 +5286,23 @@ function renderStatsDaily(yearMode) {
   const month = state.currentMonth,
     [y, m] = month.split('-').map(Number),
     days = new Date(y, m, 0).getDate(),
-    now = today();
-  // 每天的支出扣掉當天的退款；counts 是當天有幾筆，有紀錄的日子才能點開。
+    now = today(),
+    skipped = dailySkipped(),
+    skip = new Set(skipped.map(c => c.id));
+  // 每天的支出扣掉當天的退款，不算沒勾的分類；counts 是當天有幾筆（沒勾的分類也算），
+  // 有紀錄的日子才能點開，只有房租的那天也看得到房租那一筆。
   const sums = new Array(days).fill(0),
     counts = new Array(days).fill(0);
   for (const r of state.records)
     if (r.type === 'expense' && r.date.startsWith(month + '-')) {
-      sums[Number(r.date.slice(8)) - 1] += r.amount;
-      counts[Number(r.date.slice(8)) - 1]++;
+      const i = Number(r.date.slice(8)) - 1;
+      if (!skip.has(r.categoryId)) sums[i] += r.amount;
+      counts[i]++;
     }
-  const max = Math.max(...sums);
+  const max = Math.max(...sums),
+    filter = dailyCategoriesText(skipped);
+  $('dailyCategoriesText').textContent = filter;
+  $('btnDailyCategories').setAttribute('aria-label', `每日支出要算哪些分類，目前${filter}`);
   $('statsDailyTitle').textContent = `${m} 月每日支出`;
   $('statsDailyMax').textContent = max > 0 ? `最多 ${m}/${sums.indexOf(max) + 1} NT$ ${formatMoney(max)}` : '';
   const chart = $('statsDailyChart');
@@ -5319,6 +5409,7 @@ function setupTrendTooltip() {
     trendCategory = e.target.value;
     renderStatsTrend(false);
   });
+  $('btnDailyCategories').addEventListener('click', chooseDailyCategories);
   setupChartTooltip(
     $('statsTrendChart'),
     $('statsTrendTip'),
@@ -6558,7 +6649,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = 'e38f9ac16257';
+  const APP_VERSION = 'bc887deebc31';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -6779,7 +6870,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = 'e38f9ac16257';
+  const APP_VERSION = 'bc887deebc31';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

@@ -163,6 +163,50 @@ function renderStatsTrend(yearMode) {
     chart.appendChild(btn);
   });
 }
+// 每日支出要算哪些分類：沒勾的分類（例如房租、保險）不畫進長條圖，免得一天的大筆金額把其他天壓扁。
+// 只影響這張圖，總支出、預算、分類占比等照常計算。設定存在支出分類上（skipDaily），跟著同步與備份。
+const dailySkipped = () => getCategoriesByType('expense').filter(c => c.skipDaily);
+function dailyCategoriesText(skipped) {
+  const names = skipped.map(c => c.name);
+  if (!names.length) return '全部分類';
+  return names.length > 2 ? `不含 ${names.slice(0, 2).join('、')} 等 ${names.length} 個分類` : `不含 ${names.join('、')}`;
+}
+// 打開時一起列出每個分類這個月花了多少，看得出是哪個分類把圖撐高；至少要留一個分類。
+function chooseDailyCategories() {
+  const month = state.currentMonth,
+    cats = getCategoriesByType('expense'),
+    spent = sumByCategory('expense', [`${month}-01`, `${month}-31`]).map;
+  openDialog({
+    title: '每日支出要算哪些分類',
+    message: `沒勾的分類不畫進每日支出長條圖，總支出、預算、分類占比都照常計算。右邊是 ${Number(month.slice(5))} 月的支出。`,
+    checklist: cats.map(c => ({
+      value: c.id,
+      label: c.name,
+      icon: ICONS[c.icon] || ICONS.other,
+      detail: moneyText(spent.get(c.id) || 0),
+      checked: !c.skipDaily,
+    })),
+    confirmText: '儲存',
+    onConfirm: (_, __, ___, checked) => {
+      if (!checked.length) return showToast('至少要勾一個分類。'), false;
+      // 只改清單上列出的分類：打開之後才從其他裝置同步進來的分類維持原樣。
+      const listed = new Set(cats.map(c => c.id)),
+        keep = new Set(checked);
+      if (
+        !commit(s => {
+          for (const c of s.categories) {
+            if (!listed.has(c.id)) continue;
+            if (keep.has(c.id)) delete c.skipDaily;
+            else c.skipDaily = true;
+          }
+        })
+      )
+        return false;
+      renderAll();
+      showToast('已更新每日支出要算的分類');
+    },
+  });
+}
 // 這個月每天的支出：一天一根長條，今天用主色，還沒到的日子留空。
 function renderStatsDaily(yearMode) {
   const show = !yearMode && state.statsType === 'expense';
@@ -172,16 +216,23 @@ function renderStatsDaily(yearMode) {
   const month = state.currentMonth,
     [y, m] = month.split('-').map(Number),
     days = new Date(y, m, 0).getDate(),
-    now = today();
-  // 每天的支出扣掉當天的退款；counts 是當天有幾筆，有紀錄的日子才能點開。
+    now = today(),
+    skipped = dailySkipped(),
+    skip = new Set(skipped.map(c => c.id));
+  // 每天的支出扣掉當天的退款，不算沒勾的分類；counts 是當天有幾筆（沒勾的分類也算），
+  // 有紀錄的日子才能點開，只有房租的那天也看得到房租那一筆。
   const sums = new Array(days).fill(0),
     counts = new Array(days).fill(0);
   for (const r of state.records)
     if (r.type === 'expense' && r.date.startsWith(month + '-')) {
-      sums[Number(r.date.slice(8)) - 1] += r.amount;
-      counts[Number(r.date.slice(8)) - 1]++;
+      const i = Number(r.date.slice(8)) - 1;
+      if (!skip.has(r.categoryId)) sums[i] += r.amount;
+      counts[i]++;
     }
-  const max = Math.max(...sums);
+  const max = Math.max(...sums),
+    filter = dailyCategoriesText(skipped);
+  $('dailyCategoriesText').textContent = filter;
+  $('btnDailyCategories').setAttribute('aria-label', `每日支出要算哪些分類，目前${filter}`);
   $('statsDailyTitle').textContent = `${m} 月每日支出`;
   $('statsDailyMax').textContent = max > 0 ? `最多 ${m}/${sums.indexOf(max) + 1} NT$ ${formatMoney(max)}` : '';
   const chart = $('statsDailyChart');
@@ -288,6 +339,7 @@ function setupTrendTooltip() {
     trendCategory = e.target.value;
     renderStatsTrend(false);
   });
+  $('btnDailyCategories').addEventListener('click', chooseDailyCategories);
   setupChartTooltip(
     $('statsTrendChart'),
     $('statsTrendTip'),

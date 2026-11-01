@@ -34,6 +34,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .search-filter-field { min-width:0; min-height:40px; padding:8px 10px; border-radius:10px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:14px; }
 .search-filter-clear { min-height:40px; padding:0 10px; font-size:13px; color:#9CA3AF; }
 .trend-category { justify-self:start; min-height:36px; padding:6px 10px; border-radius:10px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:13px; }
+/* 每日支出要算哪些分類：外觀和近 12 個月的分類選單一樣，按了打開勾選清單；分類名稱太長時以「…」結尾 */
+.daily-categories { display:flex; align-items:center; gap:6px; width:fit-content; max-width:100%; text-align:left; }
+.daily-categories span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.daily-categories svg { width:14px; height:14px; flex-shrink:0; color:#9CA3AF; }
 .search-summary { padding:0 2px; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
 /* 退款（負數的支出）的標籤：首頁紀錄與明細 */
 .refund-badge { flex-shrink:0; font-size:11px; font-weight:500; padding:2px 6px; border-radius:4px; background:#34D3991F; color:#34D399; }
@@ -260,6 +264,12 @@ select.rule-input { color-scheme:dark; }
 .dialog-field { display:grid; gap:4px; font-size:13px; color:#9CA3AF; }
 .dialog-select { width:100%; min-height:44px; padding:9px 12px; border-radius:12px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:16px; color-scheme:dark; }
 .dialog-select:focus { border-color:var(--accent); }
+/* 對話框裡的勾選清單（例如每日支出要算哪些分類）：分類多時清單自己捲動，下面的按鈕一直看得到 */
+.dialog-checklist { max-height:min(50vh,340px); overflow-y:auto; overscroll-behavior:contain; border-top:1px solid #2E323E; }
+.dialog-checklist label { display:flex; align-items:center; gap:10px; min-height:44px; padding:4px 2px; border-bottom:1px solid #2E323E; font-size:14px; color:#F3F4F6; cursor:pointer; }
+.dialog-checklist input { width:18px; height:18px; flex-shrink:0; accent-color:var(--accent); }
+.dialog-checklist-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dialog-checklist-detail { flex-shrink:0; font-size:12px; color:#9CA3AF; font-variant-numeric:tabular-nums; }
 .action:disabled { opacity:.6; }
 .csv-range { flex:1; min-width:0; max-width:100%; color:#F3F4F6; }
 .sync-chip { font-size:12px; padding:3px 10px; border-radius:999px; background:#262934; border:1px solid #3D4251; color:#D1D5DB; white-space:nowrap; }

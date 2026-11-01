@@ -339,6 +339,11 @@
           <h3 id="statsDailyTitle" class="text-sm font-semibold text-textMain">每日支出</h3>
           <span id="statsDailyMax" class="text-[11px] text-textMuted num-tabular"></span>
         </div>
+        <!-- 選哪些支出分類算進這張圖，例如不算房租、保險，免得一天的大筆金額把其他天壓扁 -->
+        <button id="btnDailyCategories" type="button" class="trend-category daily-categories">
+          <span id="dailyCategoriesText">全部分類</span>
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+        </button>
         <div class="trend-wrap">
           <div id="statsDailyChart" class="trend-chart daily-chart"></div>
           <div id="statsDailyTip" class="trend-tip hidden"></div>
@@ -784,6 +789,7 @@
       <label id="dialogSelectWrap" class="hidden dialog-field"><span id="dialogSelectLabel"></span><select id="dialogSelect" class="dialog-select"></select></label>
       <textarea id="dialogTextarea" rows="7" readonly class="hidden w-full bg-bgInput border border-borderSubtle rounded-xl p-2.5 text-[11px] font-mono text-textMuted focus:outline-none"></textarea>
       <label id="dialogCheckWrap" class="hidden dialog-check"><input id="dialogCheck" type="checkbox" /><span id="dialogCheckLabel"></span></label>
+      <div id="dialogChecklist" class="hidden dialog-checklist"></div>
       <div class="flex justify-end gap-2 pt-1">
         <button id="dialogBtnCancel" type="button" class="px-3.5 py-2 rounded-xl bg-bgElevated text-xs font-medium text-textMuted hover:text-textMain">取消</button>
         <button id="dialogBtnConfirm" type="button" class="px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">確認</button>

@@ -116,6 +116,7 @@ function mergeFromCategoryEditor() {
     message:[
       records||rules?`「${cat.name}」的${records?` ${records.toLocaleString('zh-TW')} 筆紀錄`:''}${records&&rules?'和':''}${rules?` ${rules} 項固定收支`:''}會搬到下面選的分類，然後刪除「${cat.name}」。`:`「${cat.name}」沒有紀錄，合併後直接刪除。`,
       cat.budget?`「${cat.name}」的每月預算 NT$ ${formatMoney(cat.budget)} 會一起刪除，選的分類預算不變。`:'',
+      cat.skipDaily?`「${cat.name}」原本不算進每日支出，合併後照選的分類的設定。`:'',
       '合併後沒辦法再分開；合併前的帳本會保留一份，可以在「資料與備份」還原。',
     ].filter(Boolean).join('\n'),
     // 一開始沒有選：直接按「合併」不會併到清單第一個分類。

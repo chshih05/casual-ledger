@@ -225,6 +225,36 @@
     assert(cloud.reads - reads < 5, '之後恢復只讀新的變更');
   });
 
+  test('核心｜「不算進每日支出」跟著分類同步；沒勾掉時格式和舊版相同，舊版去掉的設定換新版後補回來', async () => {
+    eq(Object.keys(Core.canon.cat({ id: 'c', type: 'expense', name: 'x', icon: 'other', order: 1, skipDaily: false })), ['id', 'type', 'name', 'icon', 'order']);
+    eq(Core.canon.cat({ id: 'c', type: 'income', name: 'x', icon: 'other', order: 1, skipDaily: true }).skipDaily, undefined, '收入分類沒有這個設定');
+    assert(!Core.validEntityData('cat', 'c', { id: 'c', type: 'expense', name: 'x', icon: 'other', order: 1, skipDaily: 'yes' }));
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B'), c = device(cloud, 'C');
+    await a.sync(); await b.sync(); await c.sync();
+    a.clock = 2000;
+    a.commit(s => { s.categories.find(x => x.id === 'cat_daily').skipDaily = true; });
+    eq(a.pending().map(p => p.key), ['cat:cat_daily'], '只上傳改了的分類');
+    await a.sync(); await b.sync();
+    eq(b.state.categories.find(x => x.id === 'cat_daily').skipDaily, true);
+    const catDoc = cloud.docs.get('cat:cat_daily');
+    assert(Object.keys(catDoc.d).length <= 12, '欄位數在雲端規則的上限內');
+    // 舊版的 C：讀到時去掉這個欄位，讀取位置也已經往後。
+    const meta = c.meta(), { skipDaily, ...without } = catDoc.d;
+    meta.shadow['cat:cat_daily'] = Core.packShadow(Core.hashString(JSON.stringify(without)), catDoc.rev);
+    meta.cursor = [...cloud.docs.values()].map(d => d.ts).sort(Core.cmpTs).at(-1);
+    meta.format = 3;
+    c.setMeta(meta);
+    await c.sync();
+    eq(c.state.categories.find(x => x.id === 'cat_daily').skipDaily, true, '換新版後補回來');
+    eq([c.meta().format, c.meta().conflicts.length, c.pending().length], [Core.FORMAT, 0, 0]);
+    b.clock = 3000;
+    b.commit(s => { delete s.categories.find(x => x.id === 'cat_daily').skipDaily; });
+    await b.sync(); await a.sync();
+    assert(!('skipDaily' in a.state.categories.find(x => x.id === 'cat_daily')), '另一台改回要算');
+    eq(a.pending().length + b.pending().length, 0);
+  });
+
   test('核心｜離線時保留待同步資料，恢復連線後補傳', async () => {
     const cloud = createFakeCloud();
     const a = device(cloud, 'A'), b = device(cloud, 'B');
