@@ -965,6 +965,118 @@
     assert(/拖曳調整「早餐」的順序/.test(a.d.activeElement.getAttribute('aria-label')));
   });
 
+  // ---------- 首頁：調整同一天的順序 ----------
+  function homeDay(a, date) {
+    const [, m, d] = date.split('-').map(Number);
+    return [...a.$('homeRecordList').children].find(el => el.querySelector('.day-head-date')?.textContent.startsWith(`${m} 月 ${d} 日`));
+  }
+  const homeOrder = (a, date) => [...homeDay(a, date).querySelectorAll('.record-item-btn')].map(b => b.dataset.recordId);
+  const sheetOrder = a => [...a.$('dayOrderList').querySelectorAll('.day-order-row')].map(r => r.dataset.id);
+  const sheetKey = (a, id, key) => {
+    const handle = a.$('dayOrderList').querySelector(`.day-order-row[data-id="${id}"] .drag-handle`);
+    handle.focus();
+    handle.dispatchEvent(new a.w.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  };
+  // 今天記了午餐、晚餐，最後才補記早餐；昨天只有一筆。
+  async function orderApp() {
+    const a = await personalApp();
+    const day = a.ev('today()'), other = a.ev('daysAgo(1)');
+    const rec = (id, date, seq, categoryId, amount, note = '') => ({ id, seq, type: 'expense', date, categoryId, amount, merchant: '', note });
+    a.ev(`commit(s => s.records.push(...${JSON.stringify([
+      rec('rec_lunch', day, 101, 'cat_lunch', 110),
+      rec('rec_dinner', day, 102, 'cat_dinner', 185),
+      rec('rec_only', other, 103, 'cat_drink', 65),
+      rec('rec_breakfast', day, 104, 'cat_breakfast', 75, '補記'),
+    ])}))`);
+    a.ev('renderAll()');
+    return { a, day, other };
+  }
+
+  test('調整順序｜每天標題右邊的按鈕打開那一天的面板，按住把手拖曳，放開就存好，首頁跟著變', async () => {
+    let { a, day, other } = await orderApp();
+    eq(homeOrder(a, day), ['rec_lunch', 'rec_dinner', 'rec_breakfast'], '原本依記帳先後，補記的在最後面');
+    assert(!homeDay(a, other).querySelector('.day-order-btn'), '只有一筆的那天沒有按鈕');
+    a.click(homeDay(a, day).querySelector('.day-order-btn'));
+    assert(a.visible('modalDayOrder'), '打開排序面板');
+    assert(a.text('dayOrderTitle').startsWith(`調整順序・${Number(day.slice(5, 7))} 月 ${Number(day.slice(8))} 日（週`), a.text('dayOrderTitle'));
+    eq(sheetOrder(a), ['rec_lunch', 'rec_dinner', 'rec_breakfast'], '面板的順序和首頁一樣');
+    assert(a.$('dayOrderList').textContent.includes('補記') && a.$('dayOrderList').textContent.includes('$185'), '列出備註與金額');
+    const rows = a.$('dayOrderList').querySelectorAll('.day-order-row');
+    const handle = rows[2].querySelector('.drag-handle');
+    const startY = middleY(handle), target = startY + middleY(rows[0]) - middleY(rows[2]) - 6;
+    pointer(a, handle, 'pointerdown', startY);
+    assert(rows[2].classList.contains('dragging'), '拖曳中的那筆浮起來');
+    pointer(a, handle, 'pointermove', target);
+    eq(sheetOrder(a), ['rec_breakfast', 'rec_lunch', 'rec_dinner'], '拖過午餐的一半就換到最上面');
+    eq(a.ev("state.records.find(r => r.id === 'rec_breakfast').seq"), 104, '還沒放開前不存檔');
+    pointer(a, handle, 'pointerup', target);
+    eq(homeOrder(a, day), ['rec_breakfast', 'rec_lunch', 'rec_dinner'], '首頁跟著變');
+    eq(a.ev(`dayRecords('${day}').map(r => r.seq)`), [101, 102, 104], '沿用那一天原本的編號');
+    assert(!a.$('dayOrderList').querySelector('.dragging'), '放開後恢復原狀');
+    // 鍵盤：在把手上按上下鍵移動一格；只存編號真的變了的紀錄
+    const times = a.ev('({ ...state.entityTimes })');
+    sheetKey(a, 'rec_dinner', 'ArrowUp');
+    eq(sheetOrder(a), ['rec_breakfast', 'rec_dinner', 'rec_lunch']);
+    eq(a.d.activeElement.closest('.day-order-row').dataset.id, 'rec_dinner', '焦點跟著晚餐');
+    const after = a.ev('state.entityTimes');
+    eq(['rec_breakfast', 'rec_only'].map(id => after['rec:' + id] === times['rec:' + id]), [true, true], '沒有移動的、別天的紀錄不算修改');
+    sheetKey(a, 'rec_breakfast', 'ArrowUp');
+    eq(sheetOrder(a)[0], 'rec_breakfast', '第一筆不能再往上');
+    a.click('btnDayOrderDone');
+    assert(!a.visible('modalDayOrder'), '按「完成」關掉');
+    eq(a.d.activeElement.dataset.dayOrder, day, '焦點回到那天的按鈕');
+    a = await reloadApp();
+    eq(homeOrder(a, day), ['rec_breakfast', 'rec_dinner', 'rec_lunch'], '重新開啟後也保留');
+    eq(a.ev("state.records.find(r => r.id === 'rec_only').seq"), 103, '別天的紀錄不動');
+    assert(a.ev('recordsCsv(state.records)').includes('早餐,75,,補記\r\n' + day + ',支出,晚餐'), 'CSV 也照新的順序');
+  });
+
+  test('調整順序｜新記的一筆排在那天最後面；改了日期的排到新日期的最後面，沒改日期的留在原位', async () => {
+    const { a, day, other } = await orderApp();
+    a.ev(`saveDayOrder('${day}', ['rec_breakfast', 'rec_lunch', 'rec_dinner'])`);
+    eq(homeOrder(a, day), ['rec_breakfast', 'rec_lunch', 'rec_dinner']);
+    addRecord(a, { cat: 3, amount: '50', note: '新的一筆' });
+    const added = a.ev("state.records.find(r => r.note === '新的一筆').id");
+    eq(homeOrder(a, day), ['rec_breakfast', 'rec_lunch', 'rec_dinner', added], '新記的在最後面');
+    a.click(homeDay(a, day).querySelector('[data-record-id="rec_lunch"]'));
+    a.type('inputAmountExpr', '120');
+    a.click('btnSaveRecord');
+    eq(a.ev("state.records.find(r => r.id === 'rec_lunch').amount"), 120);
+    eq(homeOrder(a, day), ['rec_breakfast', 'rec_lunch', 'rec_dinner', added], '沒改日期就留在原位');
+    a.click(homeDay(a, other).querySelector('[data-record-id="rec_only"]'));
+    a.click('btnDateToday');
+    a.click('btnSaveRecord');
+    eq(homeOrder(a, day), ['rec_breakfast', 'rec_lunch', 'rec_dinner', added, 'rec_only'], '改了日期的排到新日期的最後面');
+  });
+
+  test('調整順序｜同一天有編號相同的紀錄（例如兩筆固定收支）也能調整，調完不再重複', async () => {
+    const a = await personalApp();
+    const day = a.ev('today()');
+    const rec = (id, seq, amount) => ({ id, seq, type: 'expense', date: day, categoryId: 'cat_bills', amount, merchant: '', note: id });
+    a.ev(`commit(s => s.records.push(...${JSON.stringify([rec('rec_rent', 0, 12000), rec('rec_phone', 0, 499), rec('rec_gas', 120, 300)])}))`);
+    a.ev('renderAll()');
+    eq(homeOrder(a, day), ['rec_rent', 'rec_phone', 'rec_gas']);
+    a.click(homeDay(a, day).querySelector('.day-order-btn'));
+    sheetKey(a, 'rec_phone', 'ArrowUp');
+    eq(homeOrder(a, day), ['rec_phone', 'rec_rent', 'rec_gas']);
+    eq(a.ev(`dayRecords('${day}').map(r => [r.id, r.seq])`), [['rec_phone', 0], ['rec_rent', 1], ['rec_gas', 120]], '重複的編號往上加成不重複');
+  });
+
+  test('調整順序｜面板按返回關掉；搜尋或篩選時不出現按鈕；其他裝置刪到剩一筆時自動關掉', async () => {
+    const { a, day } = await orderApp();
+    a.click(homeDay(a, day).querySelector('.day-order-btn'));
+    await goBack(a, () => !a.visible('modalDayOrder'), '返回關掉調整順序的面板');
+    eq(a.ev('state.activeView'), 'home', '還在首頁');
+    a.type('recordSearch', '餐');
+    eq(homeOrder(a, day).length, 3, '三筆都找得到');
+    assert(!a.$('homeRecordList').querySelector('.day-order-btn'), '搜尋時沒有調整順序的按鈕');
+    a.type('recordSearch', '');
+    a.click(homeDay(a, day).querySelector('.day-order-btn'));
+    a.ev("commit(s => { s.records = s.records.filter(r => r.id === 'rec_lunch' || r.date !== today()); })");
+    a.ev('renderAll()');
+    assert(!a.visible('modalDayOrder'), '剩一筆就沒有順序可以調');
+  });
+
   // ---------- 預算 ----------
   async function confirmDialog(a, value) {
     a.$('dialogInput').value = value;

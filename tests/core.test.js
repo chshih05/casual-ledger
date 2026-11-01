@@ -361,6 +361,27 @@
     eq(b.pending().length, 0);
   });
 
+  test('核心｜兩台都調了同一天的順序：以較晚調的為準，只差順序不放進衝突紀錄；內容不同仍照常記錄', async () => {
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B');
+    addRecord(a, rec('rec_o1', { seq: 1 }));
+    addRecord(a, rec('rec_o2', { seq: 2, merchant: '', note: '' }));
+    await a.sync(); await b.sync();
+    const setSeq = (dev, id, seq) => dev.commit(s => { s.records.find(r => r.id === id).seq = seq; });
+    a.clock = 2000; a.commit(s => { s.records.find(r => r.id === 'rec_o1').seq = 2; s.records.find(r => r.id === 'rec_o2').seq = 1; });
+    b.clock = 3000; setSeq(b, 'rec_o1', 5);
+    await a.sync(); await b.sync(); await a.sync();
+    for (const dev of [a, b]) eq([find(dev, 'rec_o1').seq, find(dev, 'rec_o2').seq], [5, 1], '每一筆都用較晚的版本');
+    eq(a.meta().conflicts.length + b.meta().conflicts.length, 0, '只差順序不算衝突');
+    eq(a.pending().length + b.pending().length, 0);
+    a.clock = 4000; setSeq(a, 'rec_o2', 9);
+    b.clock = 5000; b.commit(s => { s.records.find(r => r.id === 'rec_o2').amount = 999; });
+    await a.sync(); await b.sync(); await a.sync();
+    eq([find(a, 'rec_o2').amount, find(a, 'rec_o2').seq], [999, 1], '同一筆以較新的修改為準');
+    eq(b.meta().conflicts.length, 1, '金額不同仍是衝突');
+    eq(b.meta().conflicts[0].other.data.seq, 9, '被取代的版本留在衝突紀錄');
+  });
+
   test('核心｜分類在另一台被刪除但仍有紀錄使用時，自動保留分類', async () => {
     const cloud = createFakeCloud();
     const a = device(cloud, 'A'), b = device(cloud, 'B');

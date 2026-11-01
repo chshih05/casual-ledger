@@ -745,6 +745,20 @@
     </div>
   </div>
 
+  <!-- ==================== 調整同一天紀錄的順序（首頁每天標題右邊的按鈕；見 60-app.js 的 openDayOrder） ==================== -->
+  <div id="modalDayOrder" role="dialog" aria-modal="true" aria-labelledby="dayOrderTitle" class="fixed inset-0 z-40 hidden bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="cat-sheet animate-fade">
+      <div class="cat-sheet-head">
+        <div class="min-w-0">
+          <h3 id="dayOrderTitle" class="text-sm font-bold text-textMain">調整順序</h3>
+          <p class="text-xs text-textMuted mt-0.5">按住左邊的把手上下拖曳，放開就存好</p>
+        </div>
+        <button id="btnDayOrderDone" type="button" class="shrink-0 px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">完成</button>
+      </div>
+      <div id="dayOrderList" class="cat-sheet-body day-order-list"></div>
+    </div>
+  </div>
+
   <!-- ==================== 分類編輯（新增與修改共用；見 52-category-editor.js） ==================== -->
   <div id="modalCategory" role="dialog" aria-modal="true" aria-labelledby="catEditorTitle" class="fixed inset-0 z-40 hidden bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="cat-sheet animate-fade">

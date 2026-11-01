@@ -417,6 +417,7 @@ function renderAll() {
   $('statsMerchantList').parentElement.querySelector('h3').textContent =
     state.statsType === 'income' ? '收入來源累積金額' : '店家累積金額';
   $('statsMerchantList').parentElement.querySelector('span').textContent = '點擊查看明細';
+  renderDayOrder(); // 開著調整順序的面板時（存檔或同步後）跟著更新
 }
 function discardForm() {
   modalState = null;
@@ -837,11 +838,13 @@ function handleSaveRecord(keepOpenForNext = false) {
   if (!validDate(d.date)) return formError('請選擇有效日期。');
   if (d.selectedMerchant.trim().length > 100 || d.note.length > 1000)
     return formError('店家／來源限 100 字，備註限 1,000 字。');
-  if (d.editingRecordId && !state.records.some(r => r.id === d.editingRecordId))
+  const editing = d.editingRecordId && state.records.find(r => r.id === d.editingRecordId);
+  if (d.editingRecordId && !editing)
     return formError('這筆紀錄已被刪除（可能是在其他裝置），無法儲存修改。請返回後重新記一筆。');
   const rec = {
     id: d.editingRecordId || uid(),
-    seq: d.editingRecordId ? state.records.find(r => r.id === d.editingRecordId).seq : getNextSeq(),
+    // 同一天的順序（見 saveDayOrder）：新記的和改了日期的排在那天最後面；沒改日期就留在原本的位置。
+    seq: editing && editing.date === d.date ? editing.seq : getNextSeq(),
     type: d.type,
     date: d.date,
     categoryId: d.categoryId,
@@ -958,12 +961,14 @@ function saveCategoryOrder(ids, focusId) {
       .querySelector(`.category-row[data-id="${CSS.escape(focusId)}"] .drag-handle`)
       ?.focus();
 }
-// 分類拖曳排序：按住左邊的把手上下拖，經過相鄰分類的一半就交換位置，放開後一次存檔；
-// 拖到畫面上下緣會自動捲動。用鍵盤時，在把手上按上下鍵移動一格。
-function setupCategoryDrag() {
-  const list = $('settingsCategoryList');
+// 拖曳排序（設定頁的分類、同一天的紀錄共用）：按住左邊的把手上下拖，經過相鄰一列的一半就交換位置，
+// 放開後一次存檔；拖到上下緣會自動捲動（scroller 是要捲動的清單，預設整個畫面）。用鍵盤時，在把手上按上下鍵移動一格。
+// save(ids, focusId) 存新的順序，focusId 是用鍵盤移動時要保留焦點的那一列；restore() 取消或沒有移動時重畫回原樣；
+// edges() 是開始自動捲動的上下緣。回傳的 busy() 表示正在拖曳，這時不要重畫清單。
+function setupDragSort(list, rowSelector, { save, restore, edges, scroller = window }) {
   let drag = null;
-  const rowIds = () => [...list.querySelectorAll('.category-row')].map(r => r.dataset.id);
+  const rowIds = () => [...list.querySelectorAll(rowSelector)].map(r => r.dataset.id);
+  const scrolled = () => (scroller === window ? window.scrollY : scroller.scrollTop);
   // 列在清單中移動後，調整起點讓它仍停在手指下。
   function shift(move) {
     const before = drag.row.offsetTop;
@@ -989,13 +994,12 @@ function setupCategoryDrag() {
   function autoScroll() {
     if (!drag) return;
     const y = drag.lastY,
-      top = 70,
-      bottom = window.innerHeight - 130; // 底部留給導覽列
+      [top, bottom] = edges();
     const speed = y < top ? -Math.ceil((top - y) / 6) : y > bottom ? Math.ceil((y - bottom) / 6) : 0;
     if (speed) {
-      const before = window.scrollY;
-      window.scrollBy(0, speed);
-      const moved = window.scrollY - before;
+      const before = scrolled();
+      scroller.scrollBy(0, speed);
+      const moved = scrolled() - before;
       if (moved) {
         drag.originY -= moved;
         place(y);
@@ -1009,7 +1013,7 @@ function setupCategoryDrag() {
     drag.lastY = e.clientY;
     place(e.clientY);
   }
-  function finish(save) {
+  function finish(keep) {
     if (!drag) return;
     const { row, before, raf } = drag;
     drag = null;
@@ -1020,8 +1024,8 @@ function setupCategoryDrag() {
     row.classList.remove('dragging');
     row.style.transform = '';
     const ids = rowIds();
-    if (save && ids.join() !== before.join()) saveCategoryOrder(ids);
-    else renderSettings();
+    if (keep && ids.join() !== before.join()) save(ids);
+    else restore();
   }
   const drop = () => finish(true),
     cancel = () => finish(false);
@@ -1029,7 +1033,7 @@ function setupCategoryDrag() {
     const handle = e.target.closest('.drag-handle');
     if (!handle || drag || e.button > 0) return;
     e.preventDefault();
-    drag = { row: handle.closest('.category-row'), originY: e.clientY, lastY: e.clientY, before: rowIds(), raf: 0 };
+    drag = { row: handle.closest(rowSelector), originY: e.clientY, lastY: e.clientY, before: rowIds(), raf: 0 };
     drag.row.classList.add('dragging');
     try {
       handle.setPointerCapture(e.pointerId);
@@ -1044,13 +1048,116 @@ function setupCategoryDrag() {
     if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
     e.preventDefault();
     const ids = rowIds(),
-      id = handle.closest('.category-row').dataset.id,
+      id = handle.closest(rowSelector).dataset.id,
       i = ids.indexOf(id),
       j = i + (e.key === 'ArrowUp' ? -1 : 1);
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
-    saveCategoryOrder(ids, id);
+    save(ids, id);
   });
+  return { busy: () => Boolean(drag) };
+}
+function setupCategoryDrag() {
+  setupDragSort($('settingsCategoryList'), '.category-row', {
+    save: saveCategoryOrder,
+    restore: renderSettings,
+    edges: () => [70, window.innerHeight - 130], // 底部留給導覽列
+  });
+}
+// 同一天紀錄的順序就是記帳先後的編號（seq）：新記的一筆編號最大，排在那天最後面；固定收支自動記的是 0，排最前面。
+// 調整順序時，把那一天原本的編號由小到大重新分給新的順序，不另外加欄位：還沒更新的裝置、備份和 CSV 也照這個順序。
+// 編號一定是整數（開啟帳本時不是整數的會被換掉，見 validateBackup）；重複的（例如同一天兩筆固定收支）往上加成不重複。
+// 只有編號真的變了的紀錄換成新物件（上一版帳本共用同一個物件），同步也只上傳那幾筆。
+function dayRecords(date) {
+  return state.records
+    .filter(r => r.date === date)
+    .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0));
+}
+function saveDayOrder(date, ids, focusId) {
+  const day = dayRecords(date),
+    byId = new Map(day.map(r => [r.id, r]));
+  // 打開面板之後在其他裝置刪掉的略過，新記的接在最後面。
+  const order = [...new Set(ids)].filter(id => byId.has(id));
+  for (const r of day) if (!order.includes(r.id)) order.push(r.id);
+  const seqs = day.map(r => Number(r.seq) || 0).sort((x, y) => x - y);
+  for (let i = 1; i < seqs.length; i++) seqs[i] = Math.max(seqs[i], seqs[i - 1] + 1);
+  const changed = new Map(order.map((id, i) => [id, seqs[i]]).filter(([id, seq]) => byId.get(id).seq !== seq));
+  if (
+    changed.size &&
+    !commit(s =>
+      s.records.forEach((r, i) => {
+        if (changed.has(r.id)) s.records[i] = { ...r, seq: changed.get(r.id) };
+      })
+    )
+  )
+    return renderDayOrder();
+  renderAll();
+  if (focusId)
+    $('dayOrderList')
+      .querySelector(`.day-order-row[data-id="${CSS.escape(focusId)}"] .drag-handle`)
+      ?.focus();
+}
+// 調整同一天紀錄的順序：首頁每天標題右邊的按鈕打開（那天有兩筆以上、沒有在搜尋或篩選時才有）。
+// 拖曳和設定頁的分類一樣，放開就存好；按「完成」或返回手勢關掉。只能在同一天裡移動，換日期要點紀錄修改。
+let dayOrderDate = null,
+  dayOrderSort = null;
+const DAY_ORDER_ICON =
+  '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 19V5M4.5 8.5 8 5l3.5 3.5M16 5v14M12.5 15.5 16 19l3.5-3.5"/></svg>';
+function setupDayOrder() {
+  const list = $('dayOrderList');
+  dayOrderSort = setupDragSort(list, '.day-order-row', {
+    save: (ids, focusId) => saveDayOrder(dayOrderDate, ids, focusId),
+    restore: renderDayOrder,
+    scroller: list,
+    edges: () => {
+      const r = list.getBoundingClientRect();
+      return [r.top + 32, r.bottom - 32];
+    },
+  });
+}
+function openDayOrder(date) {
+  dayOrderDate = date;
+  renderDayOrder();
+  if (!dayOrderDate) return;
+  $('modalDayOrder').classList.remove('hidden');
+  $('dayOrderList').scrollTop = 0;
+  $('btnDayOrderDone').focus({ preventScroll: true });
+}
+function closeDayOrder() {
+  if (!dayOrderDate) return;
+  const date = dayOrderDate;
+  dayOrderDate = null;
+  $('modalDayOrder').classList.add('hidden');
+  $('homeRecordList').querySelector(`[data-day-order="${date}"]`)?.focus({ preventScroll: true });
+}
+// 每次重畫畫面（存檔、同步）時跟著更新；拖曳途中不重畫，放開後再畫。
+function renderDayOrder() {
+  if (!dayOrderDate || dayOrderSort?.busy()) return;
+  const records = dayRecords(dayOrderDate);
+  // 在其他裝置刪到剩一筆（或改到別天）就沒有順序可以調了。
+  if (records.length < 2) return closeDayOrder();
+  const [y, m, d] = dayOrderDate.split('-').map(Number);
+  $('dayOrderTitle').textContent = `調整順序・${m} 月 ${d} 日（週${WEEKDAY_NAMES[new Date(y, m - 1, d).getDay()]}）`;
+  const list = $('dayOrderList');
+  list.innerHTML = '';
+  for (const rec of records) {
+    const cat = getCategoryById(rec.categoryId),
+      merchant = (rec.merchant || '').trim(),
+      title = merchant || cat.name,
+      plus = rec.type === 'income' || rec.amount < 0,
+      amount = `${rec.type === 'income' ? '+' : rec.amount < 0 ? '-' : ''}$${formatMoney(Math.abs(rec.amount))}`;
+    const row = document.createElement('div');
+    row.className = 'day-order-row';
+    row.dataset.id = rec.id;
+    row.innerHTML = `<button type="button" class="drag-handle" aria-label="拖曳調整「${escapeHtml(title)} ${amount}」的順序，也可以用上下鍵">${GRIP_ICON}</button>
+      <span class="day-order-icon">${ICONS[cat.icon] || ICONS.other}</span>
+      <span class="day-order-text">
+        <span class="day-order-title"><span>${escapeHtml(title)}</span>${merchant ? `<span class="day-order-cat">${escapeHtml(cat.name)}</span>` : ''}</span>
+        ${rec.note ? `<span class="day-order-note">${escapeHtml(rec.note)}</span>` : ''}
+      </span>
+      <span class="day-order-amount${plus ? ' is-plus' : ''}">${amount}</span>`;
+    list.appendChild(row);
+  }
 }
 // 主題顏色只存在這台裝置（不同步、不在備份裡）；<head> 開頭的小程式會在畫面出現前先套用。
 const THEMES = ['blue', 'sky', 'mono', 'purple'];
@@ -1694,6 +1801,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   LedgerBack.init();
   setupCategoryDrag();
+  setupDayOrder();
   const monthStep = n => {
     const [y, m] = state.currentMonth.split('-').map(Number),
       d = new Date(y, m - 1 + n * (isYearStats() ? 12 : 1), 1);
@@ -1837,6 +1945,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     })
   );
   on('btnCloseDrilldown', 'click', closeDrilldown);
+  on('btnDayOrderDone', 'click', closeDayOrder);
   document.querySelectorAll('.setting-header-btn').forEach(
     b =>
       (b.onclick = () => {
@@ -1931,11 +2040,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   on('btnResetLedger', 'click', confirmResetLedger);
   on('dialogBtnCancel', 'click', closeDialog);
   document.addEventListener('keydown', e => {
-    const modal =
-      ['modalDialog', 'modalCategory', 'modalDrilldown'].map($).find(m => !m.classList.contains('hidden')) || null;
+    const modal = ['modalDialog', 'modalCategory', 'modalDrilldown', 'modalDayOrder']
+      .map($)
+      .find(m => !m.classList.contains('hidden'));
     if (e.key === 'Escape') {
       if (modal?.id === 'modalDialog') closeDialog();
       else if (modal?.id === 'modalCategory') closeCategoryEditor();
+      else if (modal?.id === 'modalDayOrder') closeDayOrder();
       else if (modal) modal.classList.add('hidden');
       else if (state.activeView === 'record') closeRecordPage();
     }

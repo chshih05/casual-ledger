@@ -89,6 +89,9 @@ const LedgerSyncCore = (() => {
     Object.defineProperty(obj, name, { value, enumerable: true, writable: true, configurable: true });
   }
 
+  // 兩筆紀錄（canon.rec 的格式）除了同一天裡的順序 seq 以外都相同。
+  const sameButOrder = (a, b) => JSON.stringify(Object.assign({}, a, { seq: 0 })) === JSON.stringify(Object.assign({}, b, { seq: 0 }));
+
   function isDemoSeedRecord(record) {
     return DEMO_SEED_IDS.has(String(record && record.id));
   }
@@ -414,6 +417,12 @@ const LedgerSyncCore = (() => {
           continue;
         }
         const remoteWins = doc.t > localT || (doc.t === localT && rH > localH);
+        // 只差在同一天裡的順序（例如兩台都調了順序）：直接用較新的版本，不放進衝突紀錄，
+        // 否則會列出兩個看起來一模一樣的版本要使用者選。
+        if (kind === 'rec' && loc && remoteData && sameButOrder(loc.data, remoteData)) {
+          if (remoteWins) changes.push({ key: doc.k, data: remoteData, t: doc.t });
+          continue;
+        }
         conflicts.push({
           at: now(), key: doc.k, kept: remoteWins ? 'remote' : 'local',
           other: remoteWins ? { del: !loc, data: loc ? loc.data : null, t: localT } : { del: Boolean(doc.del), data: remoteData, t: doc.t },

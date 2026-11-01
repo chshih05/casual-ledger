@@ -59,6 +59,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .day-head span { white-space:nowrap; }
 .day-head-date { font-weight:600; color:#E5E7EB; }
 .day-total { display:flex; gap:8px; margin-left:auto; font-size:15px; font-weight:700; }
+/* 合計和調整順序的按鈕放在一起：太窄時一起換到下一行並靠右；按鈕不讓標題列變高 */
+.day-head-end { display:flex; align-items:center; gap:4px; margin-left:auto; }
+.day-order-btn { display:flex; align-items:center; justify-content:center; width:32px; height:32px; margin:-6px -8px -6px 0; border-radius:8px; color:#9CA3AF; }
+.day-order-btn:hover { color:#F3F4F6; background:#262934; }
 /* 首頁的備份提醒 */
 .backup-reminder { display:grid; gap:10px; padding:14px 16px; border-radius:16px; background:#1E2028; border:1px solid rgba(var(--accent-rgb),.4); }
 .backup-reminder-title { font-size:14px; font-weight:600; color:#F3F4F6; }
@@ -255,7 +259,19 @@ select.rule-input { color-scheme:dark; }
 /* 分類拖曳排序 */
 .drag-handle { display:flex; align-items:center; justify-content:center; width:32px; margin-left:-6px; color:#9CA3AF; cursor:grab; touch-action:none; border-radius:8px; }
 .drag-handle:hover { color:#F3F4F6; }
-.category-row.dragging { position:relative; z-index:5; border-color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.45); cursor:grabbing; }
+.category-row.dragging, .day-order-row.dragging { position:relative; z-index:5; border-color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.45); cursor:grabbing; }
+/* 調整同一天紀錄的順序：每筆一行，左邊是拖曳的把手，金額顏色和首頁一樣 */
+.day-order-list { gap:8px; }
+.day-order-row { display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
+.day-order-row .drag-handle { align-self:stretch; min-height:40px; }
+.day-order-icon { display:flex; align-items:center; justify-content:center; width:32px; height:32px; flex-shrink:0; border-radius:10px; background:#262934; color:var(--accent); }
+.day-order-text { flex:1; min-width:0; }
+.day-order-title { display:flex; align-items:center; gap:6px; font-size:14px; font-weight:500; color:#F3F4F6; }
+.day-order-title > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.day-order-cat { flex-shrink:0; font-size:11px; font-weight:400; padding:1px 6px; border-radius:4px; background:#262934; color:#9CA3AF; }
+.day-order-note { display:block; margin-top:2px; font-size:12px; color:#9CA3AF; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.day-order-amount { flex-shrink:0; font-size:14px; font-weight:600; color:#F3F4F6; font-variant-numeric:tabular-nums; }
+.day-order-amount.is-plus { color:#34D399; }
 #bottomNavBar { padding-bottom:env(safe-area-inset-bottom); }
 #toastBox { max-width:90vw; width:max-content; }
 #dialogMessage { white-space:pre-line; }

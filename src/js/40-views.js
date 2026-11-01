@@ -221,7 +221,7 @@
           divider.textContent = `${parseInt(dateStr.slice(5, 7), 10)} 月・不計入本月合計`;
           listEl.appendChild(divider);
         }
-        // 確保同一天內依 seq 由小到大（舊 -> 新），新加入的在當天最後面
+        // 同一天內依 seq 由小到大：新加入的在當天最後面，可以用標題右邊的按鈕調整（見 60-app.js 的 saveDayOrder）
         const items = groups[dateStr].slice().sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0));
         const dObj = new Date(dateStr + 'T00:00:00');
         const mm = parseInt(dateStr.slice(5, 7), 10);
@@ -239,10 +239,14 @@
           dayRefund ? `<span class="text-incomeGreen num-tabular">退款 -$${formatMoney(dayRefund)}</span>` : '',
           dayInc ? `<span class="text-incomeGreen num-tabular">收入 +$${formatMoney(dayInc)}</span>` : ''
         ].filter(Boolean).join(' ');
+        // 那天有兩筆以上、沒有在搜尋或篩選時，合計右邊有調整順序的按鈕（見 60-app.js 的 openDayOrder）。
+        const orderBtn = items.length > 1 && !homeFilterActive()
+          ? `<button type="button" class="day-order-btn" data-day-order="${dateStr}" aria-label="調整 ${mm} 月 ${dd} 日的順序" title="調整順序">${DAY_ORDER_ICON}</button>`
+          : '';
         const headerHtml = `
           <div class="day-head bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between">
             <span class="day-head-date">${mm} 月 ${dd} 日（週${wk}）</span>
-            <span class="day-total">${dayTotals}</span>
+            <span class="day-head-end"><span class="day-total">${dayTotals}</span>${orderBtn}</span>
           </div>
         `;
 
@@ -292,6 +296,9 @@
         btn.addEventListener('click', () => {
           openEditRecordModal(btn.getAttribute('data-record-id'));
         });
+      });
+      listEl.querySelectorAll('.day-order-btn').forEach(btn => {
+        btn.addEventListener('click', () => openDayOrder(btn.dataset.dayOrder));
       });
     }
     // 搜尋時列出找到幾筆與合計（支出、收入分開算），例如查「星巴克」這個月或全部月份花了多少。

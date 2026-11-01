@@ -91,6 +91,10 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .day-head span { white-space:nowrap; }
 .day-head-date { font-weight:600; color:#E5E7EB; }
 .day-total { display:flex; gap:8px; margin-left:auto; font-size:15px; font-weight:700; }
+/* 合計和調整順序的按鈕放在一起：太窄時一起換到下一行並靠右；按鈕不讓標題列變高 */
+.day-head-end { display:flex; align-items:center; gap:4px; margin-left:auto; }
+.day-order-btn { display:flex; align-items:center; justify-content:center; width:32px; height:32px; margin:-6px -8px -6px 0; border-radius:8px; color:#9CA3AF; }
+.day-order-btn:hover { color:#F3F4F6; background:#262934; }
 /* 首頁的備份提醒 */
 .backup-reminder { display:grid; gap:10px; padding:14px 16px; border-radius:16px; background:#1E2028; border:1px solid rgba(var(--accent-rgb),.4); }
 .backup-reminder-title { font-size:14px; font-weight:600; color:#F3F4F6; }
@@ -287,7 +291,19 @@ select.rule-input { color-scheme:dark; }
 /* 分類拖曳排序 */
 .drag-handle { display:flex; align-items:center; justify-content:center; width:32px; margin-left:-6px; color:#9CA3AF; cursor:grab; touch-action:none; border-radius:8px; }
 .drag-handle:hover { color:#F3F4F6; }
-.category-row.dragging { position:relative; z-index:5; border-color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.45); cursor:grabbing; }
+.category-row.dragging, .day-order-row.dragging { position:relative; z-index:5; border-color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.45); cursor:grabbing; }
+/* 調整同一天紀錄的順序：每筆一行，左邊是拖曳的把手，金額顏色和首頁一樣 */
+.day-order-list { gap:8px; }
+.day-order-row { display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
+.day-order-row .drag-handle { align-self:stretch; min-height:40px; }
+.day-order-icon { display:flex; align-items:center; justify-content:center; width:32px; height:32px; flex-shrink:0; border-radius:10px; background:#262934; color:var(--accent); }
+.day-order-text { flex:1; min-width:0; }
+.day-order-title { display:flex; align-items:center; gap:6px; font-size:14px; font-weight:500; color:#F3F4F6; }
+.day-order-title > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.day-order-cat { flex-shrink:0; font-size:11px; font-weight:400; padding:1px 6px; border-radius:4px; background:#262934; color:#9CA3AF; }
+.day-order-note { display:block; margin-top:2px; font-size:12px; color:#9CA3AF; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.day-order-amount { flex-shrink:0; font-size:14px; font-weight:600; color:#F3F4F6; font-variant-numeric:tabular-nums; }
+.day-order-amount.is-plus { color:#34D399; }
 #bottomNavBar { padding-bottom:env(safe-area-inset-bottom); }
 #toastBox { max-width:90vw; width:max-content; }
 #dialogMessage { white-space:pre-line; }
@@ -965,7 +981,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">bc887deebc31</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">0a7b0a895fbd</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1034,6 +1050,20 @@ select.rule-input { color-scheme:dark; }
       <!-- 從設定頁的店家清單打開時：改名、合併、停用（見 40-views.js 的 renderDrilldown） -->
       <div id="drilldownActions" role="group" aria-label="管理這個名稱" class="hidden drilldown-actions"></div>
       <div id="drilldownList" class="p-4 overflow-y-auto space-y-2.5 flex-1"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 調整同一天紀錄的順序（首頁每天標題右邊的按鈕；見 60-app.js 的 openDayOrder） ==================== -->
+  <div id="modalDayOrder" role="dialog" aria-modal="true" aria-labelledby="dayOrderTitle" class="fixed inset-0 z-40 hidden bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="cat-sheet animate-fade">
+      <div class="cat-sheet-head">
+        <div class="min-w-0">
+          <h3 id="dayOrderTitle" class="text-sm font-bold text-textMain">調整順序</h3>
+          <p class="text-xs text-textMuted mt-0.5">按住左邊的把手上下拖曳，放開就存好</p>
+        </div>
+        <button id="btnDayOrderDone" type="button" class="shrink-0 px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">完成</button>
+      </div>
+      <div id="dayOrderList" class="cat-sheet-body day-order-list"></div>
     </div>
   </div>
 
@@ -1421,7 +1451,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           divider.textContent = `${parseInt(dateStr.slice(5, 7), 10)} 月・不計入本月合計`;
           listEl.appendChild(divider);
         }
-        // 確保同一天內依 seq 由小到大（舊 -> 新），新加入的在當天最後面
+        // 同一天內依 seq 由小到大：新加入的在當天最後面，可以用標題右邊的按鈕調整（見 60-app.js 的 saveDayOrder）
         const items = groups[dateStr].slice().sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0));
         const dObj = new Date(dateStr + 'T00:00:00');
         const mm = parseInt(dateStr.slice(5, 7), 10);
@@ -1439,10 +1469,14 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           dayRefund ? `<span class="text-incomeGreen num-tabular">退款 -$${formatMoney(dayRefund)}</span>` : '',
           dayInc ? `<span class="text-incomeGreen num-tabular">收入 +$${formatMoney(dayInc)}</span>` : ''
         ].filter(Boolean).join(' ');
+        // 那天有兩筆以上、沒有在搜尋或篩選時，合計右邊有調整順序的按鈕（見 60-app.js 的 openDayOrder）。
+        const orderBtn = items.length > 1 && !homeFilterActive()
+          ? `<button type="button" class="day-order-btn" data-day-order="${dateStr}" aria-label="調整 ${mm} 月 ${dd} 日的順序" title="調整順序">${DAY_ORDER_ICON}</button>`
+          : '';
         const headerHtml = `
           <div class="day-head bg-bgElevated/50 border-b border-borderSubtle/70 flex items-center justify-between">
             <span class="day-head-date">${mm} 月 ${dd} 日（週${wk}）</span>
-            <span class="day-total">${dayTotals}</span>
+            <span class="day-head-end"><span class="day-total">${dayTotals}</span>${orderBtn}</span>
           </div>
         `;
 
@@ -1492,6 +1526,9 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         btn.addEventListener('click', () => {
           openEditRecordModal(btn.getAttribute('data-record-id'));
         });
+      });
+      listEl.querySelectorAll('.day-order-btn').forEach(btn => {
+        btn.addEventListener('click', () => openDayOrder(btn.dataset.dayOrder));
       });
     }
     // 搜尋時列出找到幾筆與合計（支出、收入分開算），例如查「星巴克」這個月或全部月份花了多少。
@@ -2099,6 +2136,9 @@ const LedgerSyncCore = (() => {
     Object.defineProperty(obj, name, { value, enumerable: true, writable: true, configurable: true });
   }
 
+  // 兩筆紀錄（canon.rec 的格式）除了同一天裡的順序 seq 以外都相同。
+  const sameButOrder = (a, b) => JSON.stringify(Object.assign({}, a, { seq: 0 })) === JSON.stringify(Object.assign({}, b, { seq: 0 }));
+
   function isDemoSeedRecord(record) {
     return DEMO_SEED_IDS.has(String(record && record.id));
   }
@@ -2424,6 +2464,12 @@ const LedgerSyncCore = (() => {
           continue;
         }
         const remoteWins = doc.t > localT || (doc.t === localT && rH > localH);
+        // 只差在同一天裡的順序（例如兩台都調了順序）：直接用較新的版本，不放進衝突紀錄，
+        // 否則會列出兩個看起來一模一樣的版本要使用者選。
+        if (kind === 'rec' && loc && remoteData && sameButOrder(loc.data, remoteData)) {
+          if (remoteWins) changes.push({ key: doc.k, data: remoteData, t: doc.t });
+          continue;
+        }
         conflicts.push({
           at: now(), key: doc.k, kept: remoteWins ? 'remote' : 'local',
           other: remoteWins ? { del: !loc, data: loc ? loc.data : null, t: localT } : { del: Boolean(doc.del), data: remoteData, t: doc.t },
@@ -3330,6 +3376,7 @@ function renderAll() {
   $('statsMerchantList').parentElement.querySelector('h3').textContent =
     state.statsType === 'income' ? '收入來源累積金額' : '店家累積金額';
   $('statsMerchantList').parentElement.querySelector('span').textContent = '點擊查看明細';
+  renderDayOrder(); // 開著調整順序的面板時（存檔或同步後）跟著更新
 }
 function discardForm() {
   modalState = null;
@@ -3750,11 +3797,13 @@ function handleSaveRecord(keepOpenForNext = false) {
   if (!validDate(d.date)) return formError('請選擇有效日期。');
   if (d.selectedMerchant.trim().length > 100 || d.note.length > 1000)
     return formError('店家／來源限 100 字，備註限 1,000 字。');
-  if (d.editingRecordId && !state.records.some(r => r.id === d.editingRecordId))
+  const editing = d.editingRecordId && state.records.find(r => r.id === d.editingRecordId);
+  if (d.editingRecordId && !editing)
     return formError('這筆紀錄已被刪除（可能是在其他裝置），無法儲存修改。請返回後重新記一筆。');
   const rec = {
     id: d.editingRecordId || uid(),
-    seq: d.editingRecordId ? state.records.find(r => r.id === d.editingRecordId).seq : getNextSeq(),
+    // 同一天的順序（見 saveDayOrder）：新記的和改了日期的排在那天最後面；沒改日期就留在原本的位置。
+    seq: editing && editing.date === d.date ? editing.seq : getNextSeq(),
     type: d.type,
     date: d.date,
     categoryId: d.categoryId,
@@ -3871,12 +3920,14 @@ function saveCategoryOrder(ids, focusId) {
       .querySelector(`.category-row[data-id="${CSS.escape(focusId)}"] .drag-handle`)
       ?.focus();
 }
-// 分類拖曳排序：按住左邊的把手上下拖，經過相鄰分類的一半就交換位置，放開後一次存檔；
-// 拖到畫面上下緣會自動捲動。用鍵盤時，在把手上按上下鍵移動一格。
-function setupCategoryDrag() {
-  const list = $('settingsCategoryList');
+// 拖曳排序（設定頁的分類、同一天的紀錄共用）：按住左邊的把手上下拖，經過相鄰一列的一半就交換位置，
+// 放開後一次存檔；拖到上下緣會自動捲動（scroller 是要捲動的清單，預設整個畫面）。用鍵盤時，在把手上按上下鍵移動一格。
+// save(ids, focusId) 存新的順序，focusId 是用鍵盤移動時要保留焦點的那一列；restore() 取消或沒有移動時重畫回原樣；
+// edges() 是開始自動捲動的上下緣。回傳的 busy() 表示正在拖曳，這時不要重畫清單。
+function setupDragSort(list, rowSelector, { save, restore, edges, scroller = window }) {
   let drag = null;
-  const rowIds = () => [...list.querySelectorAll('.category-row')].map(r => r.dataset.id);
+  const rowIds = () => [...list.querySelectorAll(rowSelector)].map(r => r.dataset.id);
+  const scrolled = () => (scroller === window ? window.scrollY : scroller.scrollTop);
   // 列在清單中移動後，調整起點讓它仍停在手指下。
   function shift(move) {
     const before = drag.row.offsetTop;
@@ -3902,13 +3953,12 @@ function setupCategoryDrag() {
   function autoScroll() {
     if (!drag) return;
     const y = drag.lastY,
-      top = 70,
-      bottom = window.innerHeight - 130; // 底部留給導覽列
+      [top, bottom] = edges();
     const speed = y < top ? -Math.ceil((top - y) / 6) : y > bottom ? Math.ceil((y - bottom) / 6) : 0;
     if (speed) {
-      const before = window.scrollY;
-      window.scrollBy(0, speed);
-      const moved = window.scrollY - before;
+      const before = scrolled();
+      scroller.scrollBy(0, speed);
+      const moved = scrolled() - before;
       if (moved) {
         drag.originY -= moved;
         place(y);
@@ -3922,7 +3972,7 @@ function setupCategoryDrag() {
     drag.lastY = e.clientY;
     place(e.clientY);
   }
-  function finish(save) {
+  function finish(keep) {
     if (!drag) return;
     const { row, before, raf } = drag;
     drag = null;
@@ -3933,8 +3983,8 @@ function setupCategoryDrag() {
     row.classList.remove('dragging');
     row.style.transform = '';
     const ids = rowIds();
-    if (save && ids.join() !== before.join()) saveCategoryOrder(ids);
-    else renderSettings();
+    if (keep && ids.join() !== before.join()) save(ids);
+    else restore();
   }
   const drop = () => finish(true),
     cancel = () => finish(false);
@@ -3942,7 +3992,7 @@ function setupCategoryDrag() {
     const handle = e.target.closest('.drag-handle');
     if (!handle || drag || e.button > 0) return;
     e.preventDefault();
-    drag = { row: handle.closest('.category-row'), originY: e.clientY, lastY: e.clientY, before: rowIds(), raf: 0 };
+    drag = { row: handle.closest(rowSelector), originY: e.clientY, lastY: e.clientY, before: rowIds(), raf: 0 };
     drag.row.classList.add('dragging');
     try {
       handle.setPointerCapture(e.pointerId);
@@ -3957,13 +4007,116 @@ function setupCategoryDrag() {
     if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
     e.preventDefault();
     const ids = rowIds(),
-      id = handle.closest('.category-row').dataset.id,
+      id = handle.closest(rowSelector).dataset.id,
       i = ids.indexOf(id),
       j = i + (e.key === 'ArrowUp' ? -1 : 1);
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
-    saveCategoryOrder(ids, id);
+    save(ids, id);
   });
+  return { busy: () => Boolean(drag) };
+}
+function setupCategoryDrag() {
+  setupDragSort($('settingsCategoryList'), '.category-row', {
+    save: saveCategoryOrder,
+    restore: renderSettings,
+    edges: () => [70, window.innerHeight - 130], // 底部留給導覽列
+  });
+}
+// 同一天紀錄的順序就是記帳先後的編號（seq）：新記的一筆編號最大，排在那天最後面；固定收支自動記的是 0，排最前面。
+// 調整順序時，把那一天原本的編號由小到大重新分給新的順序，不另外加欄位：還沒更新的裝置、備份和 CSV 也照這個順序。
+// 編號一定是整數（開啟帳本時不是整數的會被換掉，見 validateBackup）；重複的（例如同一天兩筆固定收支）往上加成不重複。
+// 只有編號真的變了的紀錄換成新物件（上一版帳本共用同一個物件），同步也只上傳那幾筆。
+function dayRecords(date) {
+  return state.records
+    .filter(r => r.date === date)
+    .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0));
+}
+function saveDayOrder(date, ids, focusId) {
+  const day = dayRecords(date),
+    byId = new Map(day.map(r => [r.id, r]));
+  // 打開面板之後在其他裝置刪掉的略過，新記的接在最後面。
+  const order = [...new Set(ids)].filter(id => byId.has(id));
+  for (const r of day) if (!order.includes(r.id)) order.push(r.id);
+  const seqs = day.map(r => Number(r.seq) || 0).sort((x, y) => x - y);
+  for (let i = 1; i < seqs.length; i++) seqs[i] = Math.max(seqs[i], seqs[i - 1] + 1);
+  const changed = new Map(order.map((id, i) => [id, seqs[i]]).filter(([id, seq]) => byId.get(id).seq !== seq));
+  if (
+    changed.size &&
+    !commit(s =>
+      s.records.forEach((r, i) => {
+        if (changed.has(r.id)) s.records[i] = { ...r, seq: changed.get(r.id) };
+      })
+    )
+  )
+    return renderDayOrder();
+  renderAll();
+  if (focusId)
+    $('dayOrderList')
+      .querySelector(`.day-order-row[data-id="${CSS.escape(focusId)}"] .drag-handle`)
+      ?.focus();
+}
+// 調整同一天紀錄的順序：首頁每天標題右邊的按鈕打開（那天有兩筆以上、沒有在搜尋或篩選時才有）。
+// 拖曳和設定頁的分類一樣，放開就存好；按「完成」或返回手勢關掉。只能在同一天裡移動，換日期要點紀錄修改。
+let dayOrderDate = null,
+  dayOrderSort = null;
+const DAY_ORDER_ICON =
+  '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 19V5M4.5 8.5 8 5l3.5 3.5M16 5v14M12.5 15.5 16 19l3.5-3.5"/></svg>';
+function setupDayOrder() {
+  const list = $('dayOrderList');
+  dayOrderSort = setupDragSort(list, '.day-order-row', {
+    save: (ids, focusId) => saveDayOrder(dayOrderDate, ids, focusId),
+    restore: renderDayOrder,
+    scroller: list,
+    edges: () => {
+      const r = list.getBoundingClientRect();
+      return [r.top + 32, r.bottom - 32];
+    },
+  });
+}
+function openDayOrder(date) {
+  dayOrderDate = date;
+  renderDayOrder();
+  if (!dayOrderDate) return;
+  $('modalDayOrder').classList.remove('hidden');
+  $('dayOrderList').scrollTop = 0;
+  $('btnDayOrderDone').focus({ preventScroll: true });
+}
+function closeDayOrder() {
+  if (!dayOrderDate) return;
+  const date = dayOrderDate;
+  dayOrderDate = null;
+  $('modalDayOrder').classList.add('hidden');
+  $('homeRecordList').querySelector(`[data-day-order="${date}"]`)?.focus({ preventScroll: true });
+}
+// 每次重畫畫面（存檔、同步）時跟著更新；拖曳途中不重畫，放開後再畫。
+function renderDayOrder() {
+  if (!dayOrderDate || dayOrderSort?.busy()) return;
+  const records = dayRecords(dayOrderDate);
+  // 在其他裝置刪到剩一筆（或改到別天）就沒有順序可以調了。
+  if (records.length < 2) return closeDayOrder();
+  const [y, m, d] = dayOrderDate.split('-').map(Number);
+  $('dayOrderTitle').textContent = `調整順序・${m} 月 ${d} 日（週${WEEKDAY_NAMES[new Date(y, m - 1, d).getDay()]}）`;
+  const list = $('dayOrderList');
+  list.innerHTML = '';
+  for (const rec of records) {
+    const cat = getCategoryById(rec.categoryId),
+      merchant = (rec.merchant || '').trim(),
+      title = merchant || cat.name,
+      plus = rec.type === 'income' || rec.amount < 0,
+      amount = `${rec.type === 'income' ? '+' : rec.amount < 0 ? '-' : ''}$${formatMoney(Math.abs(rec.amount))}`;
+    const row = document.createElement('div');
+    row.className = 'day-order-row';
+    row.dataset.id = rec.id;
+    row.innerHTML = `<button type="button" class="drag-handle" aria-label="拖曳調整「${escapeHtml(title)} ${amount}」的順序，也可以用上下鍵">${GRIP_ICON}</button>
+      <span class="day-order-icon">${ICONS[cat.icon] || ICONS.other}</span>
+      <span class="day-order-text">
+        <span class="day-order-title"><span>${escapeHtml(title)}</span>${merchant ? `<span class="day-order-cat">${escapeHtml(cat.name)}</span>` : ''}</span>
+        ${rec.note ? `<span class="day-order-note">${escapeHtml(rec.note)}</span>` : ''}
+      </span>
+      <span class="day-order-amount${plus ? ' is-plus' : ''}">${amount}</span>`;
+    list.appendChild(row);
+  }
 }
 // 主題顏色只存在這台裝置（不同步、不在備份裡）；<head> 開頭的小程式會在畫面出現前先套用。
 const THEMES = ['blue', 'sky', 'mono', 'purple'];
@@ -4607,6 +4760,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   LedgerBack.init();
   setupCategoryDrag();
+  setupDayOrder();
   const monthStep = n => {
     const [y, m] = state.currentMonth.split('-').map(Number),
       d = new Date(y, m - 1 + n * (isYearStats() ? 12 : 1), 1);
@@ -4750,6 +4904,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     })
   );
   on('btnCloseDrilldown', 'click', closeDrilldown);
+  on('btnDayOrderDone', 'click', closeDayOrder);
   document.querySelectorAll('.setting-header-btn').forEach(
     b =>
       (b.onclick = () => {
@@ -4844,11 +4999,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   on('btnResetLedger', 'click', confirmResetLedger);
   on('dialogBtnCancel', 'click', closeDialog);
   document.addEventListener('keydown', e => {
-    const modal =
-      ['modalDialog', 'modalCategory', 'modalDrilldown'].map($).find(m => !m.classList.contains('hidden')) || null;
+    const modal = ['modalDialog', 'modalCategory', 'modalDrilldown', 'modalDayOrder']
+      .map($)
+      .find(m => !m.classList.contains('hidden'));
     if (e.key === 'Escape') {
       if (modal?.id === 'modalDialog') closeDialog();
       else if (modal?.id === 'modalCategory') closeCategoryEditor();
+      else if (modal?.id === 'modalDayOrder') closeDayOrder();
       else if (modal) modal.classList.add('hidden');
       else if (state.activeView === 'record') closeRecordPage();
     }
@@ -5815,7 +5972,7 @@ function setupRecurringForm() {
   });
 }
 // 返回手勢：Android 的返回手勢（以及瀏覽器的上一頁）關掉最上面的畫面，而不是離開網頁。
-// 記帳頁、設定分頁、明細、分類編輯與對話框，每開一層就加一筆瀏覽紀錄（history.pushState）；
+// 記帳頁、設定分頁、明細、調整順序、分類編輯與對話框，每開一層就加一筆瀏覽紀錄（history.pushState）；
 // 用畫面上的按鈕關閉時，收回對應的紀錄，之後按返回才不會停在原地。
 // 開關畫面的地方很多，這裡不在每個地方各自處理，而是觀察這幾個畫面的 class，統一比對開了幾層。
 const LedgerBack = (() => {
@@ -5826,10 +5983,11 @@ const LedgerBack = (() => {
     { isOpen: () => shown('modalDialog'), close: () => closeDialog() },
     { isOpen: () => shown('modalCategory'), close: () => closeCategoryEditor() },
     { isOpen: () => shown('modalDrilldown'), close: () => closeDrilldown() },
+    { isOpen: () => shown('modalDayOrder'), close: () => closeDayOrder() },
     { isOpen: () => state.activeView === 'record', close: () => closeRecordPage() },
     { isOpen: () => state.activeView === 'settings' && Boolean(state.settingsPage), close: () => openSettingsPage('') },
   ];
-  const WATCH = ['modalDialog', 'modalCategory', 'modalDrilldown', 'modalRecord', 'viewSettings', 'settingsHome'];
+  const WATCH = ['modalDialog', 'modalCategory', 'modalDrilldown', 'modalDayOrder', 'modalRecord', 'viewSettings', 'settingsHome'];
   const MOVE_TIMEOUT_MS = 1000;
   let depth = 0;        // 目前停在第幾筆加上去的紀錄；網頁原本的那一筆是第 0 層
   let moving = false;   // 自己呼叫 history.go() 移動、還沒抵達
@@ -6649,7 +6807,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = 'bc887deebc31';
+  const APP_VERSION = '0a7b0a895fbd';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -6870,7 +7028,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = 'bc887deebc31';
+  const APP_VERSION = '0a7b0a895fbd';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

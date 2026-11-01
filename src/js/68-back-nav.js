@@ -1,5 +1,5 @@
 // 返回手勢：Android 的返回手勢（以及瀏覽器的上一頁）關掉最上面的畫面，而不是離開網頁。
-// 記帳頁、設定分頁、明細、分類編輯與對話框，每開一層就加一筆瀏覽紀錄（history.pushState）；
+// 記帳頁、設定分頁、明細、調整順序、分類編輯與對話框，每開一層就加一筆瀏覽紀錄（history.pushState）；
 // 用畫面上的按鈕關閉時，收回對應的紀錄，之後按返回才不會停在原地。
 // 開關畫面的地方很多，這裡不在每個地方各自處理，而是觀察這幾個畫面的 class，統一比對開了幾層。
 const LedgerBack = (() => {
@@ -10,10 +10,11 @@ const LedgerBack = (() => {
     { isOpen: () => shown('modalDialog'), close: () => closeDialog() },
     { isOpen: () => shown('modalCategory'), close: () => closeCategoryEditor() },
     { isOpen: () => shown('modalDrilldown'), close: () => closeDrilldown() },
+    { isOpen: () => shown('modalDayOrder'), close: () => closeDayOrder() },
     { isOpen: () => state.activeView === 'record', close: () => closeRecordPage() },
     { isOpen: () => state.activeView === 'settings' && Boolean(state.settingsPage), close: () => openSettingsPage('') },
   ];
-  const WATCH = ['modalDialog', 'modalCategory', 'modalDrilldown', 'modalRecord', 'viewSettings', 'settingsHome'];
+  const WATCH = ['modalDialog', 'modalCategory', 'modalDrilldown', 'modalDayOrder', 'modalRecord', 'viewSettings', 'settingsHome'];
   const MOVE_TIMEOUT_MS = 1000;
   let depth = 0;        // 目前停在第幾筆加上去的紀錄；網頁原本的那一筆是第 0 層
   let moving = false;   // 自己呼叫 history.go() 移動、還沒抵達

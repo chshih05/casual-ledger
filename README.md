@@ -20,6 +20,8 @@
 
 點首頁的紀錄可以修改或刪除；刪除後 10 秒內可以按「復原」。
 
+**調整同一天的順序：** 同一天的紀錄依記帳先後排列，新記的在最後面（固定收支自動記的在最前面）。那天有兩筆以上時，首頁日期標題最右邊有一個上下箭頭的按鈕，點了列出那一天的紀錄，按住左邊的把手上下拖曳，放開就存好（用鍵盤時在把手上按上下鍵）；按「完成」或用返回手勢關掉。只能在同一天裡移動，要換到別天請點紀錄改日期：改了日期的紀錄排到新日期的最後面，跟新記的一樣；其他修改不影響順序。搜尋或篩選時不會出現這個按鈕。順序會同步到其他裝置，備份和匯出的 CSV 也照這個順序。
+
 **退款與朋友還錢：** 退貨退款、朋友還你代墊的錢，在記帳頁上方選「退款」，選原本的分類（和店家），填退回的金額。這筆會從那個分類（和店家）的支出扣掉，不算收入：例如聚餐先幫大家付 1,200、朋友還你 900，晚餐就只算你自己的 300。首頁用綠色的「-$900」和「退款」標示，每天的合計另外列出退款；本月支出總額、預算、統計、店家紀錄都是扣掉退款後的金額。搜尋「退款」可以找出所有退款。以前記成收入的退款，可以點開後改選「退款」和原本的分類。
 
 **返回手勢：** 記帳頁、明細、分類編輯、對話框和設定分頁，都可以用手機的返回手勢（或瀏覽器的上一頁）關掉，回到上一個畫面，不會離開網頁。記帳頁沒按儲存就返回，內容直接捨棄。
@@ -76,7 +78,7 @@
 - 設定 →「雲端同步」→「使用 Google 登入並同步」。只有白名單裡的 Gmail 能同步（目前只有擁有者本人）。
 - 如果這台裝置已經有紀錄，連結前會先詢問，並建議先下載備份。
 - 離線時記的帳會標示「待同步」，恢復連線後自動上傳。
-- 兩台裝置改了同一筆：保留較晚修改的版本，另一個版本放在「衝突紀錄」，可以改用。
+- 兩台裝置改了同一筆：保留較晚修改的版本，另一個版本放在「衝突紀錄」，可以改用。兩個版本只差在同一天裡的順序時，直接用較晚調的，不放進衝突紀錄。
 - 一次刪除很多筆時會先暫停，按「確認刪除並同步」才會刪除雲端的資料（「刪除所有紀錄」「全部重置」已經確認過，不會再暫停）。
 
 ### 版本更新
@@ -119,7 +121,7 @@
 - 測試：執行 `python tools/run_tests.py`，會先建置，再用電腦上的 Chrome（或 Edge）在背景跑全部測試，結果印在終端機。也可以執行 `python -m http.server 8765 --bind 127.0.0.1` 後開啟 <http://localhost:8765/tests/run.html> 看每一項。另外執行 `python tools/check_classes.py` 檢查樣式名稱。
 - **GitHub 自動測試：** 每次推送到 `main` 或開 Pull Request，GitHub Actions（`.github/workflows/test.yml`）會檢查 `docs/` 有沒有重新建置、樣式名稱，並跑全部測試；結果在儲存庫的「Actions」分頁，失敗時 GitHub 會寄信通知。
 - 推送到 `main` 後，GitHub Pages 幾分鐘內更新，手機下次開啟會自動換成新版。
-- 其他位置：主畫面圖示 `tools/make_icons.py`（捷徑圖示：`python tools/make_icons.py shortcuts`）；返回手勢 `src/js/68-back-nav.js`；備份提醒與雲端自動備份 `src/js/85-backup.js`；Firebase 設定 `src/firebase-config.js`（公開值，改成 `null` 可停用同步）；安全規則 `firestore.rules`；常用店家數量 `src/js/60-app.js` 的 `SETTINGS_FREQUENT_LIMIT`、`RECORD_SUGGEST_LIMIT`；分類圖示（名稱、大分類、依名稱建議圖示用的關鍵字與圖案）`src/js/30-icon-catalog.js`；帳本儲存（資料庫、變更日誌、搬家）`src/js/58-store.js`；主題顏色 `src/styles/app.css` 開頭的 `--accent` 等變數（`tailwind.css` 的 accent 也用這些變數）。
+- 其他位置：主畫面圖示 `tools/make_icons.py`（捷徑圖示：`python tools/make_icons.py shortcuts`）；返回手勢 `src/js/68-back-nav.js`；備份提醒與雲端自動備份 `src/js/85-backup.js`；Firebase 設定 `src/firebase-config.js`（公開值，改成 `null` 可停用同步）；安全規則 `firestore.rules`；常用店家數量 `src/js/60-app.js` 的 `SETTINGS_FREQUENT_LIMIT`、`RECORD_SUGGEST_LIMIT`；分類圖示（名稱、大分類、依名稱建議圖示用的關鍵字與圖案）`src/js/30-icon-catalog.js`；帳本儲存（資料庫、變更日誌、搬家）`src/js/58-store.js`；同一天紀錄的順序（沿用記帳先後的編號 `seq`，不另外加欄位）`src/js/60-app.js` 的 `saveDayOrder`；主題顏色 `src/styles/app.css` 開頭的 `--accent` 等變數（`tailwind.css` 的 accent 也用這些變數）。
 - **開放同步給其他人：** Firebase 主控台 → Firestore Database →「規則」，在 `isOwner` 的 Gmail 清單加入對方的 Gmail（全部小寫，例如 `['me@gmail.com', 'family@gmail.com']`）後發布。每個帳號的帳本各自獨立。
   真實的 Gmail 只填在主控台；GitHub 上的 `firestore.rules` 保留範例文字。
 - **不要上傳到 GitHub：** 帳本備份（`.json`）、匯出的 CSV 和 `reference/`。`.gitignore` 已排除它們，但用 GitHub 網頁上傳時不會套用。
