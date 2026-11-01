@@ -319,6 +319,32 @@
     eq((await a.stored()).records.length, 1);
   });
 
+  test('畫面｜設定開啟「隱藏備註」後首頁清單不顯示備註；搜尋、點開紀錄時照常看得到', async () => {
+    const a = await personalApp();
+    addRecord(a, { amount: '185', merchant: '麥當勞', note: '大麥克套餐' });
+    const noteShown = () => a.text('homeRecordList').includes('大麥克套餐');
+    assert(noteShown(), '預設顯示備註');
+    openSettings(a, 'general');
+    eq(a.$('toggleHideNotes').getAttribute('aria-checked'), 'false');
+    a.click('toggleHideNotes');
+    eq(a.$('toggleHideNotes').getAttribute('aria-checked'), 'true');
+    a.click('navBtnHome');
+    assert(!noteShown(), '開啟後首頁不顯示備註');
+    assert(a.text('homeRecordList').includes('麥當勞'), '店家照常顯示');
+    a.type('recordSearch', '大麥克');
+    assert(noteShown(), '搜尋時照常顯示，看得出是備註裡的字找到的');
+    a.type('recordSearch', '');
+    assert(!noteShown());
+    a.click(a.d.querySelector('.record-item-btn'));
+    eq(a.$('inputRecordNote').value, '大麥克套餐', '點開紀錄看得到備註');
+    a.click('btnCloseRecordModal');
+    eq((await a.stored()).preferences.hideNotes, true, '設定存進帳本');
+    openSettings(a, 'general');
+    a.click('toggleHideNotes');
+    a.click('navBtnHome');
+    assert(noteShown(), '關掉後恢復顯示');
+  });
+
   test('畫面｜數字鍵盤可以收起與展開', async () => {
     const a = await personalApp();
     a.click('btnOpenAddModal');
@@ -1728,7 +1754,7 @@
     eq(a.ev('LedgerStore.mode()'), 'idb');
     eq(a.ev('state.records.map(r => r.id)'), ['rec_old_1']);
     eq(a.ev('getCategoryById("cat_lunch")'), { id: 'cat_lunch', type: 'expense', name: '中餐', icon: 'lunch', order: 2, budget: 2000 });
-    eq(a.ev('state.preferences'), { homeHeaderMode: 'full_net', enableSaveAndNext: true, monthlyBudget: 15000 });
+    eq(a.ev('state.preferences'), { homeHeaderMode: 'full_net', enableSaveAndNext: true, hideNotes: false, monthlyBudget: 15000 });
     eq(a.ev('state.recurring.map(r => r.id)'), ['rule_old']);
     const sorted = o => Object.fromEntries(Object.entries(o).sort());
     eq(sorted(a.ev('state.entityTimes')), sorted(old.entityTimes), '修改時間（含已刪除項目）都保留，同步判斷新舊才正確');

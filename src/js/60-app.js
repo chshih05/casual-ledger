@@ -240,6 +240,7 @@ function validateBackup(input) {
         ? src.preferences.homeHeaderMode
         : 'expense_only',
       enableSaveAndNext: src.preferences?.enableSaveAndNext === true,
+      hideNotes: src.preferences?.hideNotes === true,
       monthlyBudget: LedgerSyncCore.validBudget(src.preferences?.monthlyBudget) ? src.preferences.monthlyBudget : 0,
     },
     entityTimes: sanitizeEntityTimes(src.entityTimes),
@@ -1173,6 +1174,12 @@ function setTheme(t) {
   } catch {}
   renderSettings();
 }
+// 設定頁的開關：id 是按鈕，id + 'Dot' 是裡面的圓點。
+function renderSwitch(id, checked) {
+  $(id).setAttribute('aria-checked', String(checked));
+  $(id).classList.toggle('bg-accent', checked);
+  $(id + 'Dot').style.left = checked ? '22px' : '4px';
+}
 function renderSettings() {
   $('settingsHome').classList.toggle('hidden', Boolean(state.settingsPage));
   document
@@ -1185,9 +1192,8 @@ function renderSettings() {
     b.querySelector('.mode-check').textContent = yes ? '✓' : '';
     b.setAttribute('aria-pressed', String(yes));
   });
-  $('toggleSaveAndNext').setAttribute('aria-checked', String(state.preferences.enableSaveAndNext));
-  $('toggleSaveAndNext').classList.toggle('bg-accent', state.preferences.enableSaveAndNext);
-  $('toggleSaveAndNextDot').style.left = state.preferences.enableSaveAndNext ? '22px' : '4px';
+  renderSwitch('toggleSaveAndNext', state.preferences.enableSaveAndNext);
+  renderSwitch('toggleHideNotes', state.preferences.hideNotes);
   document
     .querySelectorAll('[data-theme-option]')
     .forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeOption === currentTheme())));
@@ -1955,6 +1961,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('[data-theme-option]').forEach(b => (b.onclick = () => setTheme(b.dataset.themeOption)));
   on('toggleSaveAndNext', 'click', () => {
     if (commit(s => (s.preferences.enableSaveAndNext = !s.preferences.enableSaveAndNext))) renderSettings();
+  });
+  on('toggleHideNotes', 'click', () => {
+    if (commit(s => (s.preferences.hideNotes = !s.preferences.hideNotes))) renderSettings();
   });
   on('btnManageAddMerchant', 'click', () => {
     const name = $('inputManageNewMerchant').value.trim();

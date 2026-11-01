@@ -13,6 +13,7 @@
         preferences: {
           homeHeaderMode: 'expense_only',
           enableSaveAndNext: false,
+          hideNotes: false, // 首頁清單不顯示備註（搜尋時照常顯示）
           monthlyBudget: 0 // 每月總預算（0 = 未設定）；分類預算存在各支出分類的 budget
         },
         categories: [
@@ -213,6 +214,8 @@
       const weekNames = ['日', '一', '二', '三', '四', '五', '六'];
       // 沒有搜尋時，往前補的上個月紀錄（見 homeListStart）前面加一條分隔線。
       let dividerShown = homeFilterActive();
+      // 設定開啟「隱藏備註」時不顯示備註；用關鍵字搜尋時照常顯示，看得出是備註裡的字找到的。
+      const showNotes = !state.preferences.hideNotes || searchQuery.trim() !== '';
       Object.keys(groups).sort((a, b) => b.localeCompare(a)).forEach(dateStr => {
         if (!dividerShown && !dateStr.startsWith(state.currentMonth)) {
           dividerShown = true;
@@ -278,7 +281,7 @@
                     ${fixedBadge}
                     ${pendingBadge}
                   </div>
-                  ${rec.note ? `<div class="text-xs text-textMuted truncate mt-0.5">${escapeHtml(rec.note)}</div>` : ''}
+                  ${rec.note && showNotes ? `<div class="text-xs text-textMuted truncate mt-0.5">${escapeHtml(rec.note)}</div>` : ''}
                 </div>
               </div>
               <div class="text-right shrink-0">

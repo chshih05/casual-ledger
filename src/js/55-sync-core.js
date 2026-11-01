@@ -12,9 +12,9 @@ const LedgerSyncCore = (() => {
   const MAX_AMOUNT = 999999999;
   const MAX_CONFLICTS = 30;
   // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）；
-  // 4 起支出分類可以設定不算進每日支出長條圖（skipDaily）。
+  // 4 起支出分類可以設定不算進每日支出長條圖（skipDaily）；5 起偏好設定可以讓首頁清單不顯示備註（hideNotes）。
   // 舊版程式會略過或去掉這些資料，所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
-  const FORMAT = 4;
+  const FORMAT = 5;
   // 固定收支規則沿用偏好設定的類別（pref:rule_…），雲端安全規則不需要修改。
   const RULE_PREFIX = 'rule_';
 
@@ -47,7 +47,7 @@ const LedgerSyncCore = (() => {
   }
 
   // 每月預算：1～999,999,999 的整數；沒有設定時不寫入欄位，舊資料的雜湊因此不會改變。
-  // 不算進每日支出（skipDaily）也一樣：只有勾掉的支出分類才寫入 true。
+  // 不算進每日支出（skipDaily）也一樣：只有勾掉的支出分類才寫入 true；首頁不顯示備註（hideNotes）只有開啟時才寫入。
   const validBudget = v => Number.isSafeInteger(v) && v > 0 && v <= MAX_AMOUNT;
 
   const canon = {
@@ -62,6 +62,7 @@ const LedgerSyncCore = (() => {
     pref: p => {
       const out = { homeHeaderMode: HEADER_MODES.includes(p.homeHeaderMode) ? p.homeHeaderMode : 'expense_only', enableSaveAndNext: p.enableSaveAndNext === true };
       if (validBudget(p.monthlyBudget)) out.monthlyBudget = p.monthlyBudget;
+      if (p.hideNotes === true) out.hideNotes = true;
       return out;
     },
     // 固定收支規則：next 是下一次要記的日期；day 是每月幾號（31 號遇到小月記在月底）。
@@ -198,7 +199,7 @@ const LedgerSyncCore = (() => {
       s.recurring = s.recurring || [];
       upsertById(s.recurring, id, data && canon.rule(data));
     } else if (kind === 'pref' && data) {
-      s.preferences = Object.assign({}, s.preferences, { monthlyBudget: 0 }, canon.pref(data));
+      s.preferences = Object.assign({}, s.preferences, { monthlyBudget: 0, hideNotes: false }, canon.pref(data));
     }
   }
 
@@ -288,7 +289,8 @@ const LedgerSyncCore = (() => {
     }
     if (kind === 'pref') {
       return id === 'main' && HEADER_MODES.includes(d.homeHeaderMode) && typeof d.enableSaveAndNext === 'boolean'
-        && (d.monthlyBudget === undefined || validBudget(d.monthlyBudget));
+        && (d.monthlyBudget === undefined || validBudget(d.monthlyBudget))
+        && (d.hideNotes === undefined || d.hideNotes === true);
     }
     return false;
   }
