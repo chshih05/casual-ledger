@@ -89,6 +89,13 @@ def main():
     url = f"http://127.0.0.1:{server.server_address[1]}/tests/run.html?{query}"
 
     profile = tempfile.mkdtemp(prefix="ledger-test-")
+    # 有些測試會按「下載備份」「匯出 CSV」：下載的檔案存到這個暫存設定檔裡，跑完一起刪掉，不會跑到電腦的「下載」資料夾。
+    downloads = pathlib.Path(profile) / "downloads"
+    downloads.mkdir()
+    (pathlib.Path(profile) / "Default").mkdir()
+    prefs = {"download": {"default_directory": str(downloads), "prompt_for_download": False},
+             "savefile": {"default_directory": str(downloads)}}
+    (pathlib.Path(profile) / "Default" / "Preferences").write_text(json.dumps(prefs), encoding="utf-8")
     command = [browser, "--headless=new", f"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
                "--disable-gpu", "--disable-extensions", "--window-size=1280,900", url]
     # 以 root 執行、或在 GitHub Actions 這類自動化環境時，Chrome 的沙箱常常無法啟動；這裡只開本機的測試頁，關掉沒關係。
