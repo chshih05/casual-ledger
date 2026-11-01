@@ -255,6 +255,24 @@
     eq(a.pending().length + b.pending().length, 0);
   });
 
+  test('核心｜首頁「隱藏備註」跟著偏好設定同步；沒開啟時格式和舊版相同', async () => {
+    eq(Object.keys(Core.canon.pref({ homeHeaderMode: 'expense_only', enableSaveAndNext: false, hideNotes: false })), ['homeHeaderMode', 'enableSaveAndNext']);
+    assert(!Core.validEntityData('pref', 'main', { homeHeaderMode: 'expense_only', enableSaveAndNext: false, hideNotes: 'yes' }));
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B');
+    await a.sync(); await b.sync();
+    a.clock = 2000;
+    a.commit(s => { s.preferences.hideNotes = true; });
+    eq(a.pending().map(p => p.key), ['pref:main']);
+    await a.sync(); await b.sync();
+    eq(b.state.preferences.hideNotes, true);
+    b.clock = 3000;
+    b.commit(s => { s.preferences.hideNotes = false; });
+    await b.sync(); await a.sync();
+    eq(a.state.preferences.hideNotes, false, '另一台關掉，這台也跟著關掉');
+    eq(a.pending().length + b.pending().length, 0);
+  });
+
   test('核心｜離線時保留待同步資料，恢復連線後補傳', async () => {
     const cloud = createFakeCloud();
     const a = device(cloud, 'A'), b = device(cloud, 'B');

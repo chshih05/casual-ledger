@@ -780,7 +780,20 @@ select.rule-input { color-scheme:dark; }
         </div>
       </section>
 
-      <!-- 2. 記帳偏好 -->
+      <!-- 2. 首頁清單 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4">
+        <div class="flex items-center justify-between">
+          <div class="pr-3">
+            <h3 class="text-sm font-semibold text-textMain">首頁清單隱藏備註</h3>
+            <p class="text-xs text-textMuted mt-0.5">每筆紀錄只占一行。點開紀錄、搜尋時照常顯示備註</p>
+          </div>
+          <button id="toggleHideNotes" role="switch" aria-label="首頁清單隱藏備註" type="button" class="w-11 h-6 rounded-full transition relative bg-bgElevated border border-borderSubtle shrink-0">
+            <span id="toggleHideNotesDot" class="w-4 h-4 rounded-full bg-textMuted absolute top-0.5 left-1 transition-all"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 3. 記帳偏好 -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div>
           <h3 class="text-sm font-semibold text-textMain">記帳偏好</h3>
@@ -799,7 +812,7 @@ select.rule-input { color-scheme:dark; }
         </div>
       </section>
 
-      <!-- 3. 主題顏色（只存在這台裝置，見 60-app.js 的 setTheme） -->
+      <!-- 4. 主題顏色（只存在這台裝置，見 60-app.js 的 setTheme） -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div>
           <h3 class="text-sm font-semibold text-textMain">主題顏色</h3>
@@ -981,7 +994,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">0a7b0a895fbd</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">9e8094b85927</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1243,6 +1256,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
         preferences: {
           homeHeaderMode: 'expense_only',
           enableSaveAndNext: false,
+          hideNotes: false, // 首頁清單不顯示備註（搜尋時照常顯示）
           monthlyBudget: 0 // 每月總預算（0 = 未設定）；分類預算存在各支出分類的 budget
         },
         categories: [
@@ -1443,6 +1457,8 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       const weekNames = ['日', '一', '二', '三', '四', '五', '六'];
       // 沒有搜尋時，往前補的上個月紀錄（見 homeListStart）前面加一條分隔線。
       let dividerShown = homeFilterActive();
+      // 設定開啟「隱藏備註」時不顯示備註；用關鍵字搜尋時照常顯示，看得出是備註裡的字找到的。
+      const showNotes = !state.preferences.hideNotes || searchQuery.trim() !== '';
       Object.keys(groups).sort((a, b) => b.localeCompare(a)).forEach(dateStr => {
         if (!dividerShown && !dateStr.startsWith(state.currentMonth)) {
           dividerShown = true;
@@ -1508,7 +1524,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
                     ${fixedBadge}
                     ${pendingBadge}
                   </div>
-                  ${rec.note ? `<div class="text-xs text-textMuted truncate mt-0.5">${escapeHtml(rec.note)}</div>` : ''}
+                  ${rec.note && showNotes ? `<div class="text-xs text-textMuted truncate mt-0.5">${escapeHtml(rec.note)}</div>` : ''}
                 </div>
               </div>
               <div class="text-right shrink-0">
@@ -2059,9 +2075,9 @@ const LedgerSyncCore = (() => {
   const MAX_AMOUNT = 999999999;
   const MAX_CONFLICTS = 30;
   // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）；
-  // 4 起支出分類可以設定不算進每日支出長條圖（skipDaily）。
+  // 4 起支出分類可以設定不算進每日支出長條圖（skipDaily）；5 起偏好設定可以讓首頁清單不顯示備註（hideNotes）。
   // 舊版程式會略過或去掉這些資料，所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
-  const FORMAT = 4;
+  const FORMAT = 5;
   // 固定收支規則沿用偏好設定的類別（pref:rule_…），雲端安全規則不需要修改。
   const RULE_PREFIX = 'rule_';
 
@@ -2094,7 +2110,7 @@ const LedgerSyncCore = (() => {
   }
 
   // 每月預算：1～999,999,999 的整數；沒有設定時不寫入欄位，舊資料的雜湊因此不會改變。
-  // 不算進每日支出（skipDaily）也一樣：只有勾掉的支出分類才寫入 true。
+  // 不算進每日支出（skipDaily）也一樣：只有勾掉的支出分類才寫入 true；首頁不顯示備註（hideNotes）只有開啟時才寫入。
   const validBudget = v => Number.isSafeInteger(v) && v > 0 && v <= MAX_AMOUNT;
 
   const canon = {
@@ -2109,6 +2125,7 @@ const LedgerSyncCore = (() => {
     pref: p => {
       const out = { homeHeaderMode: HEADER_MODES.includes(p.homeHeaderMode) ? p.homeHeaderMode : 'expense_only', enableSaveAndNext: p.enableSaveAndNext === true };
       if (validBudget(p.monthlyBudget)) out.monthlyBudget = p.monthlyBudget;
+      if (p.hideNotes === true) out.hideNotes = true;
       return out;
     },
     // 固定收支規則：next 是下一次要記的日期；day 是每月幾號（31 號遇到小月記在月底）。
@@ -2245,7 +2262,7 @@ const LedgerSyncCore = (() => {
       s.recurring = s.recurring || [];
       upsertById(s.recurring, id, data && canon.rule(data));
     } else if (kind === 'pref' && data) {
-      s.preferences = Object.assign({}, s.preferences, { monthlyBudget: 0 }, canon.pref(data));
+      s.preferences = Object.assign({}, s.preferences, { monthlyBudget: 0, hideNotes: false }, canon.pref(data));
     }
   }
 
@@ -2335,7 +2352,8 @@ const LedgerSyncCore = (() => {
     }
     if (kind === 'pref') {
       return id === 'main' && HEADER_MODES.includes(d.homeHeaderMode) && typeof d.enableSaveAndNext === 'boolean'
-        && (d.monthlyBudget === undefined || validBudget(d.monthlyBudget));
+        && (d.monthlyBudget === undefined || validBudget(d.monthlyBudget))
+        && (d.hideNotes === undefined || d.hideNotes === true);
     }
     return false;
   }
@@ -3199,6 +3217,7 @@ function validateBackup(input) {
         ? src.preferences.homeHeaderMode
         : 'expense_only',
       enableSaveAndNext: src.preferences?.enableSaveAndNext === true,
+      hideNotes: src.preferences?.hideNotes === true,
       monthlyBudget: LedgerSyncCore.validBudget(src.preferences?.monthlyBudget) ? src.preferences.monthlyBudget : 0,
     },
     entityTimes: sanitizeEntityTimes(src.entityTimes),
@@ -4132,6 +4151,12 @@ function setTheme(t) {
   } catch {}
   renderSettings();
 }
+// 設定頁的開關：id 是按鈕，id + 'Dot' 是裡面的圓點。
+function renderSwitch(id, checked) {
+  $(id).setAttribute('aria-checked', String(checked));
+  $(id).classList.toggle('bg-accent', checked);
+  $(id + 'Dot').style.left = checked ? '22px' : '4px';
+}
 function renderSettings() {
   $('settingsHome').classList.toggle('hidden', Boolean(state.settingsPage));
   document
@@ -4144,9 +4169,8 @@ function renderSettings() {
     b.querySelector('.mode-check').textContent = yes ? '✓' : '';
     b.setAttribute('aria-pressed', String(yes));
   });
-  $('toggleSaveAndNext').setAttribute('aria-checked', String(state.preferences.enableSaveAndNext));
-  $('toggleSaveAndNext').classList.toggle('bg-accent', state.preferences.enableSaveAndNext);
-  $('toggleSaveAndNextDot').style.left = state.preferences.enableSaveAndNext ? '22px' : '4px';
+  renderSwitch('toggleSaveAndNext', state.preferences.enableSaveAndNext);
+  renderSwitch('toggleHideNotes', state.preferences.hideNotes);
   document
     .querySelectorAll('[data-theme-option]')
     .forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeOption === currentTheme())));
@@ -4914,6 +4938,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('[data-theme-option]').forEach(b => (b.onclick = () => setTheme(b.dataset.themeOption)));
   on('toggleSaveAndNext', 'click', () => {
     if (commit(s => (s.preferences.enableSaveAndNext = !s.preferences.enableSaveAndNext))) renderSettings();
+  });
+  on('toggleHideNotes', 'click', () => {
+    if (commit(s => (s.preferences.hideNotes = !s.preferences.hideNotes))) renderSettings();
   });
   on('btnManageAddMerchant', 'click', () => {
     const name = $('inputManageNewMerchant').value.trim();
@@ -6807,7 +6834,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = '0a7b0a895fbd';
+  const APP_VERSION = '9e8094b85927';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -7028,7 +7055,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '0a7b0a895fbd';
+  const APP_VERSION = '9e8094b85927';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

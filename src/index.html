@@ -472,7 +472,20 @@
         </div>
       </section>
 
-      <!-- 2. 記帳偏好 -->
+      <!-- 2. 首頁清單 -->
+      <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4">
+        <div class="flex items-center justify-between">
+          <div class="pr-3">
+            <h3 class="text-sm font-semibold text-textMain">首頁清單隱藏備註</h3>
+            <p class="text-xs text-textMuted mt-0.5">每筆紀錄只占一行。點開紀錄、搜尋時照常顯示備註</p>
+          </div>
+          <button id="toggleHideNotes" role="switch" aria-label="首頁清單隱藏備註" type="button" class="w-11 h-6 rounded-full transition relative bg-bgElevated border border-borderSubtle shrink-0">
+            <span id="toggleHideNotesDot" class="w-4 h-4 rounded-full bg-textMuted absolute top-0.5 left-1 transition-all"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 3. 記帳偏好 -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div>
           <h3 class="text-sm font-semibold text-textMain">記帳偏好</h3>
@@ -491,7 +504,7 @@
         </div>
       </section>
 
-      <!-- 3. 主題顏色（只存在這台裝置，見 60-app.js 的 setTheme） -->
+      <!-- 4. 主題顏色（只存在這台裝置，見 60-app.js 的 setTheme） -->
       <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-3">
         <div>
           <h3 class="text-sm font-semibold text-textMain">主題顏色</h3>
