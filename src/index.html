@@ -344,6 +344,10 @@
           <span id="dailyCategoriesText">全部分類</span>
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
         </button>
+        <div id="dailySpreadControls" class="hidden">
+          <label class="daily-spread-toggle"><input id="toggleDailySpread" type="checkbox" role="switch">將排除分類平攤到每天</label>
+          <p id="dailySpreadSummary" class="hidden text-xs text-textMuted"></p>
+        </div>
         <div class="trend-wrap">
           <div id="statsDailyChart" class="trend-chart daily-chart"></div>
           <div id="statsDailyTip" class="trend-tip hidden"></div>
@@ -742,6 +746,7 @@
         <div>
           <h3 id="drilldownTitle" class="text-sm font-bold text-textMain">分類明細</h3>
           <p id="drilldownSubtitle" class="text-xs text-textMuted mt-0.5">共 0 筆・合計 NT$ 0</p>
+          <p id="drilldownDailyAmount" class="hidden text-xs text-textMain mt-0.5"></p>
           <p id="drilldownVisits" class="hidden text-xs text-textMuted mt-0.5"></p>
         </div>
         <button id="btnCloseDrilldown" aria-label="關閉明細" type="button" class="p-1.5 rounded-xl text-textMuted hover:text-textMain hover:bg-bgElevated">
@@ -764,7 +769,7 @@
       <div class="cat-sheet-head">
         <div class="min-w-0">
           <h3 id="dayOrderTitle" class="text-sm font-bold text-textMain">調整順序</h3>
-          <p class="text-xs text-textMuted mt-0.5">按住左邊的把手上下拖曳，放開就存好</p>
+          <p class="text-xs text-textMuted mt-0.5">拖曳左側把手排序，點右側垃圾桶刪除</p>
         </div>
         <button id="btnDayOrderDone" type="button" class="shrink-0 px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">完成</button>
       </div>
@@ -827,7 +832,7 @@
   <!-- 刪除復原 (Undo) 浮動提示條 & 一般 Toast -->
   <div id="toastBox" role="status" aria-live="polite" class="fixed top-14 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2 rounded-xl bg-bgElevated border border-accent/50 text-xs font-medium text-textMain shadow-xl"></div>
   <div id="undoBar" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 hidden w-[90%] max-w-sm px-4 py-2.5 rounded-2xl bg-[#262934] border border-accent/60 text-xs text-textMain shadow-2xl flex items-center justify-between gap-3">
-    <span id="undoBarText" class="truncate">已刪除 1 筆紀錄</span>
+    <span id="undoBarText" role="status" class="truncate">已刪除 1 筆紀錄</span>
     <button id="btnUndoDelete" type="button" class="px-3 py-1 rounded-lg bg-accent text-[#14161B] font-bold shrink-0 hover:bg-accentHover transition">
       復原 (Undo)
     </button>

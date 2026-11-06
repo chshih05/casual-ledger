@@ -1088,7 +1088,7 @@
     eq(a.ev(`dayRecords('${day}').map(r => [r.id, r.seq])`), [['rec_phone', 0], ['rec_rent', 1], ['rec_gas', 120]], '重複的編號往上加成不重複');
   });
 
-  test('調整順序｜面板按返回關掉；搜尋或篩選時不出現按鈕；其他裝置刪到剩一筆時自動關掉', async () => {
+  test('調整順序｜面板按返回關掉；搜尋或篩選時不出現按鈕；其他裝置刪空當天時自動關掉', async () => {
     const { a, day } = await orderApp();
     a.click(homeDay(a, day).querySelector('.day-order-btn'));
     await goBack(a, () => !a.visible('modalDayOrder'), '返回關掉調整順序的面板');
@@ -1100,7 +1100,38 @@
     a.click(homeDay(a, day).querySelector('.day-order-btn'));
     a.ev("commit(s => { s.records = s.records.filter(r => r.id === 'rec_lunch' || r.date !== today()); })");
     a.ev('renderAll()');
-    assert(!a.visible('modalDayOrder'), '剩一筆就沒有順序可以調');
+    assert(a.visible('modalDayOrder'), '剩一筆還可以刪除');
+    a.ev("commit(s => { s.records = s.records.filter(r => r.date !== today()); }); renderAll()");
+    assert(!a.visible('modalDayOrder'), '當天沒有紀錄才關閉');
+  });
+
+  test('調整順序｜可連續快速刪到最後一筆，一次復原到原位；編輯頁也能刪除與復原', async () => {
+    const { a, day, other } = await orderApp();
+    a.ev("commit(s => { s.records = s.records.map(r => ({ ...r, seq: 0 })); }); renderAll()");
+    const before = homeOrder(a, day);
+    const records = a.ev('JSON.stringify(state.records)');
+    a.click(homeDay(a, day).querySelector('.day-order-btn'));
+    const remove = id => a.click(a.$('dayOrderList').querySelector(`[data-id="${id}"] .day-order-delete`));
+    remove(before[1]);
+    assert(a.visible('btnUndoDelete') && a.$('modalDayOrder').contains(a.$('btnUndoDelete')));
+    eq(sheetOrder(a), [before[0], before[2]]);
+    remove(before[0]);
+    eq(a.text('undoBarText'), '已刪除 2 筆紀錄');
+    eq(sheetOrder(a), [before[2]]);
+    a.click('btnUndoDelete');
+    eq(sheetOrder(a), before, '同 seq 也恢復原來的順序');
+    for (const id of before) remove(id);
+    assert(!a.visible('modalDayOrder') && a.visible('btnUndoDelete'));
+    eq(a.text('undoBarText'), '已刪除 3 筆紀錄');
+    eq((await a.stored()).records.map(r => r.id), ['rec_only']);
+    a.click('btnUndoDelete');
+    eq(a.ev('JSON.stringify(state.records)'), records);
+    eq(homeOrder(a, other), ['rec_only']);
+    a.click(homeDay(a, day).querySelector('.record-item-btn'));
+    a.click('btnDeleteRecordInModal');
+    eq(homeOrder(a, day), before.slice(1));
+    a.click('btnUndoDelete');
+    eq(homeOrder(a, day), before);
   });
 
   // ---------- 預算 ----------
@@ -1348,6 +1379,55 @@
     const b = await personalApp();
     await importBackup(b, env, { replace: true });
     eq(b.ev('getCategoryById("cat_dinner").skipDaily'), true, '還原備份後設定還在');
+  });
+
+  test('統計｜每日支出平攤整月淨額，餘數均勻分配，可看明細、關閉與還原設定', async () => {
+    const a = await personalApp();
+    a.w.today = () => '2026-11-07';
+    const rec = (id, date, categoryId, amount) => ({ id, date, categoryId, amount, type: 'expense', seq: 1, merchant: '', note: '' });
+    await importBackup(a, { records: [
+      rec('bill', '2026-11-01', 'cat_bills', 1100), rec('refund', '2026-11-05', 'cat_bills', -100),
+      rec('meal', '2026-11-07', 'cat_lunch', 120), rec('leap', '2024-02-15', 'cat_bills', -58),
+    ], categories: defaultCategories(a), merchants: [] });
+    a.ev("state.currentMonth = '2026-11'");
+    a.click('navBtnStats');
+    assert(!a.visible('dailySpreadControls'));
+    a.click('btnDailyCategories');
+    a.$('dialogChecklist').querySelector('[value="cat_bills"]').checked = false;
+    a.click('dialogBtnConfirm');
+    await waitFor(() => a.visible('dailySpreadControls'));
+    assert(!a.$('toggleDailySpread').checked);
+    const columns = () => [...a.$('statsDailyChart').children];
+    const values = () => columns().map(c => Number(c.dataset.value));
+    a.click('toggleDailySpread');
+    const shares = values().map((v, i) => v - (i === 6 ? 120 : 0));
+    eq(shares, Array.from({ length: 30 }, (_, i) => [33, 34, 33][i % 3]));
+    eq(values().reduce((a, b) => a + b), 1120);
+    eq(a.text('statsTotalValue'), 'NT$ 1,120');
+    assert(a.text('dailySpreadSummary').includes('本月分攤 NT$ 1,000，每天約 NT$ 33'));
+    assert(columns()[7].hasAttribute('data-future-share') && !columns()[6].hasAttribute('data-future-share'));
+    a.click(columns()[6]);
+    assert(a.text('drilldownDailyAmount').includes('圖表 NT$ 153（當日支出 NT$ 120・分攤 NT$ 33）'));
+    a.click('btnCloseDrilldown');
+    a.click(columns()[0]);
+    assert(a.text('drilldownList').includes('已平攤到整月'));
+    a.click('btnCloseDrilldown');
+    a.click(columns()[7]);
+    assert(a.text('drilldownList').includes('沒有紀錄') && a.text('drilldownDailyAmount').includes('分攤 NT$ 34'));
+    a.click('btnCloseDrilldown');
+    a.ev("state.currentMonth = '2024-02'; renderAll()");
+    eq(values(), Array(29).fill(-2), '閏年淨退款也依全月天數分攤');
+    const backup = a.ev('backupEnvelope()');
+    eq(backup.data.records.length, 4, '分攤只改圖表');
+    const b = await personalApp();
+    await importBackup(b, backup, { replace: true });
+    b.ev("state.currentMonth = '2026-11'");
+    b.click('navBtnStats');
+    assert(b.$('toggleDailySpread').checked, '還原後記住選擇');
+    b.click('toggleDailySpread');
+    eq([...b.$('statsDailyChart').children].map(c => Number(c.dataset.value)), Array.from({ length: 30 }, (_, i) => i === 6 ? 120 : 0));
+    assert(!b.visible('dailySpreadSummary'));
+    eq((await b.stored()).preferences.spreadDaily, false);
   });
 
   test('統計｜近 12 個月可以只看一個分類，換成收入時回到全部分類', async () => {
@@ -1754,7 +1834,7 @@
     eq(a.ev('LedgerStore.mode()'), 'idb');
     eq(a.ev('state.records.map(r => r.id)'), ['rec_old_1']);
     eq(a.ev('getCategoryById("cat_lunch")'), { id: 'cat_lunch', type: 'expense', name: '中餐', icon: 'lunch', order: 2, budget: 2000 });
-    eq(a.ev('state.preferences'), { homeHeaderMode: 'full_net', enableSaveAndNext: true, hideNotes: false, monthlyBudget: 15000 });
+    eq(a.ev('state.preferences'), { homeHeaderMode: 'full_net', enableSaveAndNext: true, hideNotes: false, spreadDaily: false, monthlyBudget: 15000 });
     eq(a.ev('state.recurring.map(r => r.id)'), ['rule_old']);
     const sorted = o => Object.fromEntries(Object.entries(o).sort());
     eq(sorted(a.ev('state.entityTimes')), sorted(old.entityTimes), '修改時間（含已刪除項目）都保留，同步判斷新舊才正確');

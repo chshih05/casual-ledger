@@ -38,6 +38,11 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .daily-categories { display:flex; align-items:center; gap:6px; width:fit-content; max-width:100%; text-align:left; }
 .daily-categories span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .daily-categories svg { width:14px; height:14px; flex-shrink:0; color:#9CA3AF; }
+.daily-spread-toggle { display:flex; align-items:center; gap:8px; min-height:40px; cursor:pointer; font-size:13px; }
+.daily-spread-toggle input { appearance:none; position:relative; width:40px; height:24px; flex-shrink:0; border:1px solid #626978; border-radius:14px; background:#262934; cursor:pointer; }
+.daily-spread-toggle input::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#c2c7ce; }
+.daily-spread-toggle input:checked { background:var(--accent); border-color:var(--accent); }
+.daily-spread-toggle input:checked::after { left:19px; background:#191b22; }
 .search-summary { padding:0 2px; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
 /* 退款（負數的支出）的標籤：首頁紀錄與明細 */
 .refund-badge { flex-shrink:0; font-size:11px; font-weight:500; padding:2px 6px; border-radius:4px; background:#34D3991F; color:#34D399; }
@@ -153,6 +158,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 /* 每日支出：一天一欄，長條和日期都比近 12 個月的窄 */
 .daily-chart .trend-plot { height:80px; }
 .daily-chart .trend-bar { width:72%; border-radius:2px 2px 0 0; }
+.daily-chart .trend-col[data-future-share] .trend-bar { background:repeating-linear-gradient(135deg,#8894a4 0 2px,#414957 2px 4px); }
+.daily-chart + .trend-tip { max-width:100%; white-space:normal; }
 .daily-chart .trend-label { overflow:visible; white-space:nowrap; }
 .trend-tip { position:absolute; z-index:5; transform:translate(-50%,-100%); display:grid; gap:1px; padding:6px 10px; border-radius:10px; background:#262934; border:1px solid #3D4251; box-shadow:0 8px 20px rgba(0,0,0,.4); font-size:12px; color:#9CA3AF; white-space:nowrap; pointer-events:none; }
 .trend-tip strong { font-size:14px; color:#F3F4F6; font-variant-numeric:tabular-nums; }
@@ -262,7 +269,11 @@ select.rule-input { color-scheme:dark; }
 .category-row.dragging, .day-order-row.dragging { position:relative; z-index:5; border-color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.45); cursor:grabbing; }
 /* 調整同一天紀錄的順序：每筆一行，左邊是拖曳的把手，金額顏色和首頁一樣 */
 .day-order-list { gap:8px; }
-.day-order-row { display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
+.day-order-row { display:flex; align-items:center; gap:6px; min-height:52px; padding:4px 6px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
+.day-order-delete { width:44px; min-height:44px; flex-shrink:0; display:grid; place-items:center; border-radius:8px; color:#f87171; }
+.day-order-delete:hover, .day-order-delete:focus-visible { background:#39272c; }
+.day-order-row .drag-handle:disabled { opacity:.35; cursor:default; }
+.cat-sheet > #undoBar { position:static; transform:none; width:auto; max-width:none; flex-shrink:0; margin:0 12px max(12px,env(safe-area-inset-bottom)); }
 .day-order-row .drag-handle { align-self:stretch; min-height:40px; }
 .day-order-icon { display:flex; align-items:center; justify-content:center; width:32px; height:32px; flex-shrink:0; border-radius:10px; background:#262934; color:var(--accent); }
 .day-order-text { flex:1; min-width:0; }

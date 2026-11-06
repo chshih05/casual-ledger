@@ -24,8 +24,9 @@ let state,
   searchMinAmount = 0;
 let merchantMgrQuery = '',
   merchantMgrShowAll = false;
-let keypadOpen = true,
-  lastDeletedRecord = null;
+let keypadOpen = true;
+const pendingRecordDeletes = [];
+let undoDeleteTimer;
 window.__selectedIconKey = 'dinner';
 
 function today(now = new Date()) {
@@ -241,6 +242,7 @@ function validateBackup(input) {
         : 'expense_only',
       enableSaveAndNext: src.preferences?.enableSaveAndNext === true,
       hideNotes: src.preferences?.hideNotes === true,
+      spreadDaily: src.preferences?.spreadDaily === true,
       monthlyBudget: LedgerSyncCore.validBudget(src.preferences?.monthlyBudget) ? src.preferences.monthlyBudget : 0,
     },
     entityTimes: sanitizeEntityTimes(src.entityTimes),
@@ -1121,6 +1123,7 @@ function openDayOrder(date) {
   renderDayOrder();
   if (!dayOrderDate) return;
   $('modalDayOrder').classList.remove('hidden');
+  $('dayOrderList').after($('undoBar'));
   $('dayOrderList').scrollTop = 0;
   $('btnDayOrderDone').focus({ preventScroll: true });
 }
@@ -1128,6 +1131,7 @@ function closeDayOrder() {
   if (!dayOrderDate) return;
   const date = dayOrderDate;
   dayOrderDate = null;
+  document.body.appendChild($('undoBar'));
   $('modalDayOrder').classList.add('hidden');
   $('homeRecordList').querySelector(`[data-day-order="${date}"]`)?.focus({ preventScroll: true });
 }
@@ -1135,11 +1139,11 @@ function closeDayOrder() {
 function renderDayOrder() {
   if (!dayOrderDate || dayOrderSort?.busy()) return;
   const records = dayRecords(dayOrderDate);
-  // 在其他裝置刪到剩一筆（或改到別天）就沒有順序可以調了。
-  if (records.length < 2) return closeDayOrder();
+  if (!records.length) return closeDayOrder();
   const [y, m, d] = dayOrderDate.split('-').map(Number);
   $('dayOrderTitle').textContent = `調整順序・${m} 月 ${d} 日（週${WEEKDAY_NAMES[new Date(y, m - 1, d).getDay()]}）`;
   const list = $('dayOrderList');
+  const scrollTop = list.scrollTop;
   list.innerHTML = '';
   for (const rec of records) {
     const cat = getCategoryById(rec.categoryId),
@@ -1156,9 +1160,19 @@ function renderDayOrder() {
         <span class="day-order-title"><span>${escapeHtml(title)}</span>${merchant ? `<span class="day-order-cat">${escapeHtml(cat.name)}</span>` : ''}</span>
         ${rec.note ? `<span class="day-order-note">${escapeHtml(rec.note)}</span>` : ''}
       </span>
-      <span class="day-order-amount${plus ? ' is-plus' : ''}">${amount}</span>`;
+      <span class="day-order-amount${plus ? ' is-plus' : ''}">${amount}</span>
+      <button type="button" class="day-order-delete" aria-label="刪除${escapeHtml(title)} ${amount}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M6 6l1 14h10l1-14M10 10v6m4-6v6"/></svg>
+      </button>`;
+    row.querySelector('.drag-handle').disabled = records.length === 1;
+    row.querySelector('.day-order-delete').addEventListener('click', () => {
+      if (dayOrderSort.busy() || !deleteRecordById(rec.id)) return;
+      renderAll();
+      $(dayOrderDate ? 'btnDayOrderDone' : 'btnUndoDelete').focus({ preventScroll: true });
+    });
     list.appendChild(row);
   }
+  list.scrollTop = scrollTop;
 }
 // 主題顏色只存在這台裝置（不同步、不在備份裡）；<head> 開頭的小程式會在畫面出現前先套用。
 const THEMES = ['blue', 'sky', 'mono', 'purple'];
@@ -1590,8 +1604,7 @@ async function replaceLedger(mutator, { reason = 'import', done = '匯入完成�
       return false;
     }
     modalState = null;
-    lastDeletedRecord = null;
-    $('undoBar').classList.add('hidden');
+    clearDeleteUndo();
     clearHomeSearch();
     renderAll();
     showToast(done);
@@ -1720,27 +1733,43 @@ function prepareImportText(text, { title = '確認匯入備份' } = {}) {
     },
   });
 }
-function removeRecord() {
-  const rec = state.records.find(r => r.id === modalState?.editingRecordId);
-  if (!rec) return;
-  if (
-    !commit(s => {
-      s.records = s.records.filter(r => r.id !== rec.id);
-    })
-  )
-    return;
-  lastDeletedRecord = rec;
-  modalState = null;
-  state.activeView = state.previousView || 'home';
-  renderAll();
-  $('undoBarText').textContent =
-    `已刪除 ${rec.merchant || getCategoryById(rec.categoryId).name} ${rec.amount < 0 ? '退款 ' : ''}$${formatMoney(Math.abs(rec.amount))}`;
+function clearDeleteUndo() {
+  clearTimeout(undoDeleteTimer);
+  pendingRecordDeletes.length = 0;
+  $('undoBar').classList.add('hidden');
+}
+function deleteRecordById(id) {
+  const index = state.records.findIndex(r => r.id === id);
+  if (index < 0) return false;
+  const rec = state.records[index];
+  if (!commit(s => s.records.splice(index, 1))) return false;
+  pendingRecordDeletes.push({ rec, index });
+  $('undoBarText').textContent = pendingRecordDeletes.length > 1
+    ? `已刪除 ${pendingRecordDeletes.length} 筆紀錄`
+    : `已刪除 ${rec.merchant || getCategoryById(rec.categoryId).name} ${rec.amount < 0 ? '退款 ' : ''}$${formatMoney(Math.abs(rec.amount))}`;
   $('undoBar').classList.remove('hidden');
-  clearTimeout(window.__undoTimer);
-  window.__undoTimer = setTimeout(() => {
-    $('undoBar').classList.add('hidden');
-    lastDeletedRecord = null;
-  }, 10000);
+  clearTimeout(undoDeleteTimer);
+  undoDeleteTimer = setTimeout(clearDeleteUndo, 10000);
+  return true;
+}
+function undoRecordDeletes() {
+  if (!pendingRecordDeletes.length) return;
+  const existing = new Set(state.records.map(r => r.id));
+  // 依刪除的反序插回，保留同一日、同一 seq（例如固定收支）的相對順序。
+  const restore = [];
+  for (const item of pendingRecordDeletes.slice().reverse()) {
+    if (existing.has(item.rec.id)) continue;
+    restore.push(item);
+    existing.add(item.rec.id);
+  }
+  if (restore.some(({ rec }) => !state.categories.some(c => c.id === rec.categoryId && c.type === rec.type)))
+    return showToast('原分類已刪除，無法復原這批紀錄');
+  if (!commit(s => {
+    for (const { rec, index } of restore) s.records.splice(index, 0, rec);
+  })) return;
+  clearDeleteUndo();
+  renderAll();
+  showToast('已復原紀錄');
 }
 function handleKeypadInput(key) {
   let s = modalState.amountExpr;
@@ -1919,21 +1948,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   on('btnSaveRecord', 'click', () => handleSaveRecord(false));
   on('btnSaveAndNextRecord', 'click', () => handleSaveRecord(true));
-  on('btnDeleteRecordInModal', 'click', removeRecord);
-  on('btnUndoDelete', 'click', () => {
-    if (!lastDeletedRecord) return;
-    const r = lastDeletedRecord;
-    if (
-      !commit(s => {
-        if (!s.records.some(x => x.id === r.id)) s.records.push(r);
-      })
-    )
-      return;
-    lastDeletedRecord = null;
-    $('undoBar').classList.add('hidden');
+  on('btnDeleteRecordInModal', 'click', () => {
+    if (!deleteRecordById(modalState?.editingRecordId)) return;
+    modalState = null;
+    state.activeView = state.previousView || 'home';
     renderAll();
-    showToast('已復原紀錄');
   });
+  on('btnUndoDelete', 'click', undoRecordDeletes);
   ['expense', 'income'].forEach(t => {
     on(t === 'expense' ? 'statsTabExpense' : 'statsTabIncome', 'click', () => {
       state.statsType = t;

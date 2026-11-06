@@ -14,6 +14,7 @@
           homeHeaderMode: 'expense_only',
           enableSaveAndNext: false,
           hideNotes: false, // 首頁清單不顯示備註（搜尋時照常顯示）
+          spreadDaily: false, // 每日支出圖將排除分類的淨額平攤到整月
           monthlyBudget: 0 // 每月總預算（0 = 未設定）；分類預算存在各支出分類的 budget
         },
         categories: [
@@ -505,6 +506,14 @@
       parts.push(`共 ${records.length} 筆${refunds ? `（含 ${refunds} 筆退款）` : ''}`, `合計 ${moneyText(sum)}`);
       if (all && buys.length) parts.push(`平均每筆 NT$ ${formatMoney(buys.reduce((s, r) => s + r.amount, 0) / buys.length)}`);
       document.getElementById('drilldownSubtitle').textContent = parts.join('・');
+      const dailyAmount = document.getElementById('drilldownDailyAmount');
+      let spreadDay;
+      if (d.filterType === 'date' && state.preferences.spreadDaily) {
+        const month = dailyExpenseMonth(d.filterValue.slice(0, 7), dailySkipped());
+        if (month.spread) spreadDay = month.days[Number(d.filterValue.slice(8)) - 1];
+      }
+      dailyAmount.classList.toggle('hidden', !spreadDay);
+      dailyAmount.textContent = spreadDay ? `圖表 ${moneyText(spreadDay.total)}（${dailyBreakdown(spreadDay)}）` : '';
       const visits = document.getElementById('drilldownVisits');
       visits.textContent = all && records.length ? `最近一次 ${shortDate(records[0].date)}・第一次 ${shortDate(records[records.length - 1].date)}` : '';
       visits.classList.toggle('hidden', !visits.textContent);
@@ -569,7 +578,7 @@
               ${rec.amount < 0 ? '<span class="refund-badge">退款</span>' : ''}
             </div>
             ${rec.note ? `<div class="text-xs text-textMuted mt-1">${escapeHtml(rec.note)}</div>` : ''}
-            ${d.filterType === 'date' && cat.skipDaily ? '<div class="text-[11px] text-textMuted mt-1">不算進每日支出</div>' : ''}
+            ${d.filterType === 'date' && cat.skipDaily ? `<div class="text-[11px] text-textMuted mt-1">${spreadDay ? '已平攤到整月' : '不算進每日支出'}</div>` : ''}
           </div>
           <div class="text-sm font-bold num-tabular ${rec.amount < 0 ? 'text-incomeGreen' : 'text-textMain'}">${moneyText(rec.amount)}</div>
         `;

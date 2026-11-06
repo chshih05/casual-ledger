@@ -273,6 +273,21 @@
     eq(a.pending().length + b.pending().length, 0);
   });
 
+  test('核心｜每日支出平攤偏好能在兩台裝置開關；關閉時沿用舊格式', async () => {
+    const cloud = createFakeCloud();
+    const a = device(cloud, 'A'), b = device(cloud, 'B');
+    await a.sync(); await b.sync();
+    a.clock = 2000;
+    a.commit(s => { s.preferences.spreadDaily = true; });
+    await a.sync(); await b.sync();
+    eq(b.state.preferences.spreadDaily, true);
+    b.clock = 3000;
+    b.commit(s => { s.preferences.spreadDaily = false; });
+    await b.sync(); await a.sync();
+    eq(a.state.preferences.spreadDaily, false);
+    assert(!('spreadDaily' in cloud.docs.get('pref:main').d));
+  });
+
   test('核心｜離線時保留待同步資料，恢復連線後補傳', async () => {
     const cloud = createFakeCloud();
     const a = device(cloud, 'A'), b = device(cloud, 'B');

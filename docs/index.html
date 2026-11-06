@@ -70,6 +70,11 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .daily-categories { display:flex; align-items:center; gap:6px; width:fit-content; max-width:100%; text-align:left; }
 .daily-categories span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .daily-categories svg { width:14px; height:14px; flex-shrink:0; color:#9CA3AF; }
+.daily-spread-toggle { display:flex; align-items:center; gap:8px; min-height:40px; cursor:pointer; font-size:13px; }
+.daily-spread-toggle input { appearance:none; position:relative; width:40px; height:24px; flex-shrink:0; border:1px solid #626978; border-radius:14px; background:#262934; cursor:pointer; }
+.daily-spread-toggle input::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#c2c7ce; }
+.daily-spread-toggle input:checked { background:var(--accent); border-color:var(--accent); }
+.daily-spread-toggle input:checked::after { left:19px; background:#191b22; }
 .search-summary { padding:0 2px; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
 /* 退款（負數的支出）的標籤：首頁紀錄與明細 */
 .refund-badge { flex-shrink:0; font-size:11px; font-weight:500; padding:2px 6px; border-radius:4px; background:#34D3991F; color:#34D399; }
@@ -185,6 +190,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 /* 每日支出：一天一欄，長條和日期都比近 12 個月的窄 */
 .daily-chart .trend-plot { height:80px; }
 .daily-chart .trend-bar { width:72%; border-radius:2px 2px 0 0; }
+.daily-chart .trend-col[data-future-share] .trend-bar { background:repeating-linear-gradient(135deg,#8894a4 0 2px,#414957 2px 4px); }
+.daily-chart + .trend-tip { max-width:100%; white-space:normal; }
 .daily-chart .trend-label { overflow:visible; white-space:nowrap; }
 .trend-tip { position:absolute; z-index:5; transform:translate(-50%,-100%); display:grid; gap:1px; padding:6px 10px; border-radius:10px; background:#262934; border:1px solid #3D4251; box-shadow:0 8px 20px rgba(0,0,0,.4); font-size:12px; color:#9CA3AF; white-space:nowrap; pointer-events:none; }
 .trend-tip strong { font-size:14px; color:#F3F4F6; font-variant-numeric:tabular-nums; }
@@ -294,7 +301,11 @@ select.rule-input { color-scheme:dark; }
 .category-row.dragging, .day-order-row.dragging { position:relative; z-index:5; border-color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.45); cursor:grabbing; }
 /* 調整同一天紀錄的順序：每筆一行，左邊是拖曳的把手，金額顏色和首頁一樣 */
 .day-order-list { gap:8px; }
-.day-order-row { display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 12px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
+.day-order-row { display:flex; align-items:center; gap:6px; min-height:52px; padding:4px 6px; border-radius:12px; background:#191B22; border:1px solid #2E323E; }
+.day-order-delete { width:44px; min-height:44px; flex-shrink:0; display:grid; place-items:center; border-radius:8px; color:#f87171; }
+.day-order-delete:hover, .day-order-delete:focus-visible { background:#39272c; }
+.day-order-row .drag-handle:disabled { opacity:.35; cursor:default; }
+.cat-sheet > #undoBar { position:static; transform:none; width:auto; max-width:none; flex-shrink:0; margin:0 12px max(12px,env(safe-area-inset-bottom)); }
 .day-order-row .drag-handle { align-self:stretch; min-height:40px; }
 .day-order-icon { display:flex; align-items:center; justify-content:center; width:32px; height:32px; flex-shrink:0; border-radius:10px; background:#262934; color:var(--accent); }
 .day-order-text { flex:1; min-width:0; }
@@ -652,6 +663,10 @@ select.rule-input { color-scheme:dark; }
           <span id="dailyCategoriesText">全部分類</span>
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
         </button>
+        <div id="dailySpreadControls" class="hidden">
+          <label class="daily-spread-toggle"><input id="toggleDailySpread" type="checkbox" role="switch">將排除分類平攤到每天</label>
+          <p id="dailySpreadSummary" class="hidden text-xs text-textMuted"></p>
+        </div>
         <div class="trend-wrap">
           <div id="statsDailyChart" class="trend-chart daily-chart"></div>
           <div id="statsDailyTip" class="trend-tip hidden"></div>
@@ -994,7 +1009,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">9e8094b85927</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">472bb9ff3a0b</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -1050,6 +1065,7 @@ select.rule-input { color-scheme:dark; }
         <div>
           <h3 id="drilldownTitle" class="text-sm font-bold text-textMain">分類明細</h3>
           <p id="drilldownSubtitle" class="text-xs text-textMuted mt-0.5">共 0 筆・合計 NT$ 0</p>
+          <p id="drilldownDailyAmount" class="hidden text-xs text-textMain mt-0.5"></p>
           <p id="drilldownVisits" class="hidden text-xs text-textMuted mt-0.5"></p>
         </div>
         <button id="btnCloseDrilldown" aria-label="關閉明細" type="button" class="p-1.5 rounded-xl text-textMuted hover:text-textMain hover:bg-bgElevated">
@@ -1072,7 +1088,7 @@ select.rule-input { color-scheme:dark; }
       <div class="cat-sheet-head">
         <div class="min-w-0">
           <h3 id="dayOrderTitle" class="text-sm font-bold text-textMain">調整順序</h3>
-          <p class="text-xs text-textMuted mt-0.5">按住左邊的把手上下拖曳，放開就存好</p>
+          <p class="text-xs text-textMuted mt-0.5">拖曳左側把手排序，點右側垃圾桶刪除</p>
         </div>
         <button id="btnDayOrderDone" type="button" class="shrink-0 px-4 py-2 rounded-xl bg-accent text-[#14161B] text-xs font-bold hover:bg-accentHover">完成</button>
       </div>
@@ -1135,7 +1151,7 @@ select.rule-input { color-scheme:dark; }
   <!-- 刪除復原 (Undo) 浮動提示條 & 一般 Toast -->
   <div id="toastBox" role="status" aria-live="polite" class="fixed top-14 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2 rounded-xl bg-bgElevated border border-accent/50 text-xs font-medium text-textMain shadow-xl"></div>
   <div id="undoBar" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 hidden w-[90%] max-w-sm px-4 py-2.5 rounded-2xl bg-[#262934] border border-accent/60 text-xs text-textMain shadow-2xl flex items-center justify-between gap-3">
-    <span id="undoBarText" class="truncate">已刪除 1 筆紀錄</span>
+    <span id="undoBarText" role="status" class="truncate">已刪除 1 筆紀錄</span>
     <button id="btnUndoDelete" type="button" class="px-3 py-1 rounded-lg bg-accent text-[#14161B] font-bold shrink-0 hover:bg-accentHover transition">
       復原 (Undo)
     </button>
@@ -1257,6 +1273,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
           homeHeaderMode: 'expense_only',
           enableSaveAndNext: false,
           hideNotes: false, // 首頁清單不顯示備註（搜尋時照常顯示）
+          spreadDaily: false, // 每日支出圖將排除分類的淨額平攤到整月
           monthlyBudget: 0 // 每月總預算（0 = 未設定）；分類預算存在各支出分類的 budget
         },
         categories: [
@@ -1748,6 +1765,14 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
       parts.push(`共 ${records.length} 筆${refunds ? `（含 ${refunds} 筆退款）` : ''}`, `合計 ${moneyText(sum)}`);
       if (all && buys.length) parts.push(`平均每筆 NT$ ${formatMoney(buys.reduce((s, r) => s + r.amount, 0) / buys.length)}`);
       document.getElementById('drilldownSubtitle').textContent = parts.join('・');
+      const dailyAmount = document.getElementById('drilldownDailyAmount');
+      let spreadDay;
+      if (d.filterType === 'date' && state.preferences.spreadDaily) {
+        const month = dailyExpenseMonth(d.filterValue.slice(0, 7), dailySkipped());
+        if (month.spread) spreadDay = month.days[Number(d.filterValue.slice(8)) - 1];
+      }
+      dailyAmount.classList.toggle('hidden', !spreadDay);
+      dailyAmount.textContent = spreadDay ? `圖表 ${moneyText(spreadDay.total)}（${dailyBreakdown(spreadDay)}）` : '';
       const visits = document.getElementById('drilldownVisits');
       visits.textContent = all && records.length ? `最近一次 ${shortDate(records[0].date)}・第一次 ${shortDate(records[records.length - 1].date)}` : '';
       visits.classList.toggle('hidden', !visits.textContent);
@@ -1812,7 +1837,7 @@ ICON_CATALOG.forEach(item=>ICON_LABELS[item.key]=item.label);
               ${rec.amount < 0 ? '<span class="refund-badge">退款</span>' : ''}
             </div>
             ${rec.note ? `<div class="text-xs text-textMuted mt-1">${escapeHtml(rec.note)}</div>` : ''}
-            ${d.filterType === 'date' && cat.skipDaily ? '<div class="text-[11px] text-textMuted mt-1">不算進每日支出</div>' : ''}
+            ${d.filterType === 'date' && cat.skipDaily ? `<div class="text-[11px] text-textMuted mt-1">${spreadDay ? '已平攤到整月' : '不算進每日支出'}</div>` : ''}
           </div>
           <div class="text-sm font-bold num-tabular ${rec.amount < 0 ? 'text-incomeGreen' : 'text-textMain'}">${moneyText(rec.amount)}</div>
         `;
@@ -2032,7 +2057,7 @@ function mergeFromCategoryEditor() {
     message:[
       records||rules?`「${cat.name}」的${records?` ${records.toLocaleString('zh-TW')} 筆紀錄`:''}${records&&rules?'和':''}${rules?` ${rules} 項固定收支`:''}會搬到下面選的分類，然後刪除「${cat.name}」。`:`「${cat.name}」沒有紀錄，合併後直接刪除。`,
       cat.budget?`「${cat.name}」的每月預算 NT$ ${formatMoney(cat.budget)} 會一起刪除，選的分類預算不變。`:'',
-      cat.skipDaily?`「${cat.name}」原本不算進每日支出，合併後照選的分類的設定。`:'',
+      cat.skipDaily?`「${cat.name}」原本${state.preferences.spreadDaily?'平攤到整月':'不算進每日支出'}，合併後照選的分類的設定。`:'',
       '合併後沒辦法再分開；合併前的帳本會保留一份，可以在「資料與備份」還原。',
     ].filter(Boolean).join('\n'),
     // 一開始沒有選：直接按「合併」不會併到清單第一個分類。
@@ -2077,7 +2102,8 @@ const LedgerSyncCore = (() => {
   // 同步格式版本：2 起有預算欄位與固定收支規則；3 起支出可以是負數（退款、別人還錢）；
   // 4 起支出分類可以設定不算進每日支出長條圖（skipDaily）；5 起偏好設定可以讓首頁清單不顯示備註（hideNotes）。
   // 舊版程式會略過或去掉這些資料，所以換到新版後第一次同步要從頭讀一次雲端並重新比對（見 pullAll）。
-  const FORMAT = 5;
+  // 6 起每日支出圖可以平攤排除分類（spreadDaily）。
+  const FORMAT = 6;
   // 固定收支規則沿用偏好設定的類別（pref:rule_…），雲端安全規則不需要修改。
   const RULE_PREFIX = 'rule_';
 
@@ -2126,6 +2152,7 @@ const LedgerSyncCore = (() => {
       const out = { homeHeaderMode: HEADER_MODES.includes(p.homeHeaderMode) ? p.homeHeaderMode : 'expense_only', enableSaveAndNext: p.enableSaveAndNext === true };
       if (validBudget(p.monthlyBudget)) out.monthlyBudget = p.monthlyBudget;
       if (p.hideNotes === true) out.hideNotes = true;
+      if (p.spreadDaily === true) out.spreadDaily = true;
       return out;
     },
     // 固定收支規則：next 是下一次要記的日期；day 是每月幾號（31 號遇到小月記在月底）。
@@ -2262,7 +2289,7 @@ const LedgerSyncCore = (() => {
       s.recurring = s.recurring || [];
       upsertById(s.recurring, id, data && canon.rule(data));
     } else if (kind === 'pref' && data) {
-      s.preferences = Object.assign({}, s.preferences, { monthlyBudget: 0, hideNotes: false }, canon.pref(data));
+      s.preferences = Object.assign({}, s.preferences, { monthlyBudget: 0, hideNotes: false, spreadDaily: false }, canon.pref(data));
     }
   }
 
@@ -2353,7 +2380,8 @@ const LedgerSyncCore = (() => {
     if (kind === 'pref') {
       return id === 'main' && HEADER_MODES.includes(d.homeHeaderMode) && typeof d.enableSaveAndNext === 'boolean'
         && (d.monthlyBudget === undefined || validBudget(d.monthlyBudget))
-        && (d.hideNotes === undefined || d.hideNotes === true);
+        && (d.hideNotes === undefined || d.hideNotes === true)
+        && (d.spreadDaily === undefined || d.spreadDaily === true);
     }
     return false;
   }
@@ -3001,8 +3029,9 @@ let state,
   searchMinAmount = 0;
 let merchantMgrQuery = '',
   merchantMgrShowAll = false;
-let keypadOpen = true,
-  lastDeletedRecord = null;
+let keypadOpen = true;
+const pendingRecordDeletes = [];
+let undoDeleteTimer;
 window.__selectedIconKey = 'dinner';
 
 function today(now = new Date()) {
@@ -3218,6 +3247,7 @@ function validateBackup(input) {
         : 'expense_only',
       enableSaveAndNext: src.preferences?.enableSaveAndNext === true,
       hideNotes: src.preferences?.hideNotes === true,
+      spreadDaily: src.preferences?.spreadDaily === true,
       monthlyBudget: LedgerSyncCore.validBudget(src.preferences?.monthlyBudget) ? src.preferences.monthlyBudget : 0,
     },
     entityTimes: sanitizeEntityTimes(src.entityTimes),
@@ -4098,6 +4128,7 @@ function openDayOrder(date) {
   renderDayOrder();
   if (!dayOrderDate) return;
   $('modalDayOrder').classList.remove('hidden');
+  $('dayOrderList').after($('undoBar'));
   $('dayOrderList').scrollTop = 0;
   $('btnDayOrderDone').focus({ preventScroll: true });
 }
@@ -4105,6 +4136,7 @@ function closeDayOrder() {
   if (!dayOrderDate) return;
   const date = dayOrderDate;
   dayOrderDate = null;
+  document.body.appendChild($('undoBar'));
   $('modalDayOrder').classList.add('hidden');
   $('homeRecordList').querySelector(`[data-day-order="${date}"]`)?.focus({ preventScroll: true });
 }
@@ -4112,11 +4144,11 @@ function closeDayOrder() {
 function renderDayOrder() {
   if (!dayOrderDate || dayOrderSort?.busy()) return;
   const records = dayRecords(dayOrderDate);
-  // 在其他裝置刪到剩一筆（或改到別天）就沒有順序可以調了。
-  if (records.length < 2) return closeDayOrder();
+  if (!records.length) return closeDayOrder();
   const [y, m, d] = dayOrderDate.split('-').map(Number);
   $('dayOrderTitle').textContent = `調整順序・${m} 月 ${d} 日（週${WEEKDAY_NAMES[new Date(y, m - 1, d).getDay()]}）`;
   const list = $('dayOrderList');
+  const scrollTop = list.scrollTop;
   list.innerHTML = '';
   for (const rec of records) {
     const cat = getCategoryById(rec.categoryId),
@@ -4133,9 +4165,19 @@ function renderDayOrder() {
         <span class="day-order-title"><span>${escapeHtml(title)}</span>${merchant ? `<span class="day-order-cat">${escapeHtml(cat.name)}</span>` : ''}</span>
         ${rec.note ? `<span class="day-order-note">${escapeHtml(rec.note)}</span>` : ''}
       </span>
-      <span class="day-order-amount${plus ? ' is-plus' : ''}">${amount}</span>`;
+      <span class="day-order-amount${plus ? ' is-plus' : ''}">${amount}</span>
+      <button type="button" class="day-order-delete" aria-label="刪除${escapeHtml(title)} ${amount}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M6 6l1 14h10l1-14M10 10v6m4-6v6"/></svg>
+      </button>`;
+    row.querySelector('.drag-handle').disabled = records.length === 1;
+    row.querySelector('.day-order-delete').addEventListener('click', () => {
+      if (dayOrderSort.busy() || !deleteRecordById(rec.id)) return;
+      renderAll();
+      $(dayOrderDate ? 'btnDayOrderDone' : 'btnUndoDelete').focus({ preventScroll: true });
+    });
     list.appendChild(row);
   }
+  list.scrollTop = scrollTop;
 }
 // 主題顏色只存在這台裝置（不同步、不在備份裡）；<head> 開頭的小程式會在畫面出現前先套用。
 const THEMES = ['blue', 'sky', 'mono', 'purple'];
@@ -4567,8 +4609,7 @@ async function replaceLedger(mutator, { reason = 'import', done = '匯入完成�
       return false;
     }
     modalState = null;
-    lastDeletedRecord = null;
-    $('undoBar').classList.add('hidden');
+    clearDeleteUndo();
     clearHomeSearch();
     renderAll();
     showToast(done);
@@ -4697,27 +4738,43 @@ function prepareImportText(text, { title = '確認匯入備份' } = {}) {
     },
   });
 }
-function removeRecord() {
-  const rec = state.records.find(r => r.id === modalState?.editingRecordId);
-  if (!rec) return;
-  if (
-    !commit(s => {
-      s.records = s.records.filter(r => r.id !== rec.id);
-    })
-  )
-    return;
-  lastDeletedRecord = rec;
-  modalState = null;
-  state.activeView = state.previousView || 'home';
-  renderAll();
-  $('undoBarText').textContent =
-    `已刪除 ${rec.merchant || getCategoryById(rec.categoryId).name} ${rec.amount < 0 ? '退款 ' : ''}$${formatMoney(Math.abs(rec.amount))}`;
+function clearDeleteUndo() {
+  clearTimeout(undoDeleteTimer);
+  pendingRecordDeletes.length = 0;
+  $('undoBar').classList.add('hidden');
+}
+function deleteRecordById(id) {
+  const index = state.records.findIndex(r => r.id === id);
+  if (index < 0) return false;
+  const rec = state.records[index];
+  if (!commit(s => s.records.splice(index, 1))) return false;
+  pendingRecordDeletes.push({ rec, index });
+  $('undoBarText').textContent = pendingRecordDeletes.length > 1
+    ? `已刪除 ${pendingRecordDeletes.length} 筆紀錄`
+    : `已刪除 ${rec.merchant || getCategoryById(rec.categoryId).name} ${rec.amount < 0 ? '退款 ' : ''}$${formatMoney(Math.abs(rec.amount))}`;
   $('undoBar').classList.remove('hidden');
-  clearTimeout(window.__undoTimer);
-  window.__undoTimer = setTimeout(() => {
-    $('undoBar').classList.add('hidden');
-    lastDeletedRecord = null;
-  }, 10000);
+  clearTimeout(undoDeleteTimer);
+  undoDeleteTimer = setTimeout(clearDeleteUndo, 10000);
+  return true;
+}
+function undoRecordDeletes() {
+  if (!pendingRecordDeletes.length) return;
+  const existing = new Set(state.records.map(r => r.id));
+  // 依刪除的反序插回，保留同一日、同一 seq（例如固定收支）的相對順序。
+  const restore = [];
+  for (const item of pendingRecordDeletes.slice().reverse()) {
+    if (existing.has(item.rec.id)) continue;
+    restore.push(item);
+    existing.add(item.rec.id);
+  }
+  if (restore.some(({ rec }) => !state.categories.some(c => c.id === rec.categoryId && c.type === rec.type)))
+    return showToast('原分類已刪除，無法復原這批紀錄');
+  if (!commit(s => {
+    for (const { rec, index } of restore) s.records.splice(index, 0, rec);
+  })) return;
+  clearDeleteUndo();
+  renderAll();
+  showToast('已復原紀錄');
 }
 function handleKeypadInput(key) {
   let s = modalState.amountExpr;
@@ -4896,21 +4953,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   on('btnSaveRecord', 'click', () => handleSaveRecord(false));
   on('btnSaveAndNextRecord', 'click', () => handleSaveRecord(true));
-  on('btnDeleteRecordInModal', 'click', removeRecord);
-  on('btnUndoDelete', 'click', () => {
-    if (!lastDeletedRecord) return;
-    const r = lastDeletedRecord;
-    if (
-      !commit(s => {
-        if (!s.records.some(x => x.id === r.id)) s.records.push(r);
-      })
-    )
-      return;
-    lastDeletedRecord = null;
-    $('undoBar').classList.add('hidden');
+  on('btnDeleteRecordInModal', 'click', () => {
+    if (!deleteRecordById(modalState?.editingRecordId)) return;
+    modalState = null;
+    state.activeView = state.previousView || 'home';
     renderAll();
-    showToast('已復原紀錄');
   });
+  on('btnUndoDelete', 'click', undoRecordDeletes);
   ['expense', 'income'].forEach(t => {
     on(t === 'expense' ? 'statsTabExpense' : 'statsTabIncome', 'click', () => {
       state.statsType = t;
@@ -5417,13 +5466,14 @@ function renderStatsTrend(yearMode) {
     chart.appendChild(btn);
   });
 }
-// 每日支出要算哪些分類：沒勾的分類（例如房租、保險）不畫進長條圖，免得一天的大筆金額把其他天壓扁。
+// 沒勾的分類（例如房租、保險）可從圖表排除，或把當月淨額均攤到每天。
 // 只影響這張圖，總支出、預算、分類占比等照常計算。設定存在支出分類上（skipDaily），跟著同步與備份。
 const dailySkipped = () => getCategoriesByType('expense').filter(c => c.skipDaily);
-function dailyCategoriesText(skipped) {
+function dailyCategoriesText(skipped, spread = false) {
   const names = skipped.map(c => c.name);
   if (!names.length) return '全部分類';
-  return names.length > 2 ? `不含 ${names.slice(0, 2).join('、')} 等 ${names.length} 個分類` : `不含 ${names.join('、')}`;
+  const list = names.length > 2 ? `${names.slice(0, 2).join('、')} 等 ${names.length} 個分類` : names.join('、');
+  return `${spread ? '平攤' : '不含'} ${list}`;
 }
 // 打開時一起列出每個分類這個月花了多少，看得出是哪個分類把圖撐高；至少要留一個分類。
 function chooseDailyCategories() {
@@ -5432,7 +5482,7 @@ function chooseDailyCategories() {
     spent = sumByCategory('expense', [`${month}-01`, `${month}-31`]).map;
   openDialog({
     title: '每日支出要算哪些分類',
-    message: `沒勾的分類不畫進每日支出長條圖，總支出、預算、分類占比都照常計算。右邊是 ${Number(month.slice(5))} 月的支出。`,
+    message: `勾選的分類按記帳日期計入。其他分類可在圖上選擇平攤到每天。右邊是 ${Number(month.slice(5))} 月的支出。`,
     checklist: cats.map(c => ({
       value: c.id,
       label: c.name,
@@ -5461,52 +5511,73 @@ function chooseDailyCategories() {
     },
   });
 }
-// 這個月每天的支出：一天一根長條，今天用主色，還沒到的日子留空。
+function dailyExpenseMonth(month, skipped) {
+  const [year, m] = month.split('-').map(Number);
+  const days = Array.from({ length: new Date(year, m, 0).getDate() }, () => ({ spent: 0, share: 0, total: 0, count: 0 }));
+  const skip = new Set(skipped.map(c => c.id));
+  const spread = skip.size > 0 && state.preferences.spreadDaily;
+  let pool = 0;
+  for (const rec of state.records) {
+    if (rec.type !== 'expense' || !rec.date.startsWith(month + '-')) continue;
+    const day = days[Number(rec.date.slice(8)) - 1];
+    day.count++;
+    if (skip.has(rec.categoryId)) pool += rec.amount;
+    else day.spent += rec.amount;
+  }
+  // 每天分到的整數元等於相鄰兩天累積額的差，餘數均勻散在月中；淨退款對稱分配。
+  const cumulative = d => Math.sign(pool) * Math.round((Math.abs(pool) * d) / days.length);
+  days.forEach((day, i) => {
+    day.share = spread ? cumulative(i + 1) - cumulative(i) : 0;
+    day.total = day.spent + day.share;
+  });
+  return { days, pool, spread };
+}
+function dailyBreakdown(day) {
+  return `當日支出 ${moneyText(day.spent)}・分攤 ${moneyText(day.share)}`;
+}
 function renderStatsDaily(yearMode) {
   const show = !yearMode && state.statsType === 'expense';
   $('statsDailySection').classList.toggle('hidden', !show);
   $('statsDailyTip').classList.add('hidden');
   if (!show) return;
   const month = state.currentMonth,
-    [y, m] = month.split('-').map(Number),
-    days = new Date(y, m, 0).getDate(),
+    m = Number(month.slice(5)),
     now = today(),
     skipped = dailySkipped(),
-    skip = new Set(skipped.map(c => c.id));
-  // 每天的支出扣掉當天的退款，不算沒勾的分類；counts 是當天有幾筆（沒勾的分類也算），
-  // 有紀錄的日子才能點開，只有房租的那天也看得到房租那一筆。
-  const sums = new Array(days).fill(0),
-    counts = new Array(days).fill(0);
-  for (const r of state.records)
-    if (r.type === 'expense' && r.date.startsWith(month + '-')) {
-      const i = Number(r.date.slice(8)) - 1;
-      if (!skip.has(r.categoryId)) sums[i] += r.amount;
-      counts[i]++;
-    }
+    { days, pool, spread } = dailyExpenseMonth(month, skipped),
+    sums = days.map(day => day.total);
   const max = Math.max(...sums),
-    filter = dailyCategoriesText(skipped);
+    filter = dailyCategoriesText(skipped, spread);
+  $('dailySpreadControls').classList.toggle('hidden', !skipped.length);
+  $('toggleDailySpread').checked = Boolean(spread);
+  const summary = $('dailySpreadSummary');
+  summary.classList.toggle('hidden', !spread);
+  // 第一天的分攤額就是日均四捨五入到整數元。
+  summary.textContent = spread ? `本月分攤 ${moneyText(pool)}，每天約 ${moneyText(days[0].share)}` : '';
   $('dailyCategoriesText').textContent = filter;
   $('btnDailyCategories').setAttribute('aria-label', `每日支出要算哪些分類，目前${filter}`);
   $('statsDailyTitle').textContent = `${m} 月每日支出`;
   $('statsDailyMax').textContent = max > 0 ? `最多 ${m}/${sums.indexOf(max) + 1} NT$ ${formatMoney(max)}` : '';
   const chart = $('statsDailyChart');
   chart.innerHTML = '';
-  chart.style.gridTemplateColumns = `repeat(${days},minmax(0,1fr))`;
-  sums.forEach((v, i) => {
+  chart.style.gridTemplateColumns = `repeat(${days.length},minmax(0,1fr))`;
+  days.forEach((day, i) => {
+    const v = day.total;
     const d = i + 1,
       date = `${month}-${String(d).padStart(2, '0')}`,
       btn = document.createElement('button');
     // 日期只標 1、5、10…和月底，太擠時略過月底前的那一個（例如 31 天的月份不標 30）。
-    const label = d === 1 || d === days || (d % 5 === 0 && days - d >= 3) ? d : '';
+    const label = d === 1 || d === days.length || (d % 5 === 0 && days.length - d >= 3) ? d : '';
     btn.type = 'button';
     btn.className = 'trend-col';
     btn.dataset.date = date;
     btn.dataset.value = v;
-    btn.setAttribute('aria-label', `${m} 月 ${d} 日 ${moneyText(v)}`);
+    if (spread) btn.dataset.breakdown = dailyBreakdown(day);
+    if (date > now && day.share && v > 0) btn.dataset.futureShare = '';
+    btn.setAttribute('aria-label', `${m} 月 ${d} 日 ${moneyText(v)}${spread ? '，' + btn.dataset.breakdown : ''}`);
     btn.setAttribute('aria-current', String(date === now));
     btn.innerHTML = `<span class="trend-plot">${trendBar(v, max)}</span><span class="trend-label">${label}</span>`;
-    // 有紀錄的日子：點長條列出那天的紀錄（沒有紀錄的日子只顯示 NT$ 0）。
-    if (counts[i])
+    if (day.count || day.share)
       btn.addEventListener('click', e => {
         e.stopPropagation();
         $('statsDailyTip').classList.add('hidden');
@@ -5515,6 +5586,7 @@ function renderStatsDaily(yearMode) {
       });
     chart.appendChild(btn);
   });
+  if (chart.querySelector('[data-future-share]')) summary.textContent += '。斜紋為含分攤的未來日期。';
 }
 const SCRUB_SLOP = 8; // 手指左右移動超過這麼多（px）才算滑動；點一下時的小晃動不算
 // 滑鼠移到長條、用鍵盤選到時，在長條上方顯示金額（顯示中的那一欄標成 is-active）。
@@ -5594,6 +5666,11 @@ function setupTrendTooltip() {
     renderStatsTrend(false);
   });
   $('btnDailyCategories').addEventListener('click', chooseDailyCategories);
+  $('toggleDailySpread').addEventListener('change', e => {
+    const enabled = e.target.checked;
+    commit(s => { s.preferences.spreadDaily = enabled; });
+    renderStatsDaily(false);
+  });
   setupChartTooltip(
     $('statsTrendChart'),
     $('statsTrendTip'),
@@ -5608,7 +5685,7 @@ function setupTrendTooltip() {
     $('statsDailyTip'),
     col => {
       const [, m, d] = col.dataset.date.split('-').map(Number);
-      return `${m} 月 ${d} 日`;
+      return `${m} 月 ${d} 日${col.dataset.breakdown ? '<br>' + col.dataset.breakdown : ''}`;
     },
     { tapToShow: true, scrub: true }
   );
@@ -6834,7 +6911,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = '9e8094b85927';
+  const APP_VERSION = '472bb9ff3a0b';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -7055,7 +7132,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '9e8094b85927';
+  const APP_VERSION = '472bb9ff3a0b';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

@@ -163,13 +163,14 @@ function renderStatsTrend(yearMode) {
     chart.appendChild(btn);
   });
 }
-// 每日支出要算哪些分類：沒勾的分類（例如房租、保險）不畫進長條圖，免得一天的大筆金額把其他天壓扁。
+// 沒勾的分類（例如房租、保險）可從圖表排除，或把當月淨額均攤到每天。
 // 只影響這張圖，總支出、預算、分類占比等照常計算。設定存在支出分類上（skipDaily），跟著同步與備份。
 const dailySkipped = () => getCategoriesByType('expense').filter(c => c.skipDaily);
-function dailyCategoriesText(skipped) {
+function dailyCategoriesText(skipped, spread = false) {
   const names = skipped.map(c => c.name);
   if (!names.length) return '全部分類';
-  return names.length > 2 ? `不含 ${names.slice(0, 2).join('、')} 等 ${names.length} 個分類` : `不含 ${names.join('、')}`;
+  const list = names.length > 2 ? `${names.slice(0, 2).join('、')} 等 ${names.length} 個分類` : names.join('、');
+  return `${spread ? '平攤' : '不含'} ${list}`;
 }
 // 打開時一起列出每個分類這個月花了多少，看得出是哪個分類把圖撐高；至少要留一個分類。
 function chooseDailyCategories() {
@@ -178,7 +179,7 @@ function chooseDailyCategories() {
     spent = sumByCategory('expense', [`${month}-01`, `${month}-31`]).map;
   openDialog({
     title: '每日支出要算哪些分類',
-    message: `沒勾的分類不畫進每日支出長條圖，總支出、預算、分類占比都照常計算。右邊是 ${Number(month.slice(5))} 月的支出。`,
+    message: `勾選的分類按記帳日期計入。其他分類可在圖上選擇平攤到每天。右邊是 ${Number(month.slice(5))} 月的支出。`,
     checklist: cats.map(c => ({
       value: c.id,
       label: c.name,
@@ -207,52 +208,73 @@ function chooseDailyCategories() {
     },
   });
 }
-// 這個月每天的支出：一天一根長條，今天用主色，還沒到的日子留空。
+function dailyExpenseMonth(month, skipped) {
+  const [year, m] = month.split('-').map(Number);
+  const days = Array.from({ length: new Date(year, m, 0).getDate() }, () => ({ spent: 0, share: 0, total: 0, count: 0 }));
+  const skip = new Set(skipped.map(c => c.id));
+  const spread = skip.size > 0 && state.preferences.spreadDaily;
+  let pool = 0;
+  for (const rec of state.records) {
+    if (rec.type !== 'expense' || !rec.date.startsWith(month + '-')) continue;
+    const day = days[Number(rec.date.slice(8)) - 1];
+    day.count++;
+    if (skip.has(rec.categoryId)) pool += rec.amount;
+    else day.spent += rec.amount;
+  }
+  // 每天分到的整數元等於相鄰兩天累積額的差，餘數均勻散在月中；淨退款對稱分配。
+  const cumulative = d => Math.sign(pool) * Math.round((Math.abs(pool) * d) / days.length);
+  days.forEach((day, i) => {
+    day.share = spread ? cumulative(i + 1) - cumulative(i) : 0;
+    day.total = day.spent + day.share;
+  });
+  return { days, pool, spread };
+}
+function dailyBreakdown(day) {
+  return `當日支出 ${moneyText(day.spent)}・分攤 ${moneyText(day.share)}`;
+}
 function renderStatsDaily(yearMode) {
   const show = !yearMode && state.statsType === 'expense';
   $('statsDailySection').classList.toggle('hidden', !show);
   $('statsDailyTip').classList.add('hidden');
   if (!show) return;
   const month = state.currentMonth,
-    [y, m] = month.split('-').map(Number),
-    days = new Date(y, m, 0).getDate(),
+    m = Number(month.slice(5)),
     now = today(),
     skipped = dailySkipped(),
-    skip = new Set(skipped.map(c => c.id));
-  // 每天的支出扣掉當天的退款，不算沒勾的分類；counts 是當天有幾筆（沒勾的分類也算），
-  // 有紀錄的日子才能點開，只有房租的那天也看得到房租那一筆。
-  const sums = new Array(days).fill(0),
-    counts = new Array(days).fill(0);
-  for (const r of state.records)
-    if (r.type === 'expense' && r.date.startsWith(month + '-')) {
-      const i = Number(r.date.slice(8)) - 1;
-      if (!skip.has(r.categoryId)) sums[i] += r.amount;
-      counts[i]++;
-    }
+    { days, pool, spread } = dailyExpenseMonth(month, skipped),
+    sums = days.map(day => day.total);
   const max = Math.max(...sums),
-    filter = dailyCategoriesText(skipped);
+    filter = dailyCategoriesText(skipped, spread);
+  $('dailySpreadControls').classList.toggle('hidden', !skipped.length);
+  $('toggleDailySpread').checked = Boolean(spread);
+  const summary = $('dailySpreadSummary');
+  summary.classList.toggle('hidden', !spread);
+  // 第一天的分攤額就是日均四捨五入到整數元。
+  summary.textContent = spread ? `本月分攤 ${moneyText(pool)}，每天約 ${moneyText(days[0].share)}` : '';
   $('dailyCategoriesText').textContent = filter;
   $('btnDailyCategories').setAttribute('aria-label', `每日支出要算哪些分類，目前${filter}`);
   $('statsDailyTitle').textContent = `${m} 月每日支出`;
   $('statsDailyMax').textContent = max > 0 ? `最多 ${m}/${sums.indexOf(max) + 1} NT$ ${formatMoney(max)}` : '';
   const chart = $('statsDailyChart');
   chart.innerHTML = '';
-  chart.style.gridTemplateColumns = `repeat(${days},minmax(0,1fr))`;
-  sums.forEach((v, i) => {
+  chart.style.gridTemplateColumns = `repeat(${days.length},minmax(0,1fr))`;
+  days.forEach((day, i) => {
+    const v = day.total;
     const d = i + 1,
       date = `${month}-${String(d).padStart(2, '0')}`,
       btn = document.createElement('button');
     // 日期只標 1、5、10…和月底，太擠時略過月底前的那一個（例如 31 天的月份不標 30）。
-    const label = d === 1 || d === days || (d % 5 === 0 && days - d >= 3) ? d : '';
+    const label = d === 1 || d === days.length || (d % 5 === 0 && days.length - d >= 3) ? d : '';
     btn.type = 'button';
     btn.className = 'trend-col';
     btn.dataset.date = date;
     btn.dataset.value = v;
-    btn.setAttribute('aria-label', `${m} 月 ${d} 日 ${moneyText(v)}`);
+    if (spread) btn.dataset.breakdown = dailyBreakdown(day);
+    if (date > now && day.share && v > 0) btn.dataset.futureShare = '';
+    btn.setAttribute('aria-label', `${m} 月 ${d} 日 ${moneyText(v)}${spread ? '，' + btn.dataset.breakdown : ''}`);
     btn.setAttribute('aria-current', String(date === now));
     btn.innerHTML = `<span class="trend-plot">${trendBar(v, max)}</span><span class="trend-label">${label}</span>`;
-    // 有紀錄的日子：點長條列出那天的紀錄（沒有紀錄的日子只顯示 NT$ 0）。
-    if (counts[i])
+    if (day.count || day.share)
       btn.addEventListener('click', e => {
         e.stopPropagation();
         $('statsDailyTip').classList.add('hidden');
@@ -261,6 +283,7 @@ function renderStatsDaily(yearMode) {
       });
     chart.appendChild(btn);
   });
+  if (chart.querySelector('[data-future-share]')) summary.textContent += '。斜紋為含分攤的未來日期。';
 }
 const SCRUB_SLOP = 8; // 手指左右移動超過這麼多（px）才算滑動；點一下時的小晃動不算
 // 滑鼠移到長條、用鍵盤選到時，在長條上方顯示金額（顯示中的那一欄標成 is-active）。
@@ -340,6 +363,11 @@ function setupTrendTooltip() {
     renderStatsTrend(false);
   });
   $('btnDailyCategories').addEventListener('click', chooseDailyCategories);
+  $('toggleDailySpread').addEventListener('change', e => {
+    const enabled = e.target.checked;
+    commit(s => { s.preferences.spreadDaily = enabled; });
+    renderStatsDaily(false);
+  });
   setupChartTooltip(
     $('statsTrendChart'),
     $('statsTrendTip'),
@@ -354,7 +382,7 @@ function setupTrendTooltip() {
     $('statsDailyTip'),
     col => {
       const [, m, d] = col.dataset.date.split('-').map(Number);
-      return `${m} 月 ${d} 日`;
+      return `${m} 月 ${d} 日${col.dataset.breakdown ? '<br>' + col.dataset.breakdown : ''}`;
     },
     { tapToShow: true, scrub: true }
   );
