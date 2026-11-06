@@ -67,14 +67,15 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .search-filter-clear { min-height:40px; padding:0 10px; font-size:13px; color:#9CA3AF; }
 .trend-category { justify-self:start; min-height:36px; padding:6px 10px; border-radius:10px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:13px; }
 /* 每日支出要算哪些分類：外觀和近 12 個月的分類選單一樣，按了打開勾選清單；分類名稱太長時以「…」結尾 */
-.daily-categories { display:flex; align-items:center; gap:6px; width:fit-content; max-width:100%; text-align:left; }
+.daily-filter-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.daily-categories { display:flex; align-items:center; gap:6px; min-width:0; min-height:44px; text-align:left; }
 .daily-categories span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .daily-categories svg { width:14px; height:14px; flex-shrink:0; color:#9CA3AF; }
-.daily-spread-toggle { display:flex; align-items:center; gap:8px; min-height:40px; cursor:pointer; font-size:13px; }
-.daily-spread-toggle input { appearance:none; position:relative; width:40px; height:24px; flex-shrink:0; border:1px solid #626978; border-radius:14px; background:#262934; cursor:pointer; }
-.daily-spread-toggle input::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#c2c7ce; }
+.daily-spread-toggle { display:flex; align-items:center; flex-shrink:0; gap:6px; min-height:44px; cursor:pointer; font-size:13px; white-space:nowrap; }
+.daily-spread-toggle input { appearance:none; position:relative; width:34px; height:20px; flex-shrink:0; border:1px solid #626978; border-radius:10px; background:#262934; cursor:pointer; }
+.daily-spread-toggle input::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#c2c7ce; }
 .daily-spread-toggle input:checked { background:var(--accent); border-color:var(--accent); }
-.daily-spread-toggle input:checked::after { left:19px; background:#191b22; }
+.daily-spread-toggle input:checked::after { left:16px; background:#191b22; }
 .search-summary { padding:0 2px; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
 /* 退款（負數的支出）的標籤：首頁紀錄與明細 */
 .refund-badge { flex-shrink:0; font-size:11px; font-weight:500; padding:2px 6px; border-radius:4px; background:#34D3991F; color:#34D399; }
@@ -658,15 +659,16 @@ select.rule-input { color-scheme:dark; }
           <h3 id="statsDailyTitle" class="text-sm font-semibold text-textMain">每日支出</h3>
           <span id="statsDailyMax" class="text-[11px] text-textMuted num-tabular"></span>
         </div>
-        <!-- 選哪些支出分類算進這張圖，例如不算房租、保險，免得一天的大筆金額把其他天壓扁 -->
-        <button id="btnDailyCategories" type="button" class="trend-category daily-categories">
-          <span id="dailyCategoriesText">全部分類</span>
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <div id="dailySpreadControls" class="hidden">
-          <label class="daily-spread-toggle"><input id="toggleDailySpread" type="checkbox" role="switch">將排除分類平攤到每天</label>
-          <p id="dailySpreadSummary" class="hidden text-xs text-textMuted"></p>
+        <div class="daily-filter-row">
+          <button id="btnDailyCategories" type="button" class="trend-category daily-categories">
+            <span id="dailyCategoriesText">全部分類</span>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <label id="dailySpreadControls" class="daily-spread-toggle hidden">
+            平攤到每天<input id="toggleDailySpread" type="checkbox" role="switch" aria-label="平攤到每天（排除的支出分類）">
+          </label>
         </div>
+        <p id="dailySpreadSummary" class="hidden text-xs text-textMuted"></p>
         <div class="trend-wrap">
           <div id="statsDailyChart" class="trend-chart daily-chart"></div>
           <div id="statsDailyTip" class="trend-tip hidden"></div>
@@ -1009,7 +1011,7 @@ select.rule-input { color-scheme:dark; }
       <div class="settings-page hidden space-y-4" data-page="about">
 <section class="bg-bgCard border border-borderSubtle rounded-2xl p-4 space-y-2">
 <h3 class="text-sm font-semibold">關於此網頁</h3>
-<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">472bb9ff3a0b</span></p>
+<p class="text-xs text-textMuted">網頁版本：<span id="appVersion">aa16d4839507</span></p>
 <p id="appUpdateStatus" class="text-xs text-textMuted" role="status">每次開啟網頁都會自動檢查新版本。</p>
 <div class="flex gap-2 flex-wrap"><button id="btnApplyUpdate" type="button" class="action hidden">更新並重新開啟</button><button id="btnCheckUpdate" type="button" class="action hidden">檢查新版本</button></div>
 <p class="text-xs text-textMuted">部分圖示取自 Lucide（ISC 授權），授權聲明保留於程式碼中。</p>
@@ -6911,7 +6913,7 @@ const LedgerBackup = (() => {
   const PART_BYTES = 900000;           // 每段內容的上限：Firestore 一份文件最多 1 MiB
   const MAX_PARTS = 10;
   const LIST_LIMIT = 8;                // 設定頁列出最近幾份
-  const APP_VERSION = '472bb9ff3a0b';
+  const APP_VERSION = 'aa16d4839507';
   const ERROR_TEXT = {
     rules: '雲端拒絕儲存備份：Firebase 的安全規則還沒更新。請把 firestore.rules 的新內容貼到 Firebase 主控台並發布（步驟見 README）；在那之前請記得下載備份。',
     'too-large': '帳本太大，無法存成雲端備份，請改用「下載完整備份」。',
@@ -7132,7 +7134,7 @@ const LedgerBackup = (() => {
 // 下次進入網頁時再自動更新。
 const LedgerUpdate = (() => {
   'use strict';
-  const APP_VERSION = '472bb9ff3a0b';
+  const APP_VERSION = 'aa16d4839507';
   const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const supported = 'serviceWorker' in navigator && (location.protocol === 'https:' || isLocalHost)
     && !new URLSearchParams(location.search).has('nosw');

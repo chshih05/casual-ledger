@@ -35,14 +35,15 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .search-filter-clear { min-height:40px; padding:0 10px; font-size:13px; color:#9CA3AF; }
 .trend-category { justify-self:start; min-height:36px; padding:6px 10px; border-radius:10px; border:1px solid #2E323E; background:#191B22; color:#F3F4F6; font-size:13px; }
 /* 每日支出要算哪些分類：外觀和近 12 個月的分類選單一樣，按了打開勾選清單；分類名稱太長時以「…」結尾 */
-.daily-categories { display:flex; align-items:center; gap:6px; width:fit-content; max-width:100%; text-align:left; }
+.daily-filter-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.daily-categories { display:flex; align-items:center; gap:6px; min-width:0; min-height:44px; text-align:left; }
 .daily-categories span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .daily-categories svg { width:14px; height:14px; flex-shrink:0; color:#9CA3AF; }
-.daily-spread-toggle { display:flex; align-items:center; gap:8px; min-height:40px; cursor:pointer; font-size:13px; }
-.daily-spread-toggle input { appearance:none; position:relative; width:40px; height:24px; flex-shrink:0; border:1px solid #626978; border-radius:14px; background:#262934; cursor:pointer; }
-.daily-spread-toggle input::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#c2c7ce; }
+.daily-spread-toggle { display:flex; align-items:center; flex-shrink:0; gap:6px; min-height:44px; cursor:pointer; font-size:13px; white-space:nowrap; }
+.daily-spread-toggle input { appearance:none; position:relative; width:34px; height:20px; flex-shrink:0; border:1px solid #626978; border-radius:10px; background:#262934; cursor:pointer; }
+.daily-spread-toggle input::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#c2c7ce; }
 .daily-spread-toggle input:checked { background:var(--accent); border-color:var(--accent); }
-.daily-spread-toggle input:checked::after { left:19px; background:#191b22; }
+.daily-spread-toggle input:checked::after { left:16px; background:#191b22; }
 .search-summary { padding:0 2px; font-size:13px; color:#D1D5DB; font-variant-numeric:tabular-nums; }
 /* 退款（負數的支出）的標籤：首頁紀錄與明細 */
 .refund-badge { flex-shrink:0; font-size:11px; font-weight:500; padding:2px 6px; border-radius:4px; background:#34D3991F; color:#34D399; }

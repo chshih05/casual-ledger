@@ -339,15 +339,16 @@
           <h3 id="statsDailyTitle" class="text-sm font-semibold text-textMain">每日支出</h3>
           <span id="statsDailyMax" class="text-[11px] text-textMuted num-tabular"></span>
         </div>
-        <!-- 選哪些支出分類算進這張圖，例如不算房租、保險，免得一天的大筆金額把其他天壓扁 -->
-        <button id="btnDailyCategories" type="button" class="trend-category daily-categories">
-          <span id="dailyCategoriesText">全部分類</span>
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <div id="dailySpreadControls" class="hidden">
-          <label class="daily-spread-toggle"><input id="toggleDailySpread" type="checkbox" role="switch">將排除分類平攤到每天</label>
-          <p id="dailySpreadSummary" class="hidden text-xs text-textMuted"></p>
+        <div class="daily-filter-row">
+          <button id="btnDailyCategories" type="button" class="trend-category daily-categories">
+            <span id="dailyCategoriesText">全部分類</span>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <label id="dailySpreadControls" class="daily-spread-toggle hidden">
+            平攤到每天<input id="toggleDailySpread" type="checkbox" role="switch" aria-label="平攤到每天（排除的支出分類）">
+          </label>
         </div>
+        <p id="dailySpreadSummary" class="hidden text-xs text-textMuted"></p>
         <div class="trend-wrap">
           <div id="statsDailyChart" class="trend-chart daily-chart"></div>
           <div id="statsDailyTip" class="trend-tip hidden"></div>

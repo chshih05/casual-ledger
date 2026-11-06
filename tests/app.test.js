@@ -1430,6 +1430,28 @@
     eq((await b.stored()).preferences.spreadDaily, false);
   });
 
+  test('統計｜手機上平攤開關在分類右邊，長名稱縮短，整個標籤都能點', async () => {
+    const a = await personalApp();
+    a.ev("commit(s => { const cat = s.categories[0]; cat.name = '房租與全年度保險費'.repeat(3); cat.skipDaily = true; })");
+    a.click('navBtnStats');
+    const picker = a.$('btnDailyCategories'), label = a.$('dailySpreadControls'), checkbox = a.$('toggleDailySpread');
+    for (const width of [320, 375, 430]) {
+      frame.style.width = width + 'px';
+      const left = picker.getBoundingClientRect(), right = label.getBoundingClientRect();
+      const card = a.$('statsDailySection').getBoundingClientRect();
+      assert(left.left >= card.left && left.right < right.left && right.right <= card.right, width + 'px 兩項都在卡片內');
+      eq(left.top + left.height / 2, right.top + right.height / 2, width + 'px 同一列');
+      assert(left.height >= 44 && right.height >= 44, '兩側點按區至少 44px 高');
+      const name = a.$('dailyCategoriesText');
+      assert(name.clientWidth > 0 && name.scrollWidth > name.clientWidth, '長名稱在剩餘空間內截短');
+    }
+    a.click(label);
+    assert(checkbox.checked && a.visible('dailySpreadSummary'), '點開關文字可開啟分攤');
+    assert(a.$('dailySpreadSummary').getBoundingClientRect().top >= label.getBoundingClientRect().bottom, '分攤摘要獨立一行');
+    a.click(label);
+    assert(!checkbox.checked && !a.visible('dailySpreadSummary'));
+  });
+
   test('統計｜近 12 個月可以只看一個分類，換成收入時回到全部分類', async () => {
     const a = await compareApp();
     const select = a.$('statsTrendCategory');
